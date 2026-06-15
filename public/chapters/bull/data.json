@@ -1,0 +1,110 @@
+{
+  "title": "The way of the Bull",
+  "subtitle": "How a 3-ton bronze beast ended up in Lower Manhattan",
+  "steps": [
+    {
+      "id": 1,
+      "date": "1987–1989",
+      "title": "A workshop on Crosby Street",
+      "location": "54 Crosby Street",
+      "address": "SoHo, Manhattan",
+      "lng": -73.9985,
+      "lat": 40.7222,
+      "image": "./images/studio.jpg",
+      "imageCaption": "Di Modica's SoHo studio, late 1980s",
+      "comment": "The Charging Bull was a response to a market trauma: Black Monday, 19 October 1987 — the Dow Jones plunged 22.6% in a single day. Arturo Di Modica, a Sicilian sculptor who'd moved to New York in 1970, didn't comment on the crash — he answered it. In a cramped, semi-legal loft on Crosby Street he spent almost two years wrestling clay and plaster, sculpting a full-size model and making sectional moulds. The moulds went across the river to be cast in bronze — the studio itself never melted a kilogram of metal."
+    },
+    {
+      "id": 2,
+      "date": "1988–1989",
+      "title": "Bedi-Makky Art Foundry",
+      "location": "227 India Street",
+      "address": "Greenpoint, Brooklyn",
+      "lng": -73.9576,
+      "lat": 40.7373,
+      "image": "./images/foundry.jpg",
+      "imageCaption": "Bedi-Makky foundry yard, Greenpoint",
+      "comment": "Across the East River, in a Greenpoint foundry the Makky family had run since the 1940s, the bull came into being one section at a time. Using the French sand-casting technique Istvan Makky brought from Hungary, his sons cast roughly <b>thirty bronze sections</b> — head, horns, neck, ribs, haunches, hooves — each one poured into a sand mould reused since the Iwo Jima Memorial was cast in the same yard in 1954. The sections were welded together in the foundry yard under an overhead crane. <b>This is where the bull was actually assembled — not at Crosby Street.</b> And it was from this yard, on the night of 14/15 December 1989, that the truck rolled out toward Wall Street."
+    },
+    {
+      "id": 3,
+      "date": "Night of 15 December 1989",
+      "title": "Night raid on Wall Street",
+      "location": "Broad Street, by 11 Wall Street",
+      "address": "New York Stock Exchange",
+      "lng": -74.010950,
+      "lat": 40.706754,
+      "approachVia": [[-73.9907, 40.7026], [-74.00788, 40.71100], [-74.00910, 40.70720]],
+      "routeProfile": "walking",
+      "image": "./images/install.jpg",
+      "imageCaption": "Broad Street at dawn, 15 December 1989",
+      "comment": "Around 1:30 AM, the flatbed truck — bull and forklift on board — crossed the <b>Manhattan Bridge</b> out of Greenpoint and rolled into the Financial District. Di Modica and a handful of friends wedged the bull beneath the giant Christmas tree on Broad Street, right at the New York Stock Exchange. An unsanctioned «gift to the city». By morning brokers, tourists and journalists had surrounded the bronze beast, and Di Modica was on the sidewalk handing out leaflets."
+    },
+    {
+      "id": 4,
+      "date": "Evening of 15 December 1989",
+      "title": "Towed to a Queens impound",
+      "location": "NYPD impound lot",
+      "address": "Queens, NY",
+      "lng": -73.7949,
+      "lat": 40.7282,
+      "image": "./images/impound.jpg",
+      "imageCaption": "NY Post front page, December 16, 1989",
+      "comment": "By the end of the day, NYSE chairman John J. Phelan Jr. had ordered the bull removed. The NYPD hauled it to an impound lot in Queens. The next morning's front pages — most famously the New York Post's «Bah, Humbug!» — flipped the script: the corporate take-down became a folk-hero story. The bull's fate turned into a citywide scandal."
+    },
+    {
+      "id": 5,
+      "date": "20 December 1989",
+      "title": "A permanent home at Bowling Green",
+      "location": "Bowling Green Park",
+      "address": "Broadway at Bowling Green",
+      "lng": -74.013440,
+      "lat": 40.705568,
+      "image": "./images/bowling-green.jpg",
+      "imageCaption": "Tourists at the bull, Bowling Green",
+      "comment": "Public outcry forced the city's hand. The NYC Parks Department brokered a compromise: the bull would return downtown — but slightly south of the exchange, on the cobblestone median at Bowling Green, the city's oldest public park. The permit was «temporary». It still is. «My friends thought I'd lost my mind,» Di Modica said later. «Why on earth would they deport me? For wanting to do something good for people?»"
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "studio",
+      "label": "Studio",
+      "sublabel": "Di Modica's",
+      "lng": -73.9985,
+      "lat": 40.7222,
+      "visibleOnSteps": [0, 1]
+    },
+    {
+      "id": "foundry",
+      "label": "Foundry",
+      "sublabel": "Bedi-Makky",
+      "lng": -73.9576,
+      "lat": 40.7373,
+      "visibleOnSteps": [0, 1, 2]
+    },
+    {
+      "id": "nyse",
+      "label": "NYSE",
+      "sublabel": "stock exchange",
+      "lng": -74.011079,
+      "lat": 40.707198,
+      "visibleOnSteps": [2, 4]
+    },
+    {
+      "id": "impound",
+      "label": "Impound",
+      "sublabel": "NYPD, Queens",
+      "lng": -73.7949,
+      "lat": 40.7282,
+      "visibleOnSteps": [3]
+    },
+    {
+      "id": "park",
+      "label": "Bowling Green",
+      "sublabel": "park",
+      "lng": -74.0134,
+      "lat": 40.7056,
+      "visibleOnSteps": [4]
+    }
+  ]
+}

@@ -1,0 +1,228 @@
+{
+  "$schema": "longread-doc/v1",
+  "_comment": [
+    "Neutral intermediate document — what we extract from a Figma file (via",
+    "Figma REST API, Figma Make output, or any other source). Not tied to the",
+    "engine's component vocabulary. From this JSON a developer (or an LLM) can",
+    "produce the actual MDX for the longread.",
+    "",
+    "Contract:",
+    "  - `tokens` describes the design system used by this longread.",
+    "    All section values reference tokens by name (e.g. 'accent') or give",
+    "    literal CSS values; mixing is fine.",
+    "  - `responsive` lists the breakpoints the designer worked in. Other",
+    "    sections may carry their own per-breakpoint deltas under `responsive`.",
+    "  - `sections` is the page in document order. Each section has a `type`",
+    "    that identifies its visual role. The set is open — anything the",
+    "    designer drew that doesn't fit common types goes through as",
+    "    `type: 'custom'` plus a free-form payload."
+  ],
+
+  "source": {
+    "kind": "figma-make",
+    "fileKey": "LXoF4pY8I4w3H02GNxYKWZ",
+    "url": "https://figma.com/design/LXoF4pY8I4w3H02GNxYKWZ",
+    "extractedAt": "2026-05-24"
+  },
+
+  "name": "Dark Longread Design",
+
+  "responsive": {
+    "breakpoints": { "base": 0, "sm": 640, "lg": 1024 }
+  },
+
+  "tokens": {
+    "color": {
+      "bg":      "#0a0a0a",
+      "surface": "#18181b",
+      "border":  "#27272a",
+      "accent":  "#22d3ee",
+      "text": {
+        "primary":   "#ffffff",
+        "secondary": "#d4d4d8",
+        "muted":     "#a1a1aa",
+        "faint":     "#71717a"
+      },
+      "gradient": {
+        "accent": { "from": "#0c4a6e", "to": "#0a0a0a" }
+      }
+    },
+    "typography": {
+      "fontFamily": "Inter",
+      "weights": { "light": 300, "regular": 400, "semibold": 600, "bold": 700 },
+      "size": {
+        "h1":      { "base": 48, "sm": 60, "lg": 72 },
+        "h2":      { "base": 32, "sm": 40, "lg": 48 },
+        "h3":      { "base": 20 },
+        "lead":    { "base": 18, "sm": 20, "lg": 24 },
+        "body":    { "base": 16, "sm": 18 },
+        "caption": { "base": 14 },
+        "stat":    { "base": 40, "sm": 48 },
+        "numeral": { "base": 48 },
+        "quote":   { "base": 24, "sm": 30, "lg": 36 }
+      },
+      "lineHeight": { "tight": 1.2, "normal": 1.5, "relaxed": 1.6 }
+    },
+    "spacing": {
+      "pagePadding": { "base": 40, "sm": 64, "lg": 80 },
+      "sectionGap":  { "base": 80, "lg": 128 },
+      "cardPadding": { "base": 32 },
+      "gridGap":     { "base": 24 }
+    },
+    "layout": {
+      "contentWidth": { "base": "100%", "sm": "90%", "lg": "70%" },
+      "centered": true
+    },
+    "radius":     { "card": 8, "quote": 16 },
+    "borderWidth": 1
+  },
+
+  "sections": [
+    {
+      "id": "hero",
+      "type": "hero",
+      "layout": { "height": "100vh", "align": "center" },
+      "background": {
+        "kind": "image-with-overlay",
+        "image": {
+          "url": "https://images.unsplash.com/photo-1689443111130-6e9c7dfd8f9e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxkYXJrJTIwYWJzdHJhY3QlMjB0ZWNobm9sb2d5JTIwYmFja2dyb3VuZHxlbnwxfHx8fDE3Nzk1Nzc3MTJ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+          "alt": "Abstract technology background",
+          "fit": "cover",
+          "opacity": 0.4
+        },
+        "overlay": {
+          "kind": "gradient",
+          "direction": "to-bottom",
+          "stops": [
+            { "at": 0.0, "color": "rgba(10,10,16,0.6)" },
+            { "at": 0.5, "color": "rgba(10,10,16,0.3)" },
+            { "at": 1.0, "color": "#0a0a0a" }
+          ]
+        }
+      },
+      "content": {
+        "title":    { "text": "The Future of Digital Design", "size": "h1",   "color": "text.primary", "weight": "bold" },
+        "subtitle": { "text": "Exploring innovation in the modern era", "size": "lead", "color": "text.muted" }
+      }
+    },
+
+    {
+      "id": "intro",
+      "type": "text-section",
+      "background": "bg",
+      "heading":   { "text": "Introduction", "size": "h2", "color": "accent", "weight": "bold" },
+      "paragraphs": [
+        "In the rapidly evolving landscape of digital design, we find ourselves at the intersection of technology and creativity. This exploration delves into the principles that shape modern interfaces and the methodologies that drive innovation forward."
+      ],
+      "paragraphStyle": { "size": "body", "color": "text.secondary", "lineHeight": "relaxed" }
+    },
+
+    {
+      "id": "process",
+      "type": "card-grid",
+      "variant": "numbered",
+      "background": "bg",
+      "responsive": { "columns": { "base": 1, "sm": 2 } },
+      "card": {
+        "background": "surface",
+        "border": "border",
+        "radius": "card",
+        "padding": "cardPadding"
+      },
+      "items": [
+        {
+          "number": "01",
+          "title":       "Research & Discovery",
+          "description": "Understanding user needs and market dynamics through comprehensive research methodologies."
+        },
+        {
+          "number": "02",
+          "title":       "Design & Prototyping",
+          "description": "Creating intuitive interfaces that balance aesthetics with functionality and usability."
+        },
+        {
+          "number": "03",
+          "title":       "Development & Testing",
+          "description": "Building robust solutions with modern technologies and rigorous quality assurance."
+        },
+        {
+          "number": "04",
+          "title":       "Launch & Iteration",
+          "description": "Deploying solutions and continuously improving based on real-world feedback and data."
+        }
+      ],
+      "itemStyle": {
+        "number":      { "size": "numeral", "color": "accent", "weight": "bold" },
+        "title":       { "size": "h3",      "color": "text.primary", "weight": "semibold" },
+        "description": { "size": "body",    "color": "text.muted" }
+      }
+    },
+
+    {
+      "id": "quote",
+      "type": "quote-card",
+      "background": {
+        "kind": "gradient",
+        "direction": "to-bottom-right",
+        "stops": [
+          { "at": 0, "color": "#0c4a6e" },
+          { "at": 1, "color": "#0a0a0a" }
+        ]
+      },
+      "border": { "color": "accent", "opacity": 0.3 },
+      "radius": "quote",
+      "padding": { "base": 48, "sm": 56, "lg": 64 },
+      "quote":  { "text": "Design is not just what it looks like and feels like. Design is how it works.", "size": "quote", "style": "italic", "weight": "light", "color": "text.primary" },
+      "author": { "text": "Steve Jobs", "prefix": "— ", "color": "accent", "size": "body" }
+    },
+
+    {
+      "id": "gallery",
+      "type": "image-gallery",
+      "background": "surface",
+      "responsive": { "columns": { "base": 1, "sm": 2 } },
+      "imageStyle": { "aspect": "auto", "height": { "base": 250, "sm": 300 }, "radius": "card", "fit": "cover" },
+      "captionStyle": { "size": "caption", "color": "text.muted", "marginTop": 12 },
+      "items": [
+        { "url": "https://images.unsplash.com/photo-1483366774565-c783b9f70e2c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBhcmNoaXRlY3R1cmUlMjBtaW5pbWFsaXN0fGVufDF8fHx8MTc3OTU3NzcxM3ww&ixlib=rb-4.1.0&q=80&w=1080", "alt": "Modern Architecture", "caption": "Modern Architecture" },
+        { "url": "https://images.unsplash.com/photo-1614595737476-42487331b8a1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBhcmNoaXRlY3R1cmUlMjBtaW5pbWFsaXN0fGVufDF8fHx8MTc3OTU3NzcxM3ww&ixlib=rb-4.1.0&q=80&w=1080", "alt": "Minimalist Design", "caption": "Minimalist Design" },
+        { "url": "https://images.unsplash.com/photo-1531591022136-eb8b0da1e6d0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBhcmNoaXRlY3R1cmUlMjBtaW5pbWFsaXN0fGVufDF8fHx8MTc3OTU3NzcxM3ww&ixlib=rb-4.1.0&q=80&w=1080", "alt": "Abstract Forms",    "caption": "Abstract Forms" },
+        { "url": "https://images.unsplash.com/photo-1496865534669-25ec2a3a0fd3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw0fHxtb2Rlcm4lMjBhcmNoaXRlY3R1cmUlMjBtaW5pbWFsaXN0fGVufDF8fHx8MTc3OTU3NzcxM3ww&ixlib=rb-4.1.0&q=80&w=1080", "alt": "Urban Spaces",      "caption": "Urban Spaces" }
+      ]
+    },
+
+    {
+      "id": "stats",
+      "type": "card-grid",
+      "variant": "stat",
+      "background": "bg",
+      "responsive": { "columns": { "base": 1, "sm": 2, "lg": 4 } },
+      "card": {
+        "background": "surface",
+        "border": "border",
+        "radius": "card",
+        "padding": 24,
+        "align": "center"
+      },
+      "items": [
+        { "value": "500+", "label": "Projects Completed" },
+        { "value": "98%",  "label": "Client Satisfaction" },
+        { "value": "50+",  "label": "Team Members" },
+        { "value": "10Y",  "label": "Industry Experience" }
+      ],
+      "itemStyle": {
+        "value": { "size": "stat", "color": "accent",     "weight": "bold" },
+        "label": { "size": "body", "color": "text.muted" }
+      }
+    },
+
+    {
+      "id": "footer",
+      "type": "footer",
+      "background": "bg",
+      "borderTop": "border",
+      "text": "© 2026 Dark Longread Design. All rights reserved.",
+      "textStyle": { "size": "body", "color": "text.faint", "align": "center" }
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+/* ============================================================================
+   FONTS — Charging Bull longread
+   ----------------------------------------------------------------------------
+   The design uses 6 typefaces. Every family is referenced in the app ONLY
+   through the CSS variables below, so the components never change.
+
+   Real design font → source now
+   --------------------------------------------------------------------------
+   Struve              (body + bold headings)     → Struve         (licensed, local)
+   Martina Plantijn    (old-style serif body)     → Martina Plantijn (licensed, local)
+   Space Mono          (mono labels)              → Space Mono     (local)
+   Space Grotesk       (eyebrow labels)           → Space Grotesk  (local)
+   Ayer Poster Cursive (huge display italic)      → Playfair Display italic (substitute)
+   RR Repose Prop      (giant numerals)           → Archivo        (substitute)
+
+   Only Ayer and Repose are still free substitutes — no licensed files yet.
+   ============================================================================ */
+
+/* --- Remaining substitutes (no licensed files): Ayer → Playfair, Repose → Archivo --- */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap');
+
+/* ---------------------------------------------------------------- Struve --- */
+@font-face {
+  font-family: 'Struve';
+  src: url('./assets/fonts/Struve-Regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Struve';
+  src: url('./assets/fonts/Struve-Medium.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Struve';
+  src: url('./assets/fonts/Struve-Semibold.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Struve';
+  src: url('./assets/fonts/Struve-Bold.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Struve';
+  src: url('./assets/fonts/Struve-Slanted.woff2') format('woff2');
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Struve';
+  src: url('./assets/fonts/Struve-SemiboldSlanted.woff2') format('woff2');
+  font-weight: 600; font-style: italic; font-display: swap;
+}
+
+/* ------------------------------------------------------ Martina Plantijn --- */
+@font-face {
+  font-family: 'Martina Plantijn';
+  src: url('./assets/fonts/martina-plantijn-regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Martina Plantijn';
+  src: url('./assets/fonts/martina-plantijn-italic.woff2') format('woff2');
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Martina Plantijn';
+  src: url('./assets/fonts/martina-plantijn-bold.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+/* ------------------------------------------------------------ Space Mono --- */
+@font-face {
+  font-family: 'Space Mono';
+  src: url('./assets/fonts/SpaceMono-Regular.ttf') format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Space Mono';
+  src: url('./assets/fonts/SpaceMono-Bold.ttf') format('truetype');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+/* --------------------------------------------------------- Space Grotesk --- */
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('./assets/fonts/SpaceGrotesk-Regular.ttf') format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('./assets/fonts/SpaceGrotesk-Medium.ttf') format('truetype');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+
+:root {
+  --font-struve:  'Struve', system-ui, sans-serif;             /* body + headings */
+  --font-martina: 'Martina Plantijn', 'Times New Roman', serif; /* serif body     */
+  --font-mono:    'Space Mono', ui-monospace, monospace;        /* mono labels    */
+  --font-grotesk: 'Space Grotesk', system-ui, sans-serif;       /* eyebrow labels */
+  --font-ayer:    'Playfair Display', Georgia, serif;           /* display cursive (substitute) */
+  --font-repose:  'Archivo', 'Struve', sans-serif;              /* giant numerals (substitute)  */
+}

@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The way of the Bull — a scroll-driven map</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+  <!-- Local, gitignored. Copy config.example.js -> config.js and set your token. -->
+  <script src="config.js"></script>
+  <script src="https://unpkg.com/deck.gl@9.1.8/dist.min.js"></script>
+  <script src="https://unpkg.com/@deck.gl/mesh-layers@9.1.8/dist.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0a10;
+      --fg: #f5f3ee;
+      --muted: rgba(245,243,238,0.5);
+      --gold: #c9a961;
+      --accent: #e8c87c;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Sticky map */
+    #map-stage {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+    #map { width: 100%; height: 100%; }
+
+    #map-stage::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 75% 50%, transparent 25%, rgba(10,10,16,0.35) 70%, rgba(10,10,16,0.65) 100%),
+        linear-gradient(to right, rgba(10,10,16,0.85) 0%, rgba(10,10,16,0.45) 30%, rgba(10,10,16,0) 55%);
+      z-index: 2;
+    }
+    @media (max-width: 720px) {
+      #map-stage::after {
+        background:
+          radial-gradient(ellipse at center, transparent 35%, rgba(10,10,16,0.55) 100%),
+          linear-gradient(to bottom, rgba(10,10,16,0.0) 30%, rgba(10,10,16,0.85) 75%);
+      }
+    }
+
+    /* Scrollable content */
+    #scroller {
+      position: relative;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    /* Steps */
+    .step {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 80px 24px;
+    }
+    /* First step gets a top spacer so it isn't immediately at the very top */
+    .step:first-child {
+      padding-top: 100px;
+    }
+    /* Long-distance segments (NYSE→Queens, Queens→Bowling Green) need extra
+       scroll room so the trail draws along the actual roads, not a teleport. */
+    .step[data-step="3"],
+    .step[data-step="4"] {
+      min-height: 180vh;
+    }
+
+    .step-card {
+      pointer-events: auto;
+      max-width: 440px;
+      margin-left: clamp(24px, 5vw, 80px);
+      background: rgba(10, 10, 16, 0.82);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(201, 169, 97, 0.18);
+      border-radius: 4px;
+      padding: 32px 36px 36px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+    }
+
+    .step-card::before {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 1px;
+      background: var(--gold);
+      margin-bottom: 22px;
+    }
+    /* When there's an image, drop the decorative rule — the image is enough */
+    .step-card:has(.step-image)::before { display: none; }
+
+    .step-image {
+      width: calc(100% + 72px);
+      margin: -32px -36px 24px -36px;
+      aspect-ratio: 16 / 10;
+      background: #1a1820;
+      overflow: hidden;
+      position: relative;
+    }
+    .step-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      opacity: 0.92;
+    }
+    /* Subtle fade into the card so it blends */
+    .step-image::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 60%, rgba(10,10,16,0.55) 100%);
+      pointer-events: none;
+    }
+    .step-image-caption {
+      position: absolute;
+      bottom: 8px;
+      left: 12px;
+      right: 12px;
+      font-size: 10px;
+      color: rgba(245,243,238,0.7);
+      letter-spacing: 0.4px;
+      font-style: italic;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    }
+
+    .step-num {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .step-num .num {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 52px;
+      font-weight: 600;
+      color: var(--gold);
+      line-height: 1;
+      font-style: italic;
+    }
+    .step-num .of {
+      font-size: 11px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .step-date {
+      font-size: 11px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .step-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 36px;
+      font-weight: 600;
+      line-height: 1.05;
+      letter-spacing: -0.5px;
+      color: var(--fg);
+      margin-bottom: 6px;
+    }
+
+    .step-location {
+      font-size: 12px;
+      color: rgba(245,243,238,0.45);
+      margin-bottom: 22px;
+      font-style: italic;
+      letter-spacing: 0.3px;
+    }
+
+    .step-comment {
+      font-size: 14.5px;
+      line-height: 1.7;
+      color: rgba(245,243,238,0.85);
+      font-weight: 300;
+    }
+
+    /* (Copy-marker styles removed — global "bull copies" view no longer
+       part of this chapter.) */
+
+    /* Top bar */
+    .top-bar {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      padding: 20px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 50;
+      pointer-events: none;
+    }
+    .brand {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.85);
+    }
+    .brand .small {
+      font-family: 'Inter', sans-serif;
+      font-size: 9px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--gold);
+      display: block;
+      margin-bottom: -2px;
+      font-weight: 500;
+    }
+
+    /* Loading */
+    .loading {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 18px;
+      z-index: 999;
+      transition: opacity 0.8s ease;
+    }
+    .loading.done { opacity: 0; pointer-events: none; }
+    .loading .label {
+      font-size: 10px;
+      letter-spacing: 4px;
+      color: var(--gold);
+      text-transform: uppercase;
+    }
+    .loading .bar {
+      width: 200px; height: 1px;
+      background: rgba(245,243,238,0.1);
+      position: relative; overflow: hidden;
+    }
+    .loading .bar::after {
+      content: '';
+      position: absolute;
+      width: 60px; height: 100%;
+      background: var(--gold);
+      animation: load 1.4s ease-in-out infinite;
+    }
+    @keyframes load {
+      0% { left: -60px; }
+      100% { left: 200px; }
+    }
+
+    .mapboxgl-ctrl-attrib { display: none !important; }
+
+    /* Mini-map locator (bottom-right) — no panel; just the shape + markers */
+    .locator {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 260px;
+      height: 300px;
+      z-index: 70;
+      transition: opacity 0.6s ease, transform 0.6s ease;
+      pointer-events: none;
+      overflow: visible;
+    }
+    .locator.hidden {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    .locator svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      overflow: visible;        /* let the bull dot render outside the bbox */
+    }
+    .locator-label {
+      position: absolute;
+      left: 0; right: 0; bottom: -14px;
+      text-align: center;
+      font-size: 8px;
+      letter-spacing: 2.5px;
+      color: rgba(180, 180, 180, 0.55);
+      font-weight: 500;
+    }
+    @media (max-width: 720px) {
+      .locator { width: 180px; height: 210px; bottom: 14px; right: 14px; }
+    }
+
+    /* Landmark markers (DOM). The marker root is fixed-size and the PIN
+       sits at its geometric center (where the trail line lands). The label
+       is purely an annotation, visually distinct from the pin. */
+    .landmark-marker {
+      /* position: absolute is critical — mapboxgl.Marker's transform assumes
+         the element is taken out of flow. With position:relative each marker
+         occupies layout space and subsequent ones drift down (off the line). */
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      pointer-events: none;
+      will-change: transform;
+      z-index: 100;
+    }
+    .landmark-marker .lm-inner {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    .landmark-marker.visible .lm-inner { opacity: 1; }
+    /* Subtle pulse halo so the pin is findable; kept small to avoid
+       visually shifting the perceived center. */
+    .landmark-marker .halo {
+      position: absolute;
+      inset: -6px;
+      background: radial-gradient(circle, rgba(232,200,124,0.7) 0%, rgba(232,200,124,0.0) 65%);
+      border-radius: 50%;
+      pointer-events: none;
+      animation: lm-pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes lm-pulse {
+      0%, 100% { transform: scale(0.85); opacity: 0.9; }
+      50% { transform: scale(1.0); opacity: 1; }
+    }
+    .landmark-marker .pin {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle, #fff5dc 35%, #e8c87c 75%, #c9a961 100%);
+      border: 2px solid #0a0a10;
+      border-radius: 50%;
+      box-shadow:
+        0 0 0 1.5px rgba(255,245,220,0.5),
+        0 0 16px rgba(232,200,124,0.95),
+        0 2px 4px rgba(0,0,0,0.7);
+    }
+    /* Label is a slim annotation, clearly separated from the pin by a
+       thin gold leader. Compact dark pill for legibility. */
+    .landmark-marker .label {
+      position: absolute;
+      left: 26px;
+      top: 50%;
+      transform: translateY(-50%);
+      white-space: nowrap;
+      pointer-events: none;
+      padding: 3px 9px 3px 9px;
+      background: rgba(10, 10, 16, 0.78);
+      border-radius: 2px;
+    }
+    /* Leader line from pin edge to label */
+    .landmark-marker .label::before {
+      content: '';
+      position: absolute;
+      left: -8px;
+      top: 50%;
+      width: 8px;
+      height: 1px;
+      background: var(--gold);
+      transform: translateY(-50%);
+    }
+    .landmark-marker .label .name {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #fff5dc;
+      text-shadow:
+        0 0 4px rgba(10,10,16,1),
+        0 0 4px rgba(10,10,16,1),
+        0 0 8px rgba(10,10,16,0.9),
+        0 1px 2px rgba(0,0,0,1);
+      line-height: 1.2;
+    }
+    .landmark-marker .label .sub {
+      font-size: 9.5px;
+      font-weight: 400;
+      letter-spacing: 0.4px;
+      color: #c9a961;
+      text-shadow:
+        0 0 4px rgba(10,10,16,1),
+        0 0 4px rgba(10,10,16,1),
+        0 1px 2px rgba(0,0,0,1);
+      line-height: 1.2;
+      margin-top: 1px;
+      font-style: italic;
+    }
+
+    @media (max-width: 720px) {
+      .step { padding: 60px 16px; }
+      .step:first-child { padding-top: 80px; }
+      .step-card { margin-left: 0; padding: 26px 24px 30px; max-width: 100%; }
+      .step-title { font-size: 28px; }
+      .top-bar { padding: 14px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="loading" id="loading">
+    <div class="label">Loading the route</div>
+    <div class="bar"></div>
+  </div>
+
+  <div id="map-stage"><div id="map"></div></div>
+
+  <!-- Mini-map locator (bottom-right). -->
+  <div id="locator" class="locator">
+    <svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <path id="loc-mhk" fill="rgba(200,200,200,0.22)" stroke="none" />
+      <polygon id="loc-vp" fill="rgba(232,200,124,0.18)" stroke="rgba(232,200,124,0.85)" stroke-width="0.9" stroke-linejoin="round" />
+      <circle id="loc-bull" r="2.6" fill="#fff5dc" stroke="#0a0a10" stroke-width="0.6" />
+    </svg>
+  </div>
+
+
+  <div class="top-bar">
+    <div class="brand">
+      <span class="small">Wall Street · 1989</span>
+      Charging Bull
+    </div>
+  </div>
+
+  <div id="scroller">
+    <div id="steps-container"></div>
+  </div>
+
+  <script>
+    mapboxgl.accessToken = window.MAPBOX_TOKEN;
+    const FT_TO_M = 0.3048;
+
+    /* 3D bull model — decimated to 4k triangles, normalized to 1m tall.
+     * Source mesh in 3d/, conversion script: 3d/convert_bull.py
+     * The model's intrinsic scale is in meters (height=1). Multiply by
+     * BULL_3D_SCALE to control on-screen size. */
+    /* The NYSE building footprint (11 Wall Street). Buildings whose
+     * centroid falls inside this polygon are tagged with feature-state
+     * `nyse:true` and rendered in the bright bronze highlight color. */
+    // Precise NYSE building footprint (user-supplied GeoJSON polygon).
+    const NYSE_FOOTPRINT = [
+      [-74.011251,  40.7074775],
+      [-74.0115968, 40.7069027],
+      [-74.0110914, 40.7067031],
+      [-74.0107881, 40.7071851],
+      [-74.0108785, 40.7072476],
+      [-74.0110222, 40.7073303],
+      [-74.0111393, 40.707415 ],
+      [-74.011251,  40.7074775],
+    ];
+
+    /* Buildings whose footprint sits inside this polygon get rendered
+     * semi-transparent — used to "fade away" structures that block the
+     * bull / NYSE / Bowling Green view in tight close-ups. */
+    const TRANSPARENT_BUILDINGS_POLY = [
+      [-74.0110738, 40.7062909],
+      [-74.0114533, 40.7053415],
+      [-74.0115293, 40.7035   ],
+      [-74.0110928, 40.7018312],
+      [-74.008901,  40.7024354],
+      [-74.0062252, 40.7042553],
+      [-74.0047925, 40.705212 ],
+      [-74.0079806, 40.7075425],
+      [-74.0093374, 40.7085695],
+      [-74.0104351, 40.7071894],
+      [-74.0108099, 40.7067632],
+      [-74.0110738, 40.7062909],
+    ];
+
+    /** Centroid of a GeoJSON Polygon/MultiPolygon geometry (outer ring only). */
+    function geomCentroid(geometry) {
+      let ring;
+      if (geometry.type === 'Polygon')           ring = geometry.coordinates[0];
+      else if (geometry.type === 'MultiPolygon') ring = geometry.coordinates[0]?.[0];
+      else return null;
+      if (!ring || !ring.length) return null;
+      let sx = 0, sy = 0;
+      for (const [x, y] of ring) { sx += x; sy += y; }
+      return [sx / ring.length, sy / ring.length];
+    }
+
+    function pointInPolygon(pt, poly) {
+      // Standard ray-casting; poly is array of [lng, lat]
+      const x = pt[0], y = pt[1];
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i][0], yi = poly[i][1];
+        const xj = poly[j][0], yj = poly[j][1];
+        const intersect = ((yi > y) !== (yj > y))
+          && (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    const BULL_3D_MODEL_URL = new URL('./images/bull.glb', location.href).href;
+    const BULL_3D_HEADING_OFFSET = 180;     // flip — model nose was at the back
+    const BULL_3D_SCALE = [1.3, 1.3, 1.3];  // 30% larger
+    const BULL_3D_MIN_PIXELS = 40;          // visible at world zoom too
+    const BULL_3D_MAX_PIXELS = 105;         // capped on close zooms
+
+    let STEPS = [];
+    let LANDMARKS = [];
+    let buildingsGeoJSON = null;
+    let map = null;
+    let overlay = null;
+    let lastDrawnProgress = -2;
+    /** Pre-fetched driving routes — segments[i] is array of [lng,lat] pairs from STEPS[i] to STEPS[i+1] */
+    let routeSegments = [];
+    /** @type {Map<string, mapboxgl.Marker>} keyed by landmark id */
+    const landmarkMarkers = new Map();
+
+    /* === PER-STEP CAMERAS ================================================== */
+    // 5 chained stops: Studio → Foundry → NYSE → Queens impound → Bowling Green.
+    // Each entry may include an optional `padding` override.
+    const STEP_CAMERAS = [
+      // 0  Studio on Crosby Street, SoHo
+      { center: [-73.9863, 40.7187], zoom: 13.36, pitch: 53, bearing: 13 },
+      // 1  Bedi-Makky foundry, Greenpoint, Brooklyn — Manhattan visible across river
+      { center: [-73.9700, 40.7295], zoom: 13.20, pitch: 55, bearing: -22 },
+      // 2  Night raid on NYSE
+      { center: [-74.0111, 40.7067], zoom: 17.11, pitch: 46, bearing: -9 },
+      // 3  Impound in Queens
+      { center: [-73.9601, 40.7161], zoom: 12.65, pitch: 61, bearing: 68 },
+      // 4  Bowling Green install — close-up
+      { center: [-74.0096, 40.7066], zoom: 15.46, pitch: 36, bearing: 9 },
+    ];
+
+    function stepCamera(i) {
+      return STEP_CAMERAS[Math.max(0, Math.min(STEP_CAMERAS.length - 1, i))];
+    }
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function lerpBearing(a, b, t) {
+      let d = ((b - a + 540) % 360) - 180;
+      return a + d * t;
+    }
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+    }
+
+    function lerpCamera(progress) {
+      if (progress <= 0) return stepCamera(0);
+      if (progress >= STEP_CAMERAS.length - 1) return stepCamera(STEP_CAMERAS.length - 1);
+      const i = Math.floor(progress);
+      const t = easeInOutCubic(progress - i);
+      const a = stepCamera(i);
+      const b = stepCamera(i + 1);
+      // Padding may be unspecified per-step; fall back to the global default.
+      const ap = a.padding || window.__mapPadding;
+      const bp = b.padding || window.__mapPadding;
+      return {
+        center: [lerp(a.center[0], b.center[0], t), lerp(a.center[1], b.center[1], t)],
+        zoom: lerp(a.zoom, b.zoom, t),
+        pitch: lerp(a.pitch, b.pitch, t),
+        bearing: lerpBearing(a.bearing, b.bearing, t),
+        padding: ap && bp ? {
+          top:    lerp(ap.top,    bp.top,    t),
+          right:  lerp(ap.right,  bp.right,  t),
+          bottom: lerp(ap.bottom, bp.bottom, t),
+          left:   lerp(ap.left,   bp.left,   t),
+        } : null,
+      };
+    }
+
+    /* === INIT ============================================================== */
+    async function init() {
+      const dataResp = await fetch('./data.json?v=' + Date.now());
+      const data = await dataResp.json();
+      STEPS = data.steps;
+      LANDMARKS = data.landmarks || [];
+      window.__STEPS = STEPS;
+      window.__LANDMARKS = LANDMARKS;
+
+      // Pre-fetch road routes between consecutive steps using Mapbox Directions.
+      // Endpoints are forced inside fetchAllRoutes to match STEPS coords —
+      // no separate sync needed.
+      routeSegments = await fetchAllRoutes(STEPS);
+      window.__routes = routeSegments;
+
+      renderSteps();
+
+      const isNarrow = window.innerWidth < 720;
+      const padding = isNarrow
+        ? { top: 60, right: 30, bottom: 40, left: 30 }
+        : { top: 80, right: 60, bottom: 80, left: 480 };
+
+      const v0 = stepCamera(0);
+      map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/dark-v11',
+        center: v0.center,
+        zoom: v0.zoom,
+        pitch: v0.pitch,
+        bearing: v0.bearing,
+        antialias: true,
+        minZoom: 0.5,
+        maxZoom: 18,
+        interactive: true, // user can drag/zoom to find good camera angles
+        // Mercator throughout — needed for 3D-building pitch on city zooms.
+        projection: 'mercator',
+      });
+      map.setPadding(padding);
+
+      // Embedded in the engine: the wheel scrolls the PAGE (the bridge forwards
+      // it), so the map must NOT consume the wheel to zoom, and arrow/space keys
+      // must not scroll the map. Drag-pan / rotate / pinch-zoom stay on so the
+      // reader can still explore camera angles between scroll steps.
+      map.scrollZoom.disable();
+      map.keyboard.disable();
+
+      // Pause scroll-driven camera while user is interacting with the map.
+      // After user stops, log camera state in copy-pastable format and resume.
+      let userInteracting = false;
+      map.on('mousedown', () => { userInteracting = true; });
+      map.on('touchstart', () => { userInteracting = true; });
+      map.on('dragstart', () => { userInteracting = true; });
+      map.on('zoomstart', e => { if (e.originalEvent) userInteracting = true; });
+      map.on('rotatestart', e => { if (e.originalEvent) userInteracting = true; });
+      map.on('pitchstart', e => { if (e.originalEvent) userInteracting = true; });
+      map.on('moveend', () => {
+        if (!userInteracting) return;
+        userInteracting = false;
+        const c = map.getCenter();
+        const cam = {
+          center: [+c.lng.toFixed(4), +c.lat.toFixed(4)],
+          zoom: +map.getZoom().toFixed(2),
+          pitch: +map.getPitch().toFixed(0),
+          bearing: +map.getBearing().toFixed(0),
+        };
+        const stepIdx = Math.round(cachedProgress);
+        console.log(`📷 step ${stepIdx + 1} (index ${stepIdx}): ${JSON.stringify(cam)}`);
+      });
+      window.__userInteractingRef = () => userInteracting;
+
+      map.on('load', async () => {
+        map.setFog({
+          color: 'rgb(15, 13, 25)',
+          'high-color': 'rgb(22, 18, 40)',
+          'horizon-blend': 0.06,
+          'space-color': 'rgb(5, 4, 10)',
+          'star-intensity': 0.18,
+        });
+        try {
+          map.setLights([
+            { id: 'ambient', type: 'ambient', properties: { color: '#9080a0', intensity: 0.55 } },
+            { id: 'directional', type: 'directional', properties: {
+              color: '#e8c87c', intensity: 0.95, direction: [220, 35],
+              'cast-shadows': true, 'shadow-intensity': 0.45,
+            }},
+          ]);
+        } catch (e) {}
+
+        // Add a 3D-buildings extrusion layer using Mapbox's own composite
+        // building source. dark-v11 ships only a flat `fill` building layer,
+        // so we add `building-3d` on top — same source, same shapes, but
+        // extruded by their `height` attribute and tinted to match the
+        // warm-amber palette of the trail.
+        try {
+          if (!map.getLayer('building-3d')) {
+            const labelLayer = map.getStyle().layers
+              .find(l => l.type === 'symbol' && /label|place/.test(l.id))?.id;
+            map.addLayer({
+              id: 'building-3d',
+              source: 'composite',
+              'source-layer': 'building',
+              type: 'fill-extrusion',
+              minzoom: 13,
+              filter: ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']],
+              paint: {
+                // NYSE highlight = bright bronze. Original heights preserved
+                // so the building retains its real shape. Faded buildings are
+                // handled by a SEPARATE layer below (building-3d-fade) with
+                // its own opacity, so true layer-level transparency works.
+                'fill-extrusion-color': [
+                  'case',
+                  ['boolean', ['feature-state', 'nyse'], false],
+                  '#d4a52a',
+                  [
+                    'interpolate', ['linear'], ['get', 'height'],
+                    0,   '#2c2632',
+                    60,  '#4a3e3a',
+                    160, '#705541',
+                    400, '#a07a4a',
+                  ],
+                ],
+                'fill-extrusion-height': ['get', 'height'],
+                'fill-extrusion-base':   ['get', 'min_height'],
+                'fill-extrusion-opacity': 0.92,
+              },
+            }, labelLayer);
+
+            // Separate translucent layer for faded buildings. Layer-level
+            // opacity gives REAL see-through (Mapbox handles transparent
+            // fill-extrusion specially in this case — buildings behind do
+            // show through). Initial filter is empty; we'll populate it
+            // with the faded feature IDs as they're discovered.
+            map.addLayer({
+              id: 'building-3d-fade',
+              source: 'composite',
+              'source-layer': 'building',
+              type: 'fill-extrusion',
+              minzoom: 13,
+              filter: ['in', ['id'], ['literal', []]],
+              paint: {
+                'fill-extrusion-color': '#6c5a48',
+                'fill-extrusion-height': ['get', 'height'],
+                'fill-extrusion-base':   ['get', 'min_height'],
+                'fill-extrusion-opacity': 0.28,
+              },
+            }, labelLayer);
+          }
+        } catch (e) {
+          console.warn('Adding 3D building layer failed:', e);
+        }
+
+        /** Building-fade is only active during step 2 (Night raid, progress=1)
+         *  and the early half of the step-2→step-3 transition. By the time
+         *  we approach Queens (progress≈2) and onwards the surrounding
+         *  buildings are restored to full opacity. */
+        function isFadeActiveForProgress(progress) {
+          return progress >= 0.5 && progress < 1.6;
+        }
+
+        /** Update the two building layer filters. When fade is INACTIVE the
+         *  translucent layer is emptied and ALL buildings render solidly on
+         *  the main layer. When ACTIVE, IDs inside TRANSPARENT_BUILDINGS_POLY
+         *  go to the translucent sister layer. */
+        function updateBuildingFilters() {
+          const ids = [...fadedFeatureIds];
+          const enabled = isFadeActiveForProgress(cachedProgress);
+          try {
+            if (enabled) {
+              map.setFilter('building-3d', [
+                'all',
+                ['has', 'height'],
+                ['!=', ['get', 'underground'], 'true'],
+                ['!', ['in', ['id'], ['literal', ids]]],
+              ]);
+              map.setFilter('building-3d-fade', ['in', ['id'], ['literal', ids]]);
+            } else {
+              map.setFilter('building-3d', [
+                'all',
+                ['has', 'height'],
+                ['!=', ['get', 'underground'], 'true'],
+              ]);
+              map.setFilter('building-3d-fade', ['in', ['id'], ['literal', []]]);
+            }
+          } catch (e) {}
+        }
+        window.__updateBuildingFilters = updateBuildingFilters;
+
+        // Shared Set for faded feature IDs (used by both tagFadedBuildings
+        // and updateBuildingFilters). Initialised here before any tag call.
+        const fadedFeatureIds = new Set();
+
+        // Tag the NYSE building (all of its vector-tile fragments) by
+        // testing each candidate feature's CENTROID against the NYSE
+        // footprint polygon. We never stop early — at different zooms
+        // Mapbox supplies different feature fragments, so we keep tagging
+        // any newly-loaded fragment whose centroid sits inside NYSE.
+        const nyseFeatureIds = new Set();
+        function tagNYSE() {
+          if (!map.getLayer('building-3d')) return;
+          // Query bbox slightly larger than the polygon
+          let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+          for (const [lng, lat] of NYSE_FOOTPRINT) {
+            if (lng < minLng) minLng = lng;
+            if (lng > maxLng) maxLng = lng;
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+          }
+          const sw = map.project([minLng, minLat]);
+          const ne = map.project([maxLng, maxLat]);
+          const x0 = Math.min(sw.x, ne.x), x1 = Math.max(sw.x, ne.x);
+          const y0 = Math.min(sw.y, ne.y), y1 = Math.max(sw.y, ne.y);
+          const features = map.queryRenderedFeatures(
+            [[x0, y0], [x1, y1]],
+            { layers: ['building-3d'] }
+          );
+          let n = 0;
+          for (const f of features) {
+            if (f.id == null || nyseFeatureIds.has(f.id)) continue;
+            const c = geomCentroid(f.geometry);
+            if (!c || !pointInPolygon(c, NYSE_FOOTPRINT)) continue;
+            map.setFeatureState(
+              { source: 'composite', sourceLayer: 'building', id: f.id },
+              { nyse: true }
+            );
+            nyseFeatureIds.add(f.id);
+            n++;
+          }
+          if (n > 0) console.log(`Tagged ${n} NYSE feature(s) (total: ${nyseFeatureIds.size})`);
+        }
+        // Tag all building footprints whose centroid falls inside the
+        // TRANSPARENT_BUILDINGS_POLY so they're moved to the translucent
+        // sister layer.
+        function tagFadedBuildings() {
+          if (!map.getLayer('building-3d')) return;
+          // Bounding box of the polygon in lng/lat
+          let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+          for (const [lng, lat] of TRANSPARENT_BUILDINGS_POLY) {
+            if (lng < minLng) minLng = lng;
+            if (lng > maxLng) maxLng = lng;
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+          }
+          const sw = map.project([minLng, minLat]);
+          const ne = map.project([maxLng, maxLat]);
+          const x0 = Math.min(sw.x, ne.x), x1 = Math.max(sw.x, ne.x);
+          const y0 = Math.min(sw.y, ne.y), y1 = Math.max(sw.y, ne.y);
+          const features = map.queryRenderedFeatures(
+            [[x0, y0], [x1, y1]],
+            { layers: ['building-3d'] }
+          );
+          let newlyTagged = 0;
+          for (const f of features) {
+            if (f.id == null || fadedFeatureIds.has(f.id)) continue;
+            // Don't fade NYSE — it stays highlighted in the main layer
+            if (nyseFeatureIds && nyseFeatureIds.has(f.id)) continue;
+            const c = geomCentroid(f.geometry);
+            if (!c) continue;
+            if (!pointInPolygon(c, TRANSPARENT_BUILDINGS_POLY)) continue;
+            fadedFeatureIds.add(f.id);
+            newlyTagged++;
+          }
+          if (newlyTagged) {
+            updateBuildingFilters();
+            console.log(`Faded ${newlyTagged} new building(s) (total: ${fadedFeatureIds.size})`);
+          }
+        }
+
+        map.on('idle', () => { tagNYSE(); tagFadedBuildings(); });
+        map.on('sourcedata', e => {
+          if (e.sourceId === 'composite' && e.isSourceLoaded) {
+            tagNYSE();
+            tagFadedBuildings();
+          }
+        });
+
+        // Custom 3D building layer is commented out — using Mapbox's native one.
+        // const bldgResp = await fetch('./manhattan-buildings.geojson');
+        // buildingsGeoJSON = await bldgResp.json();
+
+        // Non-interleaved overlay with ONLY markers/trail — no custom buildings.
+        overlay = new deck.MapboxOverlay({
+          interleaved: false,
+          layers: buildMarkerLayers(0),
+        });
+        map.addControl(overlay);
+        window.__overlay = overlay;
+        window.__map = map;
+
+        // Build DOM markers for landmarks (NYSE, park, foundry).
+        // DOM markers always render above canvas — no depth/occlusion issues.
+        for (const lm of LANDMARKS) {
+          const el = document.createElement('div');
+          el.className = 'landmark-marker';
+          el.innerHTML = `
+            <div class="lm-inner">
+              <div class="halo"></div>
+              <div class="pin"></div>
+              <div class="label">
+                <div class="name">${lm.label}</div>
+                ${lm.sublabel ? `<div class="sub">${lm.sublabel}</div>` : ''}
+              </div>
+            </div>
+          `;
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([lm.lng, lm.lat])
+            .addTo(map);
+          landmarkMarkers.set(lm.id, marker);
+        }
+
+        // The NYSE label sits on top of the 110m-tall highlighted building.
+        // Recompute its pixel offset on every camera move so the label stays
+        // pinned to the roof at any zoom/pitch.
+        const NYSE_BUILDING_HEIGHT_M = 110;
+        function altitudeToScreenOffsetY(altitudeM, lat) {
+          const z = map.getZoom();
+          const pitch = map.getPitch() * Math.PI / 180;
+          // Web Mercator pixel scale at lat: 512 tiles, Earth circumference
+          const pxPerMeter = 512 * Math.pow(2, z) /
+            40075016.686 / Math.cos(lat * Math.PI / 180);
+          return -altitudeM * pxPerMeter * Math.sin(pitch);
+        }
+        function updateNyseLabelOffset() {
+          const m = landmarkMarkers.get('nyse');
+          if (!m) return;
+          const lm = LANDMARKS.find(l => l.id === 'nyse');
+          if (!lm) return;
+          m.setOffset([0, altitudeToScreenOffsetY(NYSE_BUILDING_HEIGHT_M, lm.lat)]);
+        }
+        map.on('move', updateNyseLabelOffset);
+        map.on('zoom', updateNyseLabelOffset);
+        updateNyseLabelOffset();
+        // Live locator on every camera tick — handles user drags too
+        map.on('move', updateLocator);
+
+        setupScroll();
+
+        // Animate ring pulse on bull head
+        startPulseLoop();
+
+        setTimeout(() => {
+          document.getElementById('loading').classList.add('done');
+          setTimeout(() => document.getElementById('loading').remove(), 800);
+        }, 400);
+      });
+    }
+
+    /* === LAYERS ============================================================ */
+    let pulsePhase = 0;
+
+    /** Buildings layer — interleaved with Mapbox so it sits in 3D space. */
+    function buildBuildingsLayer() {
+      return new deck.GeoJsonLayer({
+        id: 'buildings',
+        data: buildingsGeoJSON,
+        extruded: true,
+        filled: true,
+        getElevation: f => (f.properties.h || 10) * FT_TO_M,
+        getFillColor: f => {
+          const h = (f.properties.h || 10);
+          const t = Math.min(1, h / 800);
+          return [30 + t * 75, 25 + t * 55, 40 + t * 30, 220];
+        },
+        material: { ambient: 0.5, diffuse: 0.7, shininess: 25, specularColor: [220, 200, 160] },
+        opacity: 1,
+        pickable: false,
+      });
+    }
+
+    /** Marker layers — always rendered ON TOP of buildings.
+     *  luma.gl 9 (deck.gl 9.x) uses WebGPU-style depth params:
+     *    depthCompare: 'always' (was depthTest: false)
+     *    depthWriteEnabled: false (was depthMask: false)
+     *  We pass both old and new names so it works across versions. */
+    function buildMarkerLayers(progress) {
+      const layers = [];
+      const NO_DEPTH = {
+        depthTest: false,
+        depthMask: false,
+        depthCompare: 'always',
+        depthWriteEnabled: false,
+      };
+
+      // All trail stops — three states: future (faint), past (muted), current (bright)
+      const activeStop = Math.round(progress);
+      const stopsData = STEPS.map((s, i) => {
+        let state;
+        if (i > progress + 0.001) state = 'future';
+        else if (i === activeStop) state = 'current';
+        else state = 'past';
+        return { position: [s.lng, s.lat], i, state };
+      });
+      layers.push(new deck.ScatterplotLayer({
+        id: 'stops-base',
+        data: stopsData,
+        getPosition: d => d.position,
+        getRadius: d => d.state === 'current' ? 8 : (d.state === 'past' ? 5 : 4),
+        radiusUnits: 'pixels',
+        getFillColor: d => {
+          if (d.state === 'current') return [232, 200, 124, 240];
+          if (d.state === 'past')    return [180, 155, 100, 130];   // faded gold
+          return [60, 55, 70, 160];                                  // future
+        },
+        stroked: true,
+        getLineColor: d => d.state === 'current' ? [10, 10, 16, 230] : [10, 10, 16, 150],
+        getLineWidth: 1.2,
+        lineWidthUnits: 'pixels',
+        pickable: false,
+        parameters: NO_DEPTH,
+        updateTriggers: {
+          getRadius: [activeStop, progress],
+          getFillColor: [activeStop, progress],
+          getLineColor: [activeStop, progress],
+        },
+      }));
+
+      // Trail split into "past" (faded) and "active" (bright). The most
+       // recent leg is always the bright one — including when we're parked
+       // at the FINAL step (so the line into Bowling Green stays visible).
+      const trailCoords = computeTrailCoords(progress);
+      if (trailCoords.length >= 2) {
+        const i = Math.floor(progress);
+        const frac = progress - i;
+        let pastCoords = [];
+        let activeCoords = [];
+
+        // Determine the "active leg start" stop index.
+        // - If in-flight (frac > 0): active = STEPS[i] → head
+        // - If parked at i > 0: active = STEPS[i-1] → STEPS[i]
+        // - If parked at i == 0: nothing active
+        let activeStartStopIdx = -1;
+        if (frac > 0.001) {
+          activeStartStopIdx = i;
+        } else if (i > 0) {
+          activeStartStopIdx = i - 1;
+        }
+
+        if (activeStartStopIdx >= 0) {
+          const stopPt = [STEPS[activeStartStopIdx].lng, STEPS[activeStartStopIdx].lat];
+          // Find the LAST occurrence of this stop in trailCoords
+          // (route endpoints are anchored to stop coords, so this is exact).
+          let splitIdx = -1;
+          for (let k = trailCoords.length - 1; k >= 0; k--) {
+            if (Math.abs(trailCoords[k][0] - stopPt[0]) < 1e-9 &&
+                Math.abs(trailCoords[k][1] - stopPt[1]) < 1e-9) {
+              splitIdx = k;
+              break;
+            }
+          }
+          if (splitIdx > 0) {
+            pastCoords = trailCoords.slice(0, splitIdx + 1);
+            activeCoords = trailCoords.slice(splitIdx);
+          } else {
+            // First stop — no past
+            activeCoords = trailCoords;
+          }
+        } else {
+          // Parked at first stop, nothing to show as line yet
+          pastCoords = trailCoords;
+        }
+
+        if (pastCoords.length >= 2) {
+          layers.push(new deck.PathLayer({
+            id: 'trail-past-glow',
+            data: [{ path: pastCoords }],
+            getPath: d => d.path,
+            getColor: [201, 169, 97, 70],
+            getWidth: 10, widthUnits: 'pixels',
+            capRounded: true, jointRounded: true, billboard: true,
+            parameters: NO_DEPTH,
+          }));
+          layers.push(new deck.PathLayer({
+            id: 'trail-past',
+            data: [{ path: pastCoords }],
+            getPath: d => d.path,
+            getColor: [232, 200, 124, 200],
+            getWidth: 2.5, widthUnits: 'pixels',
+            capRounded: true, jointRounded: true, billboard: true,
+            parameters: NO_DEPTH,
+          }));
+        }
+        if (activeCoords.length >= 2) {
+          layers.push(new deck.PathLayer({
+            id: 'trail-active-glow',
+            data: [{ path: activeCoords }],
+            getPath: d => d.path,
+            getColor: [232, 200, 124, 100],
+            getWidth: 14, widthUnits: 'pixels',
+            capRounded: true, jointRounded: true, billboard: true,
+            parameters: NO_DEPTH,
+          }));
+          layers.push(new deck.PathLayer({
+            id: 'trail-active',
+            data: [{ path: activeCoords }],
+            getPath: d => d.path,
+            getColor: [255, 235, 180, 245],
+            getWidth: 3.5, widthUnits: 'pixels',
+            capRounded: true, jointRounded: true, billboard: true,
+            parameters: NO_DEPTH,
+          }));
+        }
+      }
+
+      // Bull head — pulsing rings + 3D truck model rotated along route direction
+      if (trailCoords.length >= 1) {
+        const head = trailCoords[trailCoords.length - 1];
+        const headData = [{ position: head }];
+
+        // Heading angle (degrees from north) computed from last 2 trail points
+        let heading = 0;
+        if (trailCoords.length >= 2) {
+          const p1 = trailCoords[trailCoords.length - 2];
+          const p2 = head;
+          const dLng = p2[0] - p1[0];
+          const dLat = p2[1] - p1[1];
+          // bearing in degrees clockwise from north
+          heading = Math.atan2(dLng, dLat) * 180 / Math.PI;
+        }
+
+        // Glow halo on the ground (visible at world zoom too)
+        for (let k = 0; k < 2; k++) {
+          const phase = (pulsePhase + k * 0.5) % 1;
+          const r = 8 + phase * 28;
+          const a = (1 - phase) * 220;
+          layers.push(new deck.ScatterplotLayer({
+            id: `bull-ring-${k}`,
+            data: headData,
+            getPosition: d => d.position,
+            getRadius: r,
+            radiusUnits: 'pixels',
+            stroked: true,
+            filled: false,
+            getLineColor: [201, 169, 97, a],
+            getLineWidth: 1.5,
+            lineWidthUnits: 'pixels',
+            parameters: NO_DEPTH,
+          }));
+        }
+        layers.push(new deck.ScatterplotLayer({
+          id: 'bull-glow',
+          data: headData,
+          getPosition: d => d.position,
+          getRadius: 16,
+          radiusUnits: 'pixels',
+          getFillColor: [232, 200, 124, 90],
+          parameters: NO_DEPTH,
+        }));
+
+        // Real 3D model that rotates to follow the road heading.
+        if (deck.ScenegraphLayer) {
+          layers.push(new deck.ScenegraphLayer({
+            id: 'bull-3d',
+            data: [{ position: head, heading }],
+            scenegraph: BULL_3D_MODEL_URL,
+            getPosition: d => d.position,
+            // deck.gl orientation: [pitchX, yawY, rollZ] in degrees.
+            // Heading is bearing (deg from north, clockwise) → model yaw.
+            getOrientation: d => [0, -d.heading + BULL_3D_HEADING_OFFSET, 90],
+            getScale: BULL_3D_SCALE,
+            getColor: [201, 169, 97, 255],
+            sizeScale: 1,
+            sizeMinPixels: BULL_3D_MIN_PIXELS,
+            sizeMaxPixels: BULL_3D_MAX_PIXELS,
+            _lighting: 'flat',
+            // Disable depth test against scene depth so buildings can't
+            // occlude the bull. Self-shading inside the model is fine
+            // without depth thanks to flat shading + small triangle count.
+            parameters: {
+              depthTest: false,
+              depthMask: false,
+              depthCompare: 'always',
+              depthWriteEnabled: false,
+            },
+          }));
+        }
+      }
+
+      // Landmarks are DOM markers (handled separately) — visibility toggled
+      // in applyProgress(). Nothing rendered here.
+
+      return layers;
+    }
+
+    /** Update DOM landmark visibility based on active step. Only show
+     *  landmarks while we're DWELLING at a stage — i.e. when the bull marker
+     *  is parked at that location, not mid-flight to the next one. */
+    function updateLandmarks(progress) {
+      const isDwelling = Math.abs(progress - Math.round(progress)) < 0.001;
+      const activeStep = Math.round(progress);
+      window.__lastLandmarkUpdate = {progress, activeStep, isDwelling, t: Date.now()};
+      for (const lm of LANDMARKS) {
+        const marker = landmarkMarkers.get(lm.id);
+        if (!marker) continue;
+        const visible = isDwelling && lm.visibleOnSteps.includes(activeStep);
+        marker.getElement().classList.toggle('visible', visible);
+      }
+    }
+
+    // Character set for TextLayer (Cyrillic + Latin + punctuation)
+    const CHARSET = (() => {
+      const chars = new Set();
+      for (let i = 32; i < 127; i++) chars.add(String.fromCharCode(i));
+      for (let i = 0x0400; i < 0x04A0; i++) chars.add(String.fromCharCode(i));
+      chars.add('—'); chars.add('–'); chars.add('«'); chars.add('»'); chars.add('·');
+      return Array.from(chars);
+    })();
+
+    /** Fetch driving directions between consecutive steps via Mapbox Directions API.
+     *  Forces the segment's first and last point to STEPS[i] / STEPS[i+1]
+     *  exactly — Mapbox snaps inputs to the nearest road, but we keep the
+     *  bull marker on the documented stop coords (which may be on a sidewalk
+     *  or a pedestrian plaza, not a drivable road). The last route-edge may
+     *  do a small visual hop from the snap point to the precise stop. */
+    async function fetchAllRoutes(steps) {
+      const segments = [];
+      for (let i = 0; i < steps.length - 1; i++) {
+        const a = steps[i], b = steps[i + 1];
+        const aPt = [a.lng, a.lat], bPt = [b.lng, b.lat];
+        if (Math.abs(a.lng - b.lng) < 1e-5 && Math.abs(a.lat - b.lat) < 1e-5) {
+          segments.push([aPt, bPt]);
+          continue;
+        }
+        // Optional waypoints on the DESTINATION step force Mapbox Directions
+        // to route via specific streets (e.g. Nassau St heading to NYSE).
+        const waypoints = Array.isArray(b.approachVia) ? b.approachVia : [];
+        const pts = [aPt, ...waypoints, bPt];
+        const coordsParam = pts.map(p => `${p[0]},${p[1]}`).join(';');
+        // Allow per-step profile override — walking ignores one-way streets
+        // and produces cleaner Nassau-style routes in dense one-way grids.
+        const profile = b.routeProfile || 'driving';
+        try {
+          const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordsParam}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+          const r = await fetch(url);
+          const j = await r.json();
+          const coords = j.routes?.[0]?.geometry?.coordinates;
+          if (coords && coords.length >= 2) {
+            // Anchor endpoints to the documented stop coords so the bull
+            // marker and the line endpoint always coincide exactly.
+            coords[0] = aPt;
+            coords[coords.length - 1] = bPt;
+            segments.push(coords);
+          } else {
+            segments.push([aPt, bPt]);
+          }
+        } catch (e) {
+          console.warn('Route fetch failed for segment', i, e);
+          segments.push([aPt, bPt]);
+        }
+      }
+      return segments;
+    }
+
+    /** After routes are fetched, snap STEPS and any landmarks that match a
+     *  step's coord to the route's natural endpoints. This keeps the bull
+     *  marker, the landmark labels, and the trail line endpoints all on the
+     *  exact same geographic point — and that point lies on a real street. */
+    function syncCoordsToRouteEndpoints(steps, landmarks, segments) {
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const start = seg[0];
+        const end = seg[seg.length - 1];
+        // Stop i sits at the segment's start; stop i+1 sits at its end. For
+        // chained segments, segment[i].start should also match segment[i-1].end.
+        const oldStart = [steps[i].lng, steps[i].lat];
+        const oldEnd = [steps[i + 1].lng, steps[i + 1].lat];
+
+        // Update landmarks that were placed at the OLD coords of this stop
+        for (const lm of landmarks) {
+          if (Math.abs(lm.lng - oldStart[0]) < 1e-7 && Math.abs(lm.lat - oldStart[1]) < 1e-7) {
+            lm.lng = start[0]; lm.lat = start[1];
+          }
+          if (Math.abs(lm.lng - oldEnd[0]) < 1e-7 && Math.abs(lm.lat - oldEnd[1]) < 1e-7) {
+            lm.lng = end[0]; lm.lat = end[1];
+          }
+        }
+        steps[i].lng = start[0]; steps[i].lat = start[1];
+        steps[i + 1].lng = end[0]; steps[i + 1].lat = end[1];
+      }
+      // After this, all chained endpoints match: stop[i+1] === segment[i].end
+      // === segment[i+1].start (because we set both to segment[i].end and
+      // then segment[i+1].start in successive iterations — let's make sure
+      // by stitching: force segment[i+1][0] = segment[i].last).
+      for (let i = 1; i < segments.length; i++) {
+        segments[i][0] = segments[i - 1][segments[i - 1].length - 1];
+      }
+    }
+
+    /** Path coordinates from step 0 → current fractional progress, following actual roads. */
+    function computeTrailCoords(progress) {
+      if (progress < 0) return [];
+      const i = Math.floor(progress);
+      const frac = progress - i;
+      const pts = [[STEPS[0].lng, STEPS[0].lat]];
+
+      // Append complete segments for each fully-traversed step
+      for (let k = 0; k < Math.min(i, routeSegments.length); k++) {
+        const seg = routeSegments[k];
+        // Skip first point (duplicate of last point of previous segment / starting point)
+        for (let j = 1; j < seg.length; j++) pts.push(seg[j]);
+      }
+
+      // Partial segment for in-progress transition
+      if (frac > 0.001 && i < routeSegments.length) {
+        const seg = routeSegments[i];
+        if (seg && seg.length >= 2) {
+          // Walk along segment proportional to total length
+          const totalLen = segmentLength(seg);
+          const targetLen = totalLen * frac;
+          let acc = 0;
+          for (let j = 1; j < seg.length; j++) {
+            const a = seg[j - 1], b = seg[j];
+            const d = haversine(a, b);
+            if (acc + d >= targetLen) {
+              const t = (targetLen - acc) / d;
+              pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+              break;
+            }
+            pts.push(b);
+            acc += d;
+          }
+        }
+      }
+      return pts;
+    }
+
+    function haversine(a, b) {
+      // returns approx distance in meters between [lng, lat] pairs
+      const R = 6371000;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(b[1] - a[1]);
+      const dLng = toRad(b[0] - a[0]);
+      const lat1 = toRad(a[1]);
+      const lat2 = toRad(b[1]);
+      const x = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(x));
+    }
+    function segmentLength(seg) {
+      let total = 0;
+      for (let j = 1; j < seg.length; j++) total += haversine(seg[j - 1], seg[j]);
+      return total;
+    }
+
+    /* === RENDER STEPS ====================================================== */
+    function renderSteps() {
+      const c = document.getElementById('steps-container');
+      c.innerHTML = STEPS.map((step, i) => `
+        <section class="step" data-step="${i}">
+          <div class="step-card">
+            ${step.image ? `
+              <div class="step-image">
+                <img src="${step.image}" alt="${step.title}" loading="lazy"
+                     onerror="this.parentElement.remove()" />
+                ${step.imageCaption ? `<div class="step-image-caption">${step.imageCaption}</div>` : ''}
+              </div>` : ''}
+            <div class="step-num">
+              <span class="num">${String(i + 1).padStart(2, '0')}</span>
+              <span class="of">of ${STEPS.length}</span>
+            </div>
+            <div class="step-date">${step.date}</div>
+            <h2 class="step-title">${step.title}</h2>
+            <div class="step-location">${step.location}${step.address ? ' · ' + step.address : ''}</div>
+            <p class="step-comment">${step.comment}</p>
+          </div>
+        </section>
+      `).join('');
+    }
+
+    /* === SCROLL HANDLING =================================================== */
+    /**
+     * Maps page scroll → continuous progress 0..(N-1) with DWELL + TRANSITION.
+     * Card scrolls continuously; camera HOLDS while card is visible-centered,
+     * then transitions to the next step while the card moves OUT of view.
+     *
+     * For each pair of step anchors (where step's center aligns with vpCenter):
+     *   - First HOLD_FRAC of the gap: dwell at step i (progress = i)
+     *   - Middle: transition (progress lerps i → i+1)
+     *   - Last HOLD_FRAC of the gap: dwell at step i+1 (progress = i+1)
+     */
+    const DWELL_HOLD_FRAC = 0.32; // ~32% of each gap is dwell (on each side)
+
+    function computeProgress() {
+      const stepEls = document.querySelectorAll('.step');
+      const N = stepEls.length;
+      if (N === 0) return 0;
+
+      const vpH = window.innerHeight;
+      const vpCenter = vpH / 2;
+      const scrollY = window.scrollY;
+
+      // Compute each step's "anchor scrollY" — where its center aligns with vpCenter
+      const anchors = [];
+      for (let i = 0; i < N; i++) {
+        const r = stepEls[i].getBoundingClientRect();
+        const docCenter = r.top + scrollY + r.height / 2;
+        anchors.push(docCenter - vpCenter);
+      }
+
+      if (scrollY <= anchors[0]) return 0;
+      if (scrollY >= anchors[N - 1]) return N - 1;
+
+      for (let i = 0; i < N - 1; i++) {
+        if (scrollY >= anchors[i] && scrollY <= anchors[i + 1]) {
+          const range = anchors[i + 1] - anchors[i];
+          const t = (scrollY - anchors[i]) / range; // 0..1
+          let p;
+          if (t < DWELL_HOLD_FRAC) {
+            p = 0; // dwell at step i
+          } else if (t > 1 - DWELL_HOLD_FRAC) {
+            p = 1; // dwell at step i+1
+          } else {
+            p = (t - DWELL_HOLD_FRAC) / (1 - 2 * DWELL_HOLD_FRAC);
+          }
+          return i + p;
+        }
+      }
+      return 0;
+    }
+
+    function applyProgress(progress) {
+      // Camera lerp — skip if user is dragging the map manually
+      if (map && !window.__userInteractingRef?.()) {
+        const cam = lerpCamera(progress);
+        const jumpArgs = {
+          center: cam.center,
+          zoom: cam.zoom,
+          pitch: cam.pitch,
+          bearing: cam.bearing,
+        };
+        if (cam.padding) jumpArgs.padding = cam.padding;
+        map.jumpTo(jumpArgs);
+      }
+
+      // Active card highlight
+      const activeIdx = Math.round(progress);
+      document.querySelectorAll('.step').forEach((s, i) => {
+        s.classList.toggle('active', i === activeIdx);
+      });
+
+      if (overlay) {
+        overlay.setProps({ layers: buildMarkerLayers(progress) });
+        lastDrawnProgress = progress;
+      }
+
+      // Cache current bull head for the mini-map locator
+      const tc = computeTrailCoords(progress);
+      __currentBullHead = tc.length ? tc[tc.length - 1] : null;
+
+      updateLandmarks(progress);
+      updateLocator();
+      window.__updateBuildingFilters?.();
+
+    }
+
+    let cachedProgress = 0;
+    function setupScroll() {
+      let scheduled = false;
+      function tick() {
+        scheduled = false;
+        cachedProgress = computeProgress();
+        applyProgress(cachedProgress);
+      }
+      window.addEventListener('scroll', () => {
+        if (scheduled) return;
+        scheduled = true;
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(tick);
+        } else {
+          setTimeout(tick, 16);
+        }
+      }, { passive: true });
+      window.addEventListener('resize', tick, { passive: true });
+      tick();
+    }
+
+    function startPulseLoop() {
+      function loop(now) {
+        pulsePhase = (now / 2200) % 1;
+        if (overlay) {
+          overlay.setProps({ layers: buildMarkerLayers(cachedProgress) });
+        }
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    }
+
+    init().catch(e => {
+      console.error('Init failed:', e);
+      document.getElementById('loading').innerHTML = '<div class="label" style="color:#c66">Loading error</div>';
+    });
+
+    /* === MINI-MAP LOCATOR ================================================== */
+    // Bounding box covers the whole NYC 5-borough metro so the bull dot
+    // stays inside the frame even when it travels to the Queens impound.
+    const LOC_BOUNDS = { minLng: -74.060, maxLng: -73.660, minLat: 40.540, maxLat: 40.920 };
+    const LOC_VIEW = { w: 200, h: 200 };
+
+    function locProject(lng, lat) {
+      const x = (lng - LOC_BOUNDS.minLng) / (LOC_BOUNDS.maxLng - LOC_BOUNDS.minLng) * LOC_VIEW.w;
+      const y = (LOC_BOUNDS.maxLat - lat) / (LOC_BOUNDS.maxLat - LOC_BOUNDS.minLat) * LOC_VIEW.h;
+      return [x, y];
+    }
+
+    async function setupLocator() {
+      try {
+        const r = await fetch('https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/new-york-city-boroughs.geojson');
+        const g = await r.json();
+        const mhk = g.features.find(f => f.properties?.name === 'Manhattan');
+        if (!mhk) return;
+        const buildRing = ring => 'M' + ring.map((p, i) =>
+          (i === 0 ? '' : 'L') + locProject(p[0], p[1]).map(n => n.toFixed(2)).join(' ')
+        ).join('') + 'Z';
+        let d = '';
+        if (mhk.geometry.type === 'Polygon') {
+          d = mhk.geometry.coordinates.map(buildRing).join(' ');
+        } else if (mhk.geometry.type === 'MultiPolygon') {
+          d = mhk.geometry.coordinates.flatMap(poly => poly.map(buildRing)).join(' ');
+        }
+        document.getElementById('loc-mhk').setAttribute('d', d);
+      } catch (e) {
+        console.warn('Locator GeoJSON load failed:', e);
+      }
+    }
+
+    let __currentBullHead = null;
+    function updateLocator() {
+      if (!map) return;
+      const locator = document.getElementById('locator');
+      locator.classList.remove('hidden');
+
+      // Camera viewport polygon — 4 screen corners unprojected, then projected
+      // to locator coords. Forms a trapezoid when the map is pitched.
+      const cont = map.getContainer();
+      const w = cont.clientWidth, h = cont.clientHeight;
+      const corners = [
+        map.unproject([0, 0]),
+        map.unproject([w, 0]),
+        map.unproject([w, h]),
+        map.unproject([0, h]),
+      ];
+      const pts = corners.map(c => locProject(c.lng, c.lat).map(n => n.toFixed(2)).join(','));
+      document.getElementById('loc-vp').setAttribute('points', pts.join(' '));
+
+      // Bull dot — at current trail-head (cached in applyProgress)
+      const pos = __currentBullHead || [STEPS[0]?.lng, STEPS[0]?.lat];
+      if (pos && pos[0] != null) {
+        const [bx, by] = locProject(pos[0], pos[1]);
+        const dot = document.getElementById('loc-bull');
+        dot.setAttribute('cx', bx.toFixed(2));
+        dot.setAttribute('cy', by.toFixed(2));
+      }
+    }
+
+    setupLocator();
+  </script>
+</body>
+</html>

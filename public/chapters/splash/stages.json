@@ -1,0 +1,247 @@
+{
+  "background": "#2c2c30",
+  "bullAsset": "Bullforweb2-butcher2.glb",
+  "stages": [
+    {
+      "name": "Ориентир",
+      "text": "A few steps from Wall Street, on Bowling Green, a bronze bull lowers its head and digs in as if the next second will be a charge. Charging Bull is both a landmark and shorthand: in one silhouette, it compresses the market's favourite story — risk, momentum, stubborn confidence. People don't come here for art history; they come for a ritual, a photo, a touch for luck, as if optimism could be made physical.",
+      "camera": {
+        "fov": 50,
+        "target": [
+          0.26241158042268437,
+          0.49336323432400425,
+          0.6360757146061718
+        ],
+        "position": [
+          0.39181136058199684,
+          0.4804367097724956,
+          1.7921594300467696
+        ]
+      },
+      "model": {
+        "scale": 0.3592567030186072,
+        "position": [
+          0,
+          0,
+          1.0706684083301043e-08
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "explode": 0,
+      "annotations": []
+    },
+    {
+      "name": "Профиль и размеры",
+      "text": "Side-on, the proportions read true. 3.4 metres at the shoulder. 4.9 metres nose to tail. Heavier than a Manhattan delivery truck, low enough that tourists climb on its back for the photo. Di Modica wanted the silhouette of an animal mid-charge — not a monument — and the choice of pose forced everything else: a heavy front quarter, a planted hind, the centre of gravity dropped forward.",
+      "camera": {
+        "fov": 38,
+        "target": [
+          0.12254164292415062,
+          0.4038912725528529,
+          0.06811453212803653
+        ],
+        "position": [
+          4.676007744904664,
+          0.22346639264378626,
+          0.44849377259712936
+        ]
+      },
+      "model": {
+        "scale": 0.3592567030186072,
+        "position": [
+          0,
+          0,
+          1.0706684083301043e-08
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "explode": 0,
+      "annotations": [
+        {
+          "kind": "text",
+          "text": "4 tons weight",
+          "cx": 0.22503115467802026,
+          "cy": -0.2896808899067317,
+          "color": "#ffffff",
+          "scale": 0.03
+        }
+      ],
+      "model3d": {
+        "asset": "23370aac-6985-4731-a51f-94a5a8796c16",
+        "scale": 0.7,
+        "position": [
+          1.2746572520745745,
+          0.2261673723665708,
+          0.05
+        ],
+        "rotation": [
+          -1.5612684248602196,
+          -0.020729769536340245,
+          1.6470042850537412
+        ],
+        "url": "./models/extra-stage2.glb"
+      }
+    },
+    {
+      "name": "Разлёт · секции",
+      "text": "You can't cast a thing this size as a single piece — no foundry's kiln takes three tonnes of molten metal in one pour. So Arturo Di Modica cast it in sections at Bedi-Makky Art Foundry in Greenpoint, Brooklyn, then welded and hand-finished the seams until the joints read as skin. Pulled apart, the sections show how the bull was actually built.",
+      "camera": {
+        "fov": 46,
+        "target": [
+          -0.06818410746232853,
+          0.49847935624419115,
+          0.8869076226995025
+        ],
+        "position": [
+          -0.9815554268770351,
+          0.29960038721138527,
+          2.9649093343872606
+        ]
+      },
+      "model": {
+        "scale": 0.3592567030186072,
+        "position": [
+          0,
+          0,
+          1.0706684083301043e-08
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "explode": 1.06,
+      "annotations": [
+        {
+          "kind": "text",
+          "text": "Different pieces →",
+          "cx": -0.3004558602697119,
+          "cy": -0.1189390737365005,
+          "color": "#ffffff",
+          "scale": 0.02
+        },
+        {
+          "kind": "text",
+          "text": "5 mm wide →",
+          "cx": 0.1935350667899258,
+          "cy": -0.16203895518842137,
+          "color": "#ffffff",
+          "scale": 0.02
+        },
+        {
+          "kind": "text",
+          "text": "Empty inside",
+          "cx": -0.06174883426457475,
+          "cy": -0.023622042202660874,
+          "color": "#ffffff",
+          "scale": 0.02
+        }
+      ]
+    },
+    {
+      "name": "Морда и рога",
+      "text": "Head-on, the bull is one of the city’s most photographed corners. There’s almost always a small crowd here: palms on the muzzle, business cards pressed to the horns, a quick rub for luck before the next photo. The nose and the tips of the horns are noticeably lighter than the rest of the body — patina worn away by years of touch, a place of power for people who hope a little of the animal’s momentum rubs off in return.",
+      "camera": {
+        "fov": 34,
+        "target": [
+          0,
+          0.8,
+          0.5
+        ],
+        "position": [
+          0.9775171745224754,
+          0.4228019799396149,
+          3.248441485491479
+        ]
+      },
+      "model": {
+        "scale": 0.3592567030186072,
+        "position": [
+          0,
+          0,
+          1.0706684083301043e-08
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "explode": 0,
+      "annotations": [
+        {
+          "kind": "image",
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAcYAAAIZCAYAAAA84p9OAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAOdEVYdFNvZnR3YXJlAEZpZ21hnrGWYwAAH7xJREFUeAHt3e1ZHEfWMODC1/P/0RuBeyOQ3wjMRiBlYG0E8kYAG4G0EQhHIG0E4AiQImAcAdoI6unSVGuK0QwMMP1R3fd9Xe0SXwMMuA+n6pyqEI4gxngT75fe/iIAwNy1Ae9NPMxZAIC5K7LF3/a8/TS//ba9mgAAc1VkizcPvN+7/H6XAQDm6qFssXi/FzljTH4PADA3h2aLO97/ViEOALNzaLa49TGX+WPeBQCYi8dmi8XHNcWU6mkAgDl4SrZYfOxZF1RNqQJQvadmi1uPcaO3EYBZeE62WDyG3kYA6neMbLF4LL2NANTtGNli8Vh6GwGo1zGzxR2PqbcRgLocM1vcetxLvY0AVKWPbLF4bL2NANSlr2yxePyzvgIvABxVn9ni1ufpskZrjQBMV9/ZYvF5rvPn+SUAwBQNlS3mz/Uxf65XAQBG8tMDb++2bDsP/VvlsQkAMJK9gTFli2EdpFYnJyd/hP6t8tgEABjJfRnjkNli8t88NgEApmTItcXic/6SP+d1AIApGaoSdetzvui2hwsAMBVFgIphYHoZARjbrjXGJo+rMLyv4e7XAACD2hUYu2xtFYb3OY8/BwAYwX2B8WsY3iqPTQCAEewKjF22tgrDW+WxCQAwgvvWGMfIGLteRsU3AIxiqmuMNhIHYBSqUgGgcF/G+N8wsJOTk1VYB8cXehkBGMPUMsakyxr/NwDAwPZmjG32NkbxTWKdEYDR3AmM7fRlk/+5CuOxzgjAaLYzxiaPqzCeLmNsAgAMbDswjrnrTUcvIwCj2Q6MY+5607HGCMBoppgxdp9bxgjA4Ca3xph7GZNGLyMAQ5ti8U35+fUyAjCofVOpg+96s8U6IwCjmGrGaJ0RgFHszBhH3PWms8qjjBGAQX0PjBPZ9abzVx5ljAAMqswYmzyuwvisMQIwijIwTqGHMWx9DTJGAAZVBsYp7HrzTdnLGABgQFPNGJNV+k+79vlzAICBTHWNMVnl0TojAIOpITBaZwRgMLumUsfe9aazymMTAGAgU84Yu17GJgDAQH7IGCew601nlUdrjAAM5ltgnNiuN51VHq0xAjCYLmNs8rgKE6GXEYAxdIFxaj2MnVX6j15GAIbSBcYu8EwtMNozFYBBbWeMqzAtqzw2AQAGMNk1xmyVRxkjAIOYemB0LiMAg9qeSp0aa4wADC/GeBvXJlf9GTdkjQAMo4s8YYLaL+smf3myRgB699NEd70pddOpLwMA9CytMTb536swTas8mkoFoHcpME494HzJo6lUAHr3P2G6zf2dbjcegRGAJ8tLh79tvXp1cnLyR/mKFBi7StRVmKZujbEJAPAEOShehh2xpH3baTv86/vhFe0rPuSqz9/CRBXtJNYZAXiUNna8LuLIdXudFVf3+pscIL99wGV+5aswUfkb0bIBwKO0ceNN0Q//YTvBSplk0Rb4LUn8qXj71E7WKGnZAOApzvJ43k6V/qO97sS6NH3aXn9r/3mRX9XU0K6RdN9IEwDgAG32dx7WcSMFv3898O6r7h/fA2P7QX+F6epaNpoAAA/IxTZv84tvwiOkwLjKDzK5fVILNhMH4DHSFGpaT7xoE78/H/OBP4U6rPLYBAC4R84W3+QXH5pC/cH3jDFMOOjkxdJ0vdCyAcAD3uXx/ffexEeoIjBmqzw2AQB2SO0Z7fA6rGPGv8MT1DKVmmjZAOAhZXvGKjxBjRmjAhwAfpCzxSbs2P/0MVJg7No0mjBt3ddpjRGAXb5ni+EZapxKlTECcEfe57QJz8wWE8U3AMxBly1ehGeqJjButWxMeTMCAAaU+xZPwzpGPCtbTGqaSk1WefxbAIC1Llv89NRK1NJPxYM0Yfq6dUYZIwDP3uVmly5j/Jo/wdQDjgIcAErf1xaPkS0mdwJjBf6bxyYAsGh9ZItJFxhXeWzCtMkYAei8yeOnY2WLSW2BcZVHTf4A/JbH9+GIqqpKzS0bq6BlA2DRiu3frh573uJDassYk2491HQqwHIdraF/23bxTQ1TlN06YxMAWJxjbRa+TxcYu2pPgRGAqTvKZuH71DiVWstpIAAc2TE3C9+nxsCoZQNguXrNFpPa9kpNuvXQJgCwGMVm4av2OmolaulbYKxpv9SiZaOGLewAOJ4uW7w6ZkP/tjJj7PZLrakAx3QqwAL0tf3bLj8Extb/hulb5bEJACzB0TcL36cMjKs8NmH6VnlsAgCzNmS2mOzKGJswfVo2AJbjbR57zxaTXYGxBtYYARYg1728zi9ehAFUOZVaVtFWUiwEwNOkoNiEHjYL32dXxlhLoFnlsYZiIQCeprfNwvcpA2NN+6UmplMBZqzvzcL3qbUqNVnlsQkAzFF3EPF5GNAcplJljAAzU2z/lmLTf8KAag6MXcuGwAgwP122+ClvBTqY74Gxpv1Ss26NUVUqwPy8yeNFGNj26RrV7JeaA3n6erVsAMzI1pmLg7RolHYGxlBPC4QjqADmp5tGvQgj2A6Mqzw2oQ7ddOrLAED18gzgm/ziYC0apX0ZY22VqaZSAeah2/7taoh9UXepPTB+yaPKVIB5GHUaNZnLVKrACFC5MXsXS7VnjIpvAOajO15q8N7F0nZgrGq/1KJl44WWDYDqDXq81D77MsYm1GOVxyYAUKWxexdL+9YYa8q+tGwA1K8runkfRlb7GmNinRGgYrno5k1+cbSim86dwFjhfqlJ17LRBABqdJrH0XoXSz/teF01+6VmWjYA6jZ672Jpb2AM9eyXuspjk9NxACpR9i622eIoW8Btuy8w/r9QgdzrsgrrddFLwRGgKmd5/BQmYldgXOXx51CP/99eV2G9znjdBsfXAYAanObxIkzEfRljNZWpKWtsr7+HdZlv+ro/tsHxPAAwWVPqXSzdlzE2oTLtE/vPdjjPL54JjgCTNpnexdIsMsZSGxz/1Q7/zC+m4PghADApU+tdLO0KjFXtl7pLGxzTXx9p3TEF+TftD+BaUQ7ApJzmcRK9i6XZZYyd9olO/Y0pOK7CusdRxSrAdEyqd7E0qzXGbfmvkFSUk8YmrIOjjQAARlT0Lq6m0rtYmm3G2MnBMWWOqUemCet2jt8CAGPpehevQg3SVnAxCzPTfktnceM8ADC49v57k+/Dv4aJKOLD2b536L7o0zAzgiPAeNIGLPn+exMm5JDA2L3DZZih9vt6UwRH7RwAA0n33HzvndSS1iGBMU2n3uZ3mmWxSvq+iu9ROwdAz9J9tkhKmjAhZWDcVXzTbcx9kV+cZaGKdg6AwZ3mcXK9i6Wf7nlbtxNBmnacRYXqtj3tHE0AoA9v83gRapXWGO+dc52JPHV8nb/X27lOHwOMpZhGnVTRTefBqdTCv/L4JsxYPp0jTaumRtOUHacg+XsA4Fjq6l28T1GgchoWIN5t5/hgahXg+eKmDXCSM3Lt1/Uuf31vD3nnszm3buyyFRzTHwbnAYAniRPtXSy1X9vH/DW+OuSdZ9+6sUueD/9QBMibaCs5gEcrgs5k76FFTc1hu/EUKea7sDDpSSqmAARIgEeIE+5dLD16qrd9x9NiWnGWrRsPievdcsoAeTnlHzLAFMTNTmMfw4TFzczo4TGuSDMfXpicsR0B8oMACbBb3LTCTXqmrbuhP/aDuqzxOixcnhp4F+86FyABNuJ6681vS1BhwuJzeizjwlo3HhIV6ADsVdwfJ31YQ5H4Pb77Ii6wdeMQOUBeCpAAG3HivYuduGkneVJgLFs3msAd8cf1x5up/0IA9CFuim4mv/xWfK3fMtuHtoS7YwmnbjxH+/xctNff2n/+I2w2Jr+OCnSA5elixPswfT/ncRWeImrdOEjOrs+KDDsKkMASxEp6FzvxMdvB3fMgl89+kIWIuwt0zgPATMVNPcqki2468THbwd3zIFo3HimqYAUWIm5qLQ7bXm1k8bHbwd3zQFo3niDu3mLu6X+lAExIkThNunexFDebEDyvWDJq3XiW+GMF68ca5uIB7lPMjFWz1Bafsh3cngd6cbQHW7D2ufs92mIOmIFYWdFNp/uCwzHETSXPWeDJ4o/rj8m5AAnUJG76AauZSYzP2Q5uzwNq3TiiqEAHqFisZMPwUnzOdnD3POhlbfPJUxd3bDEXACYsVrJh+LZdgfFRO9/s0e1q8DpwFCcnJ6v2+nv7z3/mV8nGganrkqOrUJcmj6twTFHrRi+iflGgEnFTRNiEisRNh8X3WpljZIxJlzUqwjmuLlNcBYCJSkU3YZ15XaUZr1CX7j77tXvFsQLjv/ODnirCOaqXeVwFgOnqim0uQn2aPB43MOZTNz7lFxXhHE+Tx1UAmKA8dXqaX/xPqM8PM3PHyhiTP/L4u6zxaJo8fg4A09QlQxc5SapNF6/+G/qgdeO4YiWnXwPLFSvbMHxb7HsHt/aBX233g/B0XRNjAJigWOGG4dsGuc9q3TiOollWqwYwSXGzU1eVO3TFPdvBHXONsaN14zh+KCEGmIpcdPMmv/hnqNPO+2wfgfHfedS68Txdq4bCG2CKTvP4qcLexc4wgVHrxtE0eZQxAlPUzQpehHo1eVyVr+wjY0y6rFHrxtM1eZQxApOSa0ia9kr7OtfYu9j5OY+9T6WmrPEqrDeSTUHRsUlP0+TxrwAwLd19/SrUbdhajljhgZVT0ntvDcATFfenJlRs8KradEPXuvE0+blLbgPAhLT3pd/nkvQUm9IMtzlB3BznIWt8hNjHidIAz5T7/m4HzbJ6lPrE8/cy3O5iReaTnAcO0j5Xr/Nz9jEATETcbP/2IcxAEeR/DkMqskbB8UBxx8GZAGNK9+98X7qZQ+1DmbiFMRRz0oLjAVKmOJepCqB+cVNMmTRhBoqZufGWrLae2PPAXnGMBWGAHfK64s3cZrHipiJ13O9JcDzMaPPeAFvipkBlFuuKneL7Gj8BietTI27n+EQfy6jz3gDZ1rpiE2Yibk7VmE5LnOC4X3TcFDABcdM2lszqsPRi9nJalf/bwTHa4eWbqIcRGNlc1xU7ccoFjltP/rXg+O05eZufj3cBYARF4JjlH+hF3GnCFAmOdxXPhVYNYHBzXVfsFMtVN2HKdgTHJixQMe897R8YMEtxU5SSvA4zVMzKTb++ZSs4zvIvlYfIFoGxzH1dsRM3feKvQg2WHBxli8CY4qbhfbb3oHh3/+56lu2WGhxli8BY4mbbzts533NjzVX/OTheLyU4yhaBscSZHSV1n/b7e5e/zzqr/nPKu4jgKFsExpAzqJuqg8UjxCltA/dUSwiOskVgaPne+j5u3FS15vYEcYrbwD1H+41cFPPfc9uaSLYIDGYrS0zO5h4UkzjVbeCeY47BUbYIDGVHlng9t0TjPnFTdTuvJGQrOJ6GyskWgSFsZYnp/jnbPsV9iu9/fn8M5LQ/1h5QZItA33ZkiZdxmZun1LEN3HPMITjKFoE+tfeW13HThpHGt2GhYk3bwD3HVnD8PVREtgj0JWeJH5eeJZZibdvAPcdWcDwPlZAtAscW1+0I57LEHxVxoglLsBUcb6YebGSLwDHkzDDdT97Fu+0XssRC3GwDdx2WJP9y3NQQIGWLwFPkQHiaA+F1/FHKED+4t9wVa98G7rmmHiCjbBF4hBwIz3MGeLsjEKbXp8KSerc461mcwzZwxzDVAClbBO4T1+uEKdB93BEIYw6EKQP6NS5gt5rnisXBy4G1KQXIKFuE6sRNmf9YbuI6EL6KAuGjxc19t75jpvoWJxAgo2wRqhM324gN5fs6YRQIny1ufn6qc/eJIwXIKFuEKkXrU1WLc94G7tiGDpBRtgjViesq0G8C1YnroiUJyWMNESBli1CnuOl/sz5VmVgU3cQl7HbThz4DpGwR6hQ3m4css/+tYnGztjjvvVGHcOwAKVuEesXNfqMyjoqU991o95/jOVaAlC1CveKmj1DhRkWK+65K1D48J0DKFqFecbNGdRuoRlRwM5ynBEjZItQrrs8yTBTeVCLeLbhpAsM4NEDKFqFucbPx9FmgCnGzJqzgZgwPBUjZItQtbg621dhfgajgZjr2BMgPskWoW/H/tG3ZJi5PoUpGpmZHgPQDgkq1/+/+kv8fXtbBtpVqf07v/bwmrAiQskWoVNycqPExMGlRwU09/ICgXtGJDNUoZursTgTQl+hEjSrEuwU31oIB+hCdqFEFBTcAA4lO1KhCtEk4wDCiEzUmr6gaVnAD0LfoRI3JK6ZQ7UoE0LfoRI1Ja38uv3cFNwGAfkUnakxa/vncKrgBGEh0osZkbVWhKrgBGEJ0osYk5WKbLlO8VnADMJDoRI3JKZr4v2WKUSM/wHCKG7Cb7wS0P4fz4mciiwcYUnSixqTEzYkZgiLAGKITNSYhrrfku+yqg1WfAowkOlFjdFuVp2nUSwowluhEjVHlqewyKDYBgHFEJ2qMKq43bi/bMRQ/AYwpOlFjNHGzxdu3dowAwPiiEzVGoR0DYKKiEzUGlaeuL4qgqOAJYEqiEzUGk4PiddGOodgJYEqiEzUGs6MdowkATEt0osYgttoxbAQOMFXRiRq9i+uNwLvp6o/aMQAmLDpRoze5DeayKLJR9QswdcVNWxZzBLm45rzIELVjANQiOlHjaHZkh13V6Zk/OgAqEZ2o8Sx7ssPbvI5oahqgNtGJGk+yJzu8lh0CVC46UeNg92SHHzx/ADMQnajxoPwcvd6RHV7maWjZIcBcRCdq7JWLknZlh++Wkh3+TwBYnu4G/zkQcvb3W3u9bq/T4k1X7fWpvf44OTn5GgCYp+hEjW9y5vxuydkhAGHZJ2rktcO31g4B+CYu9EQN2SEAO8UFnaghO3waxTfA0nTZ0VWYqZQdtkNaP33TXl3wS8Uz79vr08nJyZcAAEmc6YkaD2SHr2SHAOxUBIxZBIp71g7P2utlAIB94kxO1IibLdqud2SHCmkAOEys/ESNnB1+3JMdmioF4HFihSdqxP2H/17KDvuhKhVYkq6h/8lbweXMLG2dltbvTovHHEJXWfpvW7T15yQALEAOaN+a+tugcvC9r/24JqxbH1IAPG2vJgzvqr3O2y/7z0DvZIzAUnSZ3dW+d8jBM71flw2ma3vtLmVqn/PjpOuL7G1eBEZgKX44USMHwtP8tl/ytR0IV2EdANPH/dkGQSdyzJzACCxFlzGmYpYPYf+0aJcNfhvbQPhXYFGsMQKLENebhu+bFk1XOnfQtCgyRmD+cgFNCoop6F3l67NiFgAWKfcC/hwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACYj5MAPYgxnrZDun7N4+fi+nJycnIVACZIYOQo2kDYtMOr9nrdXr+014sDPkywBCZHYORJ2kCYAl8Kgr/mcTsQrtrrU3tdtdef7fUyrANmee0iWAKjEhg5SA6EKZilrPA0/BjYvoZNIPxPG9C+HvCYv4bDguVVWAfKFGA/t4+9CgA9ERjZa2udcHt6NAW+FKxSMPyzDVafwxEcGCxXxef+cqzPDZAIjHxXrBOe5mt7evSquL4ckhUe4WtKX8PL4mvatX7ZBemrsMkqe//agHkSGBesWCd8mcdm611WoVgnnEqwab/uLpN8lcdmx7tdBdOvwBMIjAuTs8K3YR1QTrfe3K0TfpumbIPJX6EC+Xvqsspd31eyCqZfgQMIjAvTBpEP7fAmv1iuE6as6s8wA6ZfAThIGzDexLWbVOSSA8gipOnX/P1/zN//Lpft9a69XucsFIC5Sjf6IiD8FhYuPx+vciC83BMob3IgXfzzBTA7aQo13+w/Bn6QsuecRZ/lQHm7I0h+kEkCzEAxhXrrxn64Yvr1cseUqywSoEZbU6hvA0+Sg+SHHVnkuT82ACpS3MwvA8+W/9B4E38s4EnP82kAYLriZgo1ymqOL69JftiRRf7m+QaYmK0p1LNAb/Jz/XZPFvlLAGB87Q35fZfBBAYTdxfrXEfFOgDjSWtdplDHlbPID1tZ5E3U8gEwrLjuxzOFOiFRywfAeEyhTlfU8gEwrDx9Zwp14uL+lg8ZJMAxmUKtT1y3fHzMP7cPAYDjyNNxplArlKdY/ewAjqW9of5uCrVeuWCqs5ijwAB6EddnB0ZTqHWL617H5DQA8DR5Cu5WUKxfUa1qo3eAp4h3t3x7F6ha3OxrqwAH4LG2gqIb6QwowAF4oq2geB2YjWJaXAEOwCHi3e3ebtxA50UBDkzDT4GapMOGm/ZatdffT05Ovgbm5CqPLwMwGoGxEm0WcdEO6Wy/VVgHxVVgbr7k0RmOAPcpdrW51cA/XwpwAA6wFRRlEjOnAAfgHkVQTF4HZi9uzm08DQBsxLv7n9oNZSHSZg1+5gBbov1PF6vYAedjAMD+p0sXN4dNK8ABiPY/JSjAAfgm2v+UrCjAeRWAwWnwn4Dcm9jtavP55OTkH4El+5zHJgAsUdycxXdj+gwFOMCiFcUWMdrVhqAAB1i4Ilu0rsh3RQHOzwFgKWSL7KMAB8aj+GZcXZ/ihdMy2NIV4JwGgCWQLXIfBTjA4lhb5D7FH063AWDuZIscQgEOjMMa4zisLXKIqzw6hxOYL9kih4qbI6jsmwvMl7VFDtX+jpxaZwRmTbbIY8XNxvKnARiENcZhWVvksS7yqNEfmBfZIk9Rtm1EG8wDc2JtkaeyPRwwO7JFnqP9nXmbf3cuA8AcyBZ5jjSFajoVmA3ZIsdQTKe+DQA1ky1yDHGzqbjpVKBeskWOJU+ndnunmk4F6iRb5Jja36OP+ffpLADURrbIscXNFnGmU4H6yBY5tq3p1NMAUAvZIn2JmxM3TKcC9ZAt0pfoxA2gRkW26IBZjs50KvTL6Rr9WAXoz/s82jsVeiAw9uNzHl8GOL4/8/gmAEcnMPZjlccmwJGdnJxctUO6XphOheMTGPvxJY9NgH5c5fG3ADB1qegmF0dcB+hBdOIGUJPyphWgJ3Fz4oasEZi+9mZ1k29aPwfoQXSAMVCTYsNnJfX0otxhKQBHo/imP6s8NgH60eTxKgBHIzD2p6tMtfsNfelmIz4HgKlTmUrf0u9W/h37NQBMncpU+mR9EfpjKrUnJycnX9shXS9UptKDbor+KgBHJTD2a5VH64wcW7e++CkARyUw9qsrimgCHNdpHhXewJEJjP0SGDm6tL4Y1r9TX9sp+z8DcFQCY7/+yqOpVI7pNI9XAaAmReWgylSOpthVyR6pQH3y6QfRCQgcS7EPr5kIoD5FE7abGM9WbBxxE4BeWGPsX1eA8zLA83W73FwFoBcCY/+6wChj5BhO83gVgF4IjP3rKlObAM93mkdtGkCdispUa0I8S/s7dGpjeuifjLFnJycnq/zPRmUqz9StU9vtBnokMA5jlccmwNO9zqP9UYG6tZniBw3ZPFfcMPMAPZIxDmOVR5WpPElaX8z//JyPNAOoV7k1nL/2eYr29+Zd/h16FwDmoL2hXeYb21mARyp+f34NAHNQlNrLGnmU9PtifRGYpeKv/rcBDtT+vrzOvzeXAeid4pth/ZHH1wEOZ39UYL7i5hiq0wAHKE5osb4IzE8qvjEtxqGiw66BucuFFLJGDmJ9EYZnjXFguTn7fX7RTjg85FUebQMHzJeGfw6VTmXJvyt2TQLmTcM/D7G+CCyKhn8e0v5evMm/Ix8DMBhrjCNp1xqvwrovLQVFa43s0p2/eBUAlqDIGm8CbLE/KrBIWjfYp/jdMNUOLIeGf3aJm43DFd4Ay6Lhn12KaXZ/MMHAFN+MTMM/e3SFN58DwNJE5+2xJbVo5N8HR5TBwGSME5Czxm7LLzdCku4PJBkjsEwa/impSAUItoljLe2LqiIVINxt+JcpLFd01BSMyhrjhORt4lbt1bTXu8BSqUgF6OQTFbr1pfPA4hQVqdp3AJJiSlXT/wK1P/PraI9UgLuKreJS9tgEFkNPK8Ae7Y3xQjHOshQVqdcBgLvyjjg3+Ub5ITB7KlJhfKpSJyzviPP39krjG8U4i6AiFeAhinGWo6hIfRUA2E8xzjIUFam/BADupxhnvvJ6cvfzjQGAhynGmadciXpTzAg4YQXgUNHOOLPS/gx/L9aPr02TAzyBYpz65T9wLoufo71xAZ5DMU698h82t8XPz9ZvAMegGKc+7c/pfZElXvqjBuCIFOPUI0+dXhdBUYENQB8U40xfLrC5LbJ7PYoAfdoqxkk3Xuf4TUDc6k1MWb0pb4CBtDfcN8W0qgA5sqg3EWAaBMjxRb2JANMjQA4vT2lfFs+53kSAqREg+5XXEc+3nmO9iQBTJ0AeTw6Gb7eywy4gvjN1ClARAfJpcjB8vScYfpAhAlROgDxMXjd8Fzd9iJ3L9HxF7RcA8yJA/igHw/M9wfCtYAiwAEsPkHFTRHO5FQzT83DWXj8HAJZnSQEyPlxEY90QgLU9ATIFkdd5qvGXGqcUczDs+g1vt4LhB8EQOAlwjxQg2+GsvZo97/K1vVZ57P6drr/K152cnHwNI4rrA51ftdeb9ioD+lV7XbTXf8b+GoFpEBg5SA6QL8M6QL7IV/fvQwweQHMwTNfb8GMw/NRefwiGwDaBkWfJ06lNe/1v2ATL7ho8gOav5/f2SlOip1uP+769PrUf+yUA7CEwMoiBAugv4cdgeBHWwfDPAHAAgZFJOUIATcHwc3udt9cXU6XAYwmMVGlPAE2sGwLP8n9cePukx2O/ugAAAABJRU5ErkJggg==",
+          "cx": 0.12179129464285714,
+          "cy": 0.1267776137672811,
+          "scale": 0.43
+        },
+        {
+          "kind": "text",
+          "text": "The most worn-out places",
+          "cx": 0.4546208488173996,
+          "cy": 0.12639866434692604,
+          "color": "#ffffff",
+          "scale": 0.03
+        }
+      ]
+    },
+    {
+      "name": "Вид сзади",
+      "text": "From behind, the bull keeps the same charging momentum — tail and rump and the slope of a back arched for the strike. The most-touched spot of all is here: visitors duck beneath the belly, sit for a photograph, and steady themselves by leaning on the joints of the hind legs — which is why those joints are polished smooth too. Power, virility, force — the same animal symbol, told from a different angle.",
+      "camera": {
+        "fov": 40,
+        "target": [
+          0,
+          0.7,
+          0
+        ],
+        "position": [
+          1.0242223888818767,
+          0.17016188624161133,
+          -2.9576943226490346
+        ]
+      },
+      "model": {
+        "scale": 0.3592567030186072,
+        "position": [
+          0,
+          0.0265290411579443,
+          1.0706684083301043e-08
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "explode": 0,
+      "annotations": [
+        {
+          "kind": "image",
+          "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIxIiBoZWlnaHQ9IjEyNCIgdmlld0JveD0iMCAwIDMyMSAxMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xLjY0MjMzIDEwNC4wNjdMOC42NDIzMyA2NS41Njc0SDU0LjE0MjNMNjEuMTQyMyA5NC41Njc0TDU0LjE0MjMgMTIxLjU2N0gyNS4xNDIzTDEuNjQyMzMgMTA0LjA2N1oiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMyIvPgo8cGF0aCBkPSJNOTYuNjQyMyA0NC4wNjc0TDEwNS4xNDIgOC4wNjczOEwxODMuNjQyIDEuNTY3MzhDMTg4LjE0MiA4LjIzNDA1IDE5Ny43NDIgMjIuMDY3NCAyMDAuMTQyIDI0LjA2NzRDMjAyLjU0MiAyNi4wNjc0IDE5NC44MDkgNTIuNTY3NCAxOTAuNjQyIDY1LjU2NzRMMTUzLjE0MiA5MC41Njc0TDExMS42NDIgNzguNTY3NEw5Ni42NDIzIDQ0LjA2NzRaIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjMiLz4KPHBhdGggZD0iTTI1OC42NDIgNjkuMDY3NFY0MS41Njc0TDMwNC4xNDIgMjEuNTY3NEwzMTkuMTQyIDUzLjA2NzRMMzExLjE0MiA3Ni4wNjc0TDI4MC4xNDIgODEuNTY3NEwyNTguNjQyIDY5LjA2NzRaIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjMiLz4KPC9zdmc+Cg==",
+          "cx": 0.0556370607718894,
+          "cy": 0.12479748703917051,
+          "scale": 0.09972238350502786
+        },
+        {
+          "kind": "text",
+          "text": "Big balls",
+          "cx": 0.1363447719867101,
+          "cy": 0.0783257646452281,
+          "color": "#ffffff",
+          "scale": 0.02
+        }
+      ]
+    }
+  ]
+}

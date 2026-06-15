@@ -1,0 +1,163 @@
+{/* ─────────────────────────────────────────────────────────────────────────
+    Charging Bull — assembled longread.
+    Three heavy chapters (splash candles+3D bull · bull map · S&P charts) are
+    self-contained scrollytelling apps embedded via <IframeChapter>; the text
+    sections between them are native engine blocks.
+    Ported 1:1 from charging-bull-handoff/index.html.
+   ───────────────────────────────────────────────────────────────────────── */}
+
+{/* ===================== OPENER — Black Monday candles + 3D bull reveal ===== */}
+
+<IframeChapter
+  src="/chapters/splash/index.html"
+  title="S&P 500 — Black Monday 1987"
+  vh={1700}
+/>
+
+{/* ===================== I · The Way of the Bull ========================== */}
+
+<Break numeral="I" title="The Way of the Bull">
+  How three tonnes of bronze rolled out of a Brooklyn foundry, crossed the
+  Manhattan Bridge in the back of a flatbed truck, and ended up beneath the
+  Christmas tree at the New York Stock Exchange — then, two blocks south, on a
+  slab of Lower Manhattan it has never left since.
+</Break>
+
+{/* ===================== CHAPTER I — the map journey ===================== */}
+
+{/* Map journey, then an exit zone: the map zooms toward the viewer and fades
+    out while the 3D bull crossfades in from transparent and grows ~20%, then
+    dwells (draggable to rotate). Model is the existing splash GLB for now —
+    swap public/models/bull.glb later. */}
+<IframeChapter
+  src="/chapters/bull/index.html"
+  title="The way of the Bull"
+  vh={900}
+  wheelScale={0.4}
+  exitVh={200}
+  interactive
+>
+  <BullViewer />
+</IframeChapter>
+
+{/* ===================== II · Bulls, Bears & Crises ====================== */}
+
+<Break numeral="II" title="Bulls, Bears & Crises">
+  A bronze statue can hold a pose forever. Markets cannot. They move in two
+  distinct moods — named, since the 18th century, after the two ways an animal
+  attacks.
+</Break>
+
+{/* ===================== EXPLAINER — bull / bear market ================== */}
+
+<Prose>
+  <p className="text-[clamp(17px,1.5vw,22px)] leading-[1.55] text-fg first:[&>b]:font-semibold">
+    A <strong className="text-emerald-300">bull market</strong> is when prices
+    climb — broadly, persistently, for months or years at a stretch. A{' '}
+    <strong className="text-rose-300">bear market</strong> is when they fall by
+    20% or more from a recent peak and stay there. The names come from how each
+    animal strikes: a bull tosses its horns <em>upward</em>; a bear swipes its
+    paw <em>down</em>. Eighteenth-century London coffee-houses borrowed the
+    image, and the labels stuck.
+  </p>
+  <p>
+    The difference isn't only direction. A bull market runs on confidence — easy
+    credit, rising earnings, the comfortable belief that next quarter will look
+    like this one, only larger. A bear market runs on the opposite: a sudden,
+    contagious doubt that yesterday's prices were ever real. Bulls climb a
+    staircase; bears fall down an elevator shaft. Since World War II, the average
+    S&P 500 bull has lasted about <strong>five years</strong> and gained{' '}
+    <strong>~180%</strong>; the average bear has lasted about{' '}
+    <strong>13 months</strong> and lost <strong>~35%</strong>. Both sides of that
+    asymmetry are what every long-term chart is really drawing.
+  </p>
+  <p>
+    Let's look at what those drops actually felt like. Five of the biggest and
+    best-known crises of the past seventy years, charted against the same axis:
+    how much the S&P 500 lost, how fast it fell, how long it stayed down before
+    climbing back.
+  </p>
+</Prose>
+
+{/* ===================== CHAPTER II — S&P 500 + bear markets ============= */}
+
+<IframeChapter
+  src="/chapters/charts/index.html"
+  title="S&P 500 — Bear Markets"
+  vh={900}
+/>
+
+{/* ===================== PROSE — what makes a crisis a crisis =========== */}
+
+<Prose variant="dark">
+  <h3 className="font-serif font-semibold text-[clamp(24px,3vw,36px)] text-fg mb-2">
+    What makes a crisis a crisis.
+  </h3>
+  <p>
+    Every bear has a story, and the stories are not interchangeable. A{' '}
+    <strong>credit crisis</strong> begins inside the plumbing of the financial
+    system itself — banks holding loans that won't repay, balance sheets that
+    look fine until a question is asked too loudly. 2008 is the canonical
+    version: a US mortgage market backed by securities nobody could price, then a
+    global panic when nobody trusted anybody's books. Credit crises are slow to
+    build and brutal to unwind; the damage reaches the real economy through
+    frozen lending, not falling prices.
+  </p>
+  <p>
+    A <strong>bubble crisis</strong> is the opposite: a single story — railways,
+    radios, dot-coms, crypto — convinces a generation of investors that the old
+    rules of valuation no longer apply. Prices detach from earnings, then from
+    common sense, then from each other. The 2000 dot-com bust wiped out roughly
+    $5 trillion in market value not because the companies vanished, but because
+    the prices had been pretending to be something they weren't. Bubbles end on
+    their own, usually with no single trigger anyone can name afterwards.
+  </p>
+  <p>
+    An <strong>exogenous shock</strong> comes from outside the market entirely.
+    Black Monday 1987 — the event that haunted Di Modica into his midnight
+    installation — was a textbook one: program-trading feedback loops on a Monday
+    morning, no recession in sight, the Dow down 22.6% by closing bell. COVID in
+    2020 was another: a 34% peak-to-trough drop in 33 days, the fastest bear in
+    history, ended by a fiscal-policy response just as fast. Exogenous shocks
+    land hard but rarely break the underlying machinery; markets recover when the
+    shock passes.
+  </p>
+  <p>
+    What separates them, in the end, is what gets broken. Bubbles break a story.
+    Shocks break a mood. Credit crises break the plumbing. The first two heal in
+    months. The third can take a decade. And while every commentator on every
+    front page swears <em>this</em> one is different, the empirical record is
+    unhelpfully consistent: the same three shapes, in different costumes.
+  </p>
+  <p className="border-l-2 border-gold/50 pl-6 my-10 font-serif italic text-[clamp(18px,1.8vw,26px)] leading-[1.4] text-fg/90">
+    "Bull markets are born on pessimism, grow on skepticism, mature on optimism,
+    and die on euphoria."
+    <span className="block mt-3 not-italic font-mono uppercase tracking-[2px] text-[11px] text-fg/55">
+      — John Templeton
+    </span>
+  </p>
+  <p>
+    Today the air is thick with talk of an AI bubble — the most concentrated
+    capex boom in a generation, valuations on a small handful of chipmakers and
+    platform companies doing most of the index's heavy lifting. Maybe it ends
+    like 2000. Maybe it doesn't. The bronze on Bowling Green doesn't have an
+    opinion on that — it just keeps its head down and leans forward, the way Di
+    Modica cast it, as a working argument that the next chapter is still up.
+  </p>
+</Prose>
+
+{/* ===================== OUTRO ========================================== */}
+
+<Outro
+  lines={[
+    { text: 'Downturns are temporary.' },
+    { text: 'Stubbornness is not.', emphasis: true },
+  ]}
+  credit={
+    <>
+      A long-form scroll-piece · candlesticks-v2 · charging_bull · finance_charts
+      <br />
+      Bowling Green, New York · bronze, 3,200 kg, since 15 December 1989
+    </>
+  }
+/>

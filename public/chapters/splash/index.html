@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S&P 500 — Black Monday 1987</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --bg: #000; --up: #61E26B; --down: #EF5350;
+    /* subtle depth: faint cool glow toward the centre, darkening to the edges */
+    --depth: radial-gradient(ellipse 130% 115% at 50% 38%, #181b22 0%, #0b0c10 55%, #000 100%); }
+  html, body { background: #000; overflow-x: hidden; }
+  body { background: var(--depth) fixed no-repeat; }
+  /* 3D bull (its own WebGL canvas) — at the back, revealed from darkness. */
+  #bullStage { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  #bullStage canvas { display: block; }
+  /* Black mask over the bull: full black during the build, lifts on scroll. */
+  #mask {
+    position: fixed; inset: 0; z-index: 1; background: var(--depth);
+    opacity: 1; pointer-events: none; will-change: opacity;
+  }
+  /* WebGL candles (transparent canvas so the bull/mask show through). */
+  #stage { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+  #stage canvas { display: block; }
+  /* X axis date labels (under the candle chart) */
+  #xaxis { position: fixed; inset: 0; z-index: 3; pointer-events: none; opacity: 0; will-change: opacity; }
+  #xaxis span { position: absolute; transform: translateX(-50%); white-space: nowrap;
+    font: 400 12px 'Space Mono', ui-monospace, monospace; color: rgba(255,255,255,0.55); }
+  /* Scrollytell scene texts (narrative blocks) */
+  #scenes { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+  #scenes .scene {
+    position: absolute; left: 56px; bottom: 8%; max-width: 430px;
+    font: 400 17px/1.5 'Inter', sans-serif; color: #eee; opacity: 0;
+    text-shadow: 0 2px 18px rgba(0,0,0,0.85); will-change: opacity;
+  }
+  #scenes .scene .t { font: 700 13px 'Space Mono', monospace; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--up); display: block; margin-bottom: 10px; }
+  /* In-scene annotations (text + images) — anchored by cx,cy in frame-height units */
+  #annos { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+  #annos .a {
+    position: absolute; opacity: 0; transition: opacity 0.5s ease;
+    will-change: opacity, transform; transform: translate(-50%, -50%);
+    color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+    font: 500 14px 'Inter', sans-serif;
+  }
+  #annos .a.text { white-space: nowrap; font-weight: 600; letter-spacing: 0.02em; }
+  #annos .a.image img { display: block; opacity: 0.9; }
+  @media (max-width: 640px) { #scenes .scene { left: 22px; right: 22px; max-width: none; } }
+  #label {
+    position: fixed; left: 56px; top: 34px; z-index: 3;
+    font: 700 14px 'Space Mono', ui-monospace, monospace;
+    color: var(--down); letter-spacing: 0.02em; line-height: 1.5;
+    text-transform: uppercase; pointer-events: none; will-change: opacity;
+  }
+  #label .d { font-weight: 400; }
+  /* Title group: heading + subheading. Shown immediately, before the candles build. */
+  #herogroup {
+    position: fixed; left: 56px; top: 50%; transform: translateY(calc(-50% + 196px)); z-index: 3;
+    opacity: 0; pointer-events: none; will-change: opacity;
+  }
+  #hero {
+    margin: 0; max-width: 640px;
+    font: 700 clamp(36px, 4.8vw, 66px)/1.05 'Inter', sans-serif;
+    letter-spacing: -0.022em; color: var(--up);
+  }
+  #subhero {
+    margin: 22px 0 0; max-width: 400px;
+    font: 400 clamp(15px, 1.5vw, 19px)/1.46 'Inter', sans-serif;
+    letter-spacing: -0.004em; color: rgba(236,239,236,0.82);
+  }
+  #scroller { position: relative; z-index: 4; height: 1700vh; pointer-events: none; }
+  @media (max-width: 640px) { #label { left: 22px; } #herogroup { left: 22px; } }
+</style>
+</head>
+<body>
+
+<div id="bullStage"></div>
+<div id="mask"></div>
+<div id="stage"></div>
+<div id="label">Black Monday<br><span class="d">1987-10-19</span></div>
+<div id="herogroup">
+  <h1 id="hero">Why are global<br>stock exchanges<br>going wild?</h1>
+  <p id="subhero">It began on a single Monday in October 1987 — the day the S&amp;P 500 fell 20% and Wall Street learned how fast confidence can vanish.</p>
+</div>
+<div id="scenes"></div>
+<div id="annos"></div>
+<div id="scroller"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+// ===== palette & math helpers =============================================
+const UP = 0x61E26B, DOWN = 0xEF5350;
+const clamp01 = t => t < 0 ? 0 : t > 1 ? 1 : t;
+const lerp = (a, b, t) => a + (b - a) * t;
+const smoothstep = t => { t = clamp01(t); return t * t * (3 - 2 * t); };
+const smootherstep = t => { t = clamp01(t); return t * t * t * (t * (t * 6 - 15) + 10); };
+const easeOut = t => 1 - Math.pow(1 - clamp01(t), 3);
+// stable hash-random in [0,1) so every candle keeps the same scatter trajectory
+const rnd = n => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const fmtDate = d => { const p = d.split('-'); return MON[+p[1] - 1] + ' ' + (+p[2]); }; // '1987-07-06' → 'Jul 6'
+
+// Live-tunable scatter parameters (driven by the on-screen control panel).
+// A wider FOV makes candles balloon harder as they fly at the viewer.
+const PARAMS = {
+  fov: 70,         // camera field of view — perspective character / lateral divergence
+  zReach: 0.94,    // how close to the camera candles fly (× camZ) — perspective size knob
+  sizeBoost: 6.0,  // extra direct scale multiplier reached at f=1 (uncapped headroom)
+  lateral: 0.65,   // sideways fan-out (× chart width)
+  spin: 5,         // tumble amount
+  fadeStart: 0.90, // f at which candles begin to fade (later = they get bigger before vanishing)
+  startSp: 0.14,   // scroll position where the scatter begins
+  duration: 0.30,  // scroll span of the scatter (ends before the bull scenes)
+  stagger: 0.22,   // spread of per-candle launch times
+};
+// Candle z-depth factor: nearly flat while the chart is assembled (no visible
+// 3D volume), growing to full thickness as each candle flies off in the scatter.
+const FLAT_Z = 0.05;
+
+// ===== data (1987, hardcoded) =============================================
+// Run-up: daily CLOSES (Jul 1 – Oct 9). True OHLC doesn't exist this far back,
+// so each day is a close-to-close body (O = prev close, C = close), no wick.
+const RUNUP_SEED = 286.65; // May 18 close — seeds the first body's open
+const RUNUP = [
+  ['1987-05-19', 279.62], ['1987-05-20', 278.21], ['1987-05-21', 280.17], ['1987-05-22', 282.16],
+  ['1987-05-26', 289.11], ['1987-05-27', 288.73], ['1987-05-28', 290.76], ['1987-05-29', 290.10],
+  ['1987-06-01', 289.83], ['1987-06-02', 288.46], ['1987-06-03', 293.47], ['1987-06-04', 295.09],
+  ['1987-06-05', 293.45], ['1987-06-08', 296.72], ['1987-06-09', 297.28], ['1987-06-10', 297.47],
+  ['1987-06-11', 298.73], ['1987-06-12', 301.62], ['1987-06-15', 303.14], ['1987-06-16', 304.76],
+  ['1987-06-17', 304.81], ['1987-06-18', 305.69], ['1987-06-19', 306.97], ['1987-06-22', 309.65],
+  ['1987-06-23', 308.43], ['1987-06-24', 306.86], ['1987-06-25', 308.96], ['1987-06-26', 307.16],
+  ['1987-06-29', 307.90], ['1987-06-30', 304.00],
+  ['1987-07-01', 302.94], ['1987-07-02', 305.63], ['1987-07-06', 304.92], ['1987-07-07', 307.40],
+  ['1987-07-08', 308.29], ['1987-07-09', 307.52], ['1987-07-10', 308.37], ['1987-07-13', 307.63],
+  ['1987-07-14', 310.68], ['1987-07-15', 310.42], ['1987-07-16', 312.70], ['1987-07-17', 314.59],
+  ['1987-07-20', 311.39], ['1987-07-21', 308.55], ['1987-07-22', 308.47], ['1987-07-23', 307.81],
+  ['1987-07-24', 309.27], ['1987-07-27', 310.65], ['1987-07-28', 312.33], ['1987-07-29', 315.65],
+  ['1987-07-30', 318.05], ['1987-07-31', 318.66], ['1987-08-03', 317.57], ['1987-08-04', 316.23],
+  ['1987-08-05', 318.45], ['1987-08-06', 322.09], ['1987-08-07', 323.00], ['1987-08-10', 328.00],
+  ['1987-08-11', 333.33], ['1987-08-12', 332.39], ['1987-08-13', 334.65], ['1987-08-14', 333.99],
+  ['1987-08-17', 334.11], ['1987-08-18', 329.25], ['1987-08-19', 329.83], ['1987-08-20', 334.84],
+  ['1987-08-21', 335.90], ['1987-08-24', 333.33], ['1987-08-25', 336.77], ['1987-08-26', 334.57],
+  ['1987-08-27', 331.38], ['1987-08-28', 327.04], ['1987-08-31', 329.80], ['1987-09-01', 323.40],
+  ['1987-09-02', 321.68], ['1987-09-03', 320.21], ['1987-09-04', 316.70], ['1987-09-08', 313.56],
+  ['1987-09-09', 313.92], ['1987-09-10', 317.13], ['1987-09-11', 321.98], ['1987-09-14', 323.08],
+  ['1987-09-15', 317.74], ['1987-09-16', 314.86], ['1987-09-17', 314.93], ['1987-09-18', 314.86],
+  ['1987-09-21', 310.54], ['1987-09-22', 319.50], ['1987-09-23', 321.19], ['1987-09-24', 319.72],
+  ['1987-09-25', 320.16], ['1987-09-28', 323.20], ['1987-09-29', 321.69], ['1987-09-30', 321.83],
+  ['1987-10-01', 327.33], ['1987-10-02', 328.07], ['1987-10-05', 328.08], ['1987-10-06', 319.22],
+  ['1987-10-07', 318.54], ['1987-10-08', 314.16], ['1987-10-09', 311.07],
+];
+// Crash: real daily OHLC (Oct 12 – Oct 20) — full candles with wicks.
+const CRASH = [
+  ['1987-10-12', 311.07, 311.07, 306.76, 309.39],
+  ['1987-10-13', 309.39, 314.53, 309.39, 314.52],
+  ['1987-10-14', 314.52, 314.52, 304.78, 305.23],
+  ['1987-10-15', 305.21, 305.23, 298.07, 298.08],
+  ['1987-10-16', 298.08, 298.92, 281.52, 282.70],
+  ['1987-10-19', 282.70, 282.70, 224.83, 224.84],
+];
+
+const candles = [];
+let prev = RUNUP_SEED;
+for (const [date, c] of RUNUP) {
+  const o = prev; prev = c;
+  candles.push({ date, o, c, h: Math.max(o, c), l: Math.min(o, c), up: c >= o, real: false });
+}
+for (const [date, o, h, l, c] of CRASH)
+  candles.push({ date, o, h, l, c, up: c >= o, real: true });
+
+const N = candles.length;
+const CRASH_START = RUNUP.length; // index of first crash candle
+const BM_IDX = candles.findIndex(c => c.date === '1987-10-19'); // Black Monday candle
+
+let pMin = Infinity, pMax = -Infinity;
+for (const k of candles) { if (k.l < pMin) pMin = k.l; if (k.h > pMax) pMax = k.h; }
+const pPad = (pMax - pMin) * 0.06; pMin -= pPad; pMax += pPad;
+const pMid = (pMin + pMax) / 2, pSpan = pMax - pMin;
+
+// ===== three.js scene =====================================================
+const stage = document.getElementById('stage');
+// preserveDrawingBuffer: with render-on-demand the loop goes idle between
+// scrolls; preserving the buffer keeps the last frame on screen (otherwise a
+// recomposite shows an empty/cleared buffer = black).
+const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 8000);
+// Lighting tuned so a front-facing candle shows its true flat colour (~1.0),
+// while faces revealed during the tumble pick up gentle shading.
+scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.40);
+keyLight.position.set(0.35, 0.65, 1); scene.add(keyLight);
+
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const WORLD_H = 120;               // fixed vertical world extent
+let worldW = 200;                  // horizontal extent (recomputed on resize)
+let camZ = 600;
+const priceToY = p => (p - pMid) / pSpan * WORLD_H;
+
+// Build a group (body + optional wick) per candle.
+const groups = [];
+for (let i = 0; i < N; i++) {
+  const k = candles[i];
+  const col = k.up ? UP : DOWN;
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: col, transparent: true });
+  const bodyMesh = new THREE.Mesh(boxGeo, bodyMat); g.add(bodyMesh);
+  let wickMesh = null, wickMat = null;
+  if (k.real) {
+    wickMat = new THREE.MeshLambertMaterial({ color: col, transparent: true });
+    wickMesh = new THREE.Mesh(boxGeo, wickMat); g.add(wickMesh);
+  }
+  scene.add(g);
+
+  // Per-candle RANDOM bases for the scatter (kept stable per candle). The actual
+  // velocities/timings are derived from these + PARAMS each frame, so the control
+  // panel sliders retune the burst live. Each candle bursts in a random 360°
+  // direction AND flies at the camera (+z) to grow via perspective.
+  const rAng = rnd(i * 3 + 1) * Math.PI * 2;           // burst direction
+  const rSpread = rnd(i * 5 + 4);                       // 0..1 radial-speed seed
+  const rZ = rnd(i * 5 + 6);                            // 0..1 forward-reach seed
+  const rSpin = new THREE.Vector3(rnd(i * 7 + 1) - 0.5, rnd(i * 7 + 2) - 0.5, rnd(i * 7 + 3) - 0.5);
+  const rDelay = rnd(i * 9 + 5);                        // 0..1 launch-time seed
+  groups.push({ g, k, bodyMesh, bodyMat, wickMesh, wickMat, rAng, rSpread, rZ, rSpin, rDelay, baseX: 0, baseY: 0 });
+}
+
+// (Re)compute camera + base candle layout for the current viewport. The chart is
+// left-anchored and occupies CHART_FRAC of the viewport width from the left edge.
+const LEFT_MARGIN_PX = 40, CHART_FRAC = 0.60;
+function relayout() {
+  const W = window.innerWidth, H = window.innerHeight;
+  const px2world = (WORLD_H / 0.78) / H;             // uniform world units per screen pixel
+  const visibleHalfW = (WORLD_H / 0.78) * (W / H) / 2;
+  const chartW = CHART_FRAC * visibleHalfW * 2 - LEFT_MARGIN_PX * px2world;
+  const colW = chartW / N;
+  const bodyW = colW * 0.62;
+  const wickW = Math.max(0.5, bodyW * 0.18);
+  const depth = bodyW; // chunky cross-section so the 3D tumble reads
+  const xLeftEdge = -visibleHalfW + LEFT_MARGIN_PX * px2world;
+  for (let i = 0; i < N; i++) {
+    const G = groups[i], k = G.k;
+    const x = xLeftEdge + (i + 0.5) * colW;
+    const hy = priceToY(k.h), ly = priceToY(k.l), oy = priceToY(k.o), cy = priceToY(k.c);
+    const rangeCenter = (hy + ly) / 2;
+    G.baseX = x; G.baseY = rangeCenter;
+    const top = Math.max(oy, cy), bot = Math.min(oy, cy);
+    const bodyH = Math.max(0.35, top - bot);
+    G.bodyMesh.scale.set(bodyW, bodyH, depth);
+    G.bodyMesh.position.set(0, (top + bot) / 2 - rangeCenter, 0);
+    if (G.wickMesh) {
+      G.wickMesh.scale.set(wickW, Math.max(0.35, hy - ly), wickW);
+      G.wickMesh.position.set(0, 0, 0);
+    }
+  }
+}
+
+let lastW = 0, lastH = 0;
+function resize() {
+  const W = window.innerWidth, H = window.innerHeight;
+  if (W <= 0 || H <= 0) return;
+  lastW = W; lastH = H;
+  renderer.setSize(W, H);
+  const aspect = W / H;
+  camera.fov = PARAMS.fov;          // live FOV (controls how hard candles balloon on approach)
+  camera.aspect = aspect;
+  worldW = WORLD_H * aspect * 1.15; // chart-width scale used for lateral fan-out
+  const visH = WORLD_H / 0.78;                       // leave vertical margin
+  camZ = (visH / 2) / Math.tan((camera.fov * Math.PI / 180) / 2);
+  camera.position.set(0, 0, camZ);
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+  relayout();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ===== build timeline (auto, time-based) ==================================
+// runStart is delayed so the title group lands first, THEN the candles animate.
+// Run-up candles flit in quickly & together; the crash plays out day-by-day.
+const T = { runStart: 1.5, runStep: 0.0093, runDur: 0.12, crashStep: 0.113, crashDur: 0.167 }; // 3× faster build
+T.crashStart = T.runStart + (CRASH_START - 1) * T.runStep + T.runDur + 0.04; // crash begins once the run-up has finished
+const BUILD_END = T.crashStart + (N - CRASH_START - 1) * T.crashStep + T.crashDur;
+function buildProgress(i, t) {
+  if (i < CRASH_START) return clamp01((t - (T.runStart + i * T.runStep)) / T.runDur);
+  const j = i - CRASH_START;
+  return clamp01((t - (T.crashStart + j * T.crashStep)) / T.crashDur);
+}
+
+const maskEl = document.getElementById('mask');
+const labelEl = document.getElementById('label');
+const heroEl = document.getElementById('herogroup');
+const scenesContainer = document.getElementById('scenes');
+const annosContainer = document.getElementById('annos');
+// These are populated by buildSceneDOM() once stages.json has loaded.
+let sceneEls = [];
+let annoNodes = [];        // per-stage array of { el, kind, cx, cy, scale }
+
+// ===== 3D bull scene (own WebGL canvas, behind the candles) ===============
+const bullStageEl = document.getElementById('bullStage');
+const bullRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+bullRenderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+bullRenderer.setClearColor(0x000000, 0);                 // transparent → page black shows; #mask darkens
+bullRenderer.toneMapping = THREE.ACESFilmicToneMapping;  // match the scrollytell look
+bullRenderer.toneMappingExposure = 1.0;
+bullRenderer.outputColorSpace = THREE.SRGBColorSpace;
+bullStageEl.appendChild(bullRenderer.domElement);
+const bullScene = new THREE.Scene();
+const bullCam = new THREE.PerspectiveCamera(50, 1, 0.01, 2000);
+bullScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+{ const d = new THREE.DirectionalLight(0xffffff, 2.2); d.position.set(5, 8, 6); bullScene.add(d);
+  const f = new THREE.DirectionalLight(0x88aaff, 0.6); f.position.set(-6, 3, -4); bullScene.add(f); }
+let bullModel = null, bullW = 0, bullH = 0;
+{
+  const draco = new DRACOLoader(); draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+  const gl = new GLTFLoader(); gl.setDRACOLoader(draco);
+  gl.load('models/Bullforweb2-butcher2.glb', (g) => {
+    bullModel = g.scene;
+    bullModel.traverse(o => { if (o.isMesh && o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; for (const m of ms) m.side = THREE.DoubleSide; } });
+    bullModel.scale.setScalar(0.3593); bullModel.position.set(0, 0, 0); bullModel.rotation.set(0, 0, 0);
+    bullScene.add(bullModel);
+    // Capture each mesh's home position + an outward direction from the bull's
+    // centroid. Used by the explode animation on the "Sections" stage.
+    captureMeshHomes();
+  }, undefined, e => console.error('bull GLB load error:', e));
+}
+
+// Stages config (camera framings, explode, annotations, optional extra 3D
+// model) is loaded from stages.json (built from the 3D Scrollytell Tool
+// project file 20260609_project.json). See buildSceneDOM().
+let STAGES = [];   // populated by buildSceneDOM()
+let extraModel = null;       // optional second 3D model loaded for stage 2
+let extraModelStageIdx = -1; // which stage owns the extra model (or -1 if none)
+const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const BULL_INTRO_END = 0.34;   // scenes begin once candles have scattered & the bull is out
+
+// ---- load stages.json, populate STAGES, build scene + annotation DOM ------
+async function buildSceneDOM() {
+  let cfg;
+  try {
+    const r = await fetch('./stages.json?v=' + Date.now());
+    cfg = await r.json();
+  } catch (e) { console.error('Failed to load stages.json', e); return; }
+
+  STAGES = cfg.stages.map(s => ({
+    position: s.camera.position, target: s.camera.target, fov: s.camera.fov,
+    explode: s.explode || 0,
+    name: s.name, text: s.text,
+    annotations: s.annotations || [],
+    model3d: s.model3d || null,
+  }));
+
+  // Build scene narrative blocks (left-bottom corner)
+  const SCENE_HEADER = ['Charging Bull · 1989', 'Profile & scale', 'Sections', 'Muzzle & horns', 'From behind'];
+  scenesContainer.innerHTML = STAGES.map((s, i) =>
+    `<div class="scene" data-i="${i}"><span class="t">${SCENE_HEADER[i] || s.name}</span>${s.text}</div>`
+  ).join('');
+  sceneEls = [...scenesContainer.querySelectorAll('.scene')];
+
+  // Build per-stage annotation nodes (text / image). Each node knows its stage.
+  annoNodes = STAGES.map((s, i) =>
+    s.annotations.map(a => {
+      const el = document.createElement('div');
+      el.className = 'a ' + (a.kind === 'image' ? 'image' : 'text');
+      if (a.kind === 'image') {
+        const img = document.createElement('img'); img.src = a.src;
+        el.appendChild(img);
+      } else {
+        el.textContent = a.text;
+        if (a.color) el.style.color = a.color;
+      }
+      annosContainer.appendChild(el);
+      return { el, ...a };
+    })
+  );
+
+  // Load the optional second 3D model (stage 2 in our case) once we know
+  // which stage owns it. Position/rotation/scale come from JSON.
+  for (let i = 0; i < STAGES.length; i++) {
+    const m = STAGES[i].model3d;
+    if (m && m.url) {
+      extraModelStageIdx = i;
+      const draco = new DRACOLoader(); draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+      const gl = new GLTFLoader(); gl.setDRACOLoader(draco);
+      gl.load(m.url, (g) => {
+        extraModel = g.scene;
+        extraModel.traverse(o => { if (o.isMesh && o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; for (const ms2 of ms) ms2.side = THREE.DoubleSide; } });
+        extraModel.position.set(m.position[0], m.position[1], m.position[2]);
+        extraModel.rotation.set(m.rotation[0], m.rotation[1], m.rotation[2]);
+        extraModel.scale.setScalar(m.scale);
+        extraModel.visible = false;
+        bullScene.add(extraModel);
+      }, undefined, e => console.warn('extra model load failed', e));
+      break;
+    }
+  }
+}
+buildSceneDOM();
+
+// Per-stage explode anchor (each mesh remembers its starting position so we can
+// push it outward from the bull's centroid based on the interpolated explode value).
+let bullCentre = new THREE.Vector3();
+const meshHomes = new Map();   // mesh → { origin: Vector3, dir: Vector3 }
+function captureMeshHomes() {
+  if (!bullModel) return;
+  // Compute the model's bounding-box centre once.
+  const box = new THREE.Box3().setFromObject(bullModel);
+  box.getCenter(bullCentre);
+  bullModel.traverse(o => {
+    if (!o.isMesh) return;
+    const home = o.position.clone();
+    // Direction from centroid to mesh centroid — used to push outward on explode.
+    const meshBox = new THREE.Box3().setFromObject(o);
+    const meshCentre = new THREE.Vector3();
+    meshBox.getCenter(meshCentre);
+    const dir = meshCentre.clone().sub(bullCentre);
+    if (dir.lengthSq() < 1e-8) dir.set(0, 1, 0); else dir.normalize();
+    meshHomes.set(o, { origin: home, dir });
+  });
+}
+
+// Drive the bull camera through the scenes from scroll, and the scene texts.
+const BULL_REVEAL_TURN = 0.42; // radians the model turns into place while it emerges
+function updateBull(sp, emerge) {
+  if (bullW !== window.innerWidth || bullH !== window.innerHeight) {
+    bullW = window.innerWidth; bullH = window.innerHeight;
+    bullRenderer.setSize(bullW, bullH); bullCam.aspect = bullW / bullH; bullCam.updateProjectionMatrix();
+  }
+  // STAGES is populated asynchronously from stages.json — just render the bull
+  // at its emerge pose until it arrives.
+  if (!STAGES.length) { bullRenderer.render(bullScene, bullCam); return; }
+
+  // Gate everything that comes after the candle intro: while sp < intro_end the
+  // hero ("Why are global stock exchanges going wild?") is on screen and no
+  // scene text / annotation may show through.
+  const inBullPhase = sp >= BULL_INTRO_END;
+
+  // q in 0..1 across the bull section (after the candle scatter has finished).
+  const q = clamp01((sp - BULL_INTRO_END) / (1 - BULL_INTRO_END));
+  // Map q across N stages: (N-1) transitions, each with dwell · transition · dwell.
+  const N = STAGES.length;
+  const seg = (N - 1);
+  const idxF = Math.min(seg - 1e-6, q * seg);
+  const idx = Math.floor(idxF);
+  const local = idxF - idx;
+  const DWELL = 0.30;
+  let st;
+  if (local < DWELL) st = 0;
+  else if (local > 1 - DWELL) st = 1;
+  else st = (local - DWELL) / (1 - 2 * DWELL);
+  const ct = easeInOutCubic(clamp01(st));
+  const a = STAGES[idx], b = STAGES[idx + 1] || STAGES[idx];
+  const p = lerp3(a.position, b.position, ct);
+  const tg = lerp3(a.target, b.target, ct);
+  bullCam.position.set(p[0], p[1], p[2]);
+  bullCam.fov = lerp(a.fov, b.fov, ct);
+  bullCam.updateProjectionMatrix();
+  bullCam.lookAt(tg[0], tg[1], tg[2]);
+
+  // Per-mesh explode — interpolate between a.explode and b.explode and push
+  // each section outward from the bull's centroid along its captured direction.
+  const ex = lerp(a.explode || 0, b.explode || 0, ct);
+  if (bullModel && meshHomes.size && ex > 0) {
+    for (const [mesh, home] of meshHomes.entries()) {
+      mesh.position.copy(home.origin).addScaledVector(home.dir, ex * 0.6);
+    }
+  } else if (bullModel && meshHomes.size) {
+    for (const [mesh, home] of meshHomes.entries()) mesh.position.copy(home.origin);
+  }
+
+  // The active stage = the one whose framing is being held. While transitioning,
+  // halfway is the snap point.
+  const activeIdx = ct < 0.5 ? idx : Math.min(N - 1, idx + 1);
+
+  // Scene narrative visibility — gated by inBullPhase so the hero copy never
+  // overlaps with stage-1 text.
+  for (let i = 0; i < N; i++) {
+    let op = 0;
+    if (inBullPhase) {
+      if (i === idx)          op = 1 - smoothstep(ct);
+      else if (i === idx + 1) op = smoothstep(ct);
+      if (q >= 0.999 && i === N - 1) op = 1;
+    }
+    sceneEls[i].style.opacity = op.toFixed(3);
+  }
+
+  // Per-annotation visibility + positioning. Each annotation belongs to a stage;
+  // when its stage is being dwelled on the annotation is on. cx/cy are
+  // normalised to frame HEIGHT (matches scrollytell-engine semantics).
+  const fw = bullW, fh = bullH;
+  const dwellActive = inBullPhase && (local < DWELL || local > 1 - DWELL) && (Math.abs(local - 0.5) >= 0.5 - DWELL);
+  // Slightly looser: keep annos visible inside dwell zones of their own stage.
+  for (let i = 0; i < N; i++) {
+    const onThisStage = (i === idx && local < DWELL) || (i === idx + 1 && local > 1 - DWELL);
+    const show = inBullPhase && onThisStage;
+    for (const node of annoNodes[i] || []) {
+      const x = fw / 2 + (node.cx || 0) * fh;
+      const y = fh / 2 + (node.cy || 0) * fh;
+      node.el.style.left = x + 'px';
+      node.el.style.top = y + 'px';
+      if (node.kind === 'image') {
+        const img = node.el.querySelector('img');
+        if (img) img.style.height = ((node.scale || 0.2) * fh) + 'px';
+      } else {
+        node.el.style.fontSize = ((node.scale || 0.02) * fh) + 'px';
+      }
+      node.el.style.opacity = show ? 1 : 0;
+    }
+  }
+
+  // Extra 3D model — visible only on its owning stage's dwell range.
+  if (extraModel) {
+    const visible = inBullPhase && (
+      (extraModelStageIdx === idx && local < 1 - DWELL) ||
+      (extraModelStageIdx === idx + 1 && local > DWELL)
+    );
+    extraModel.visible = !!visible;
+  }
+
+  // gentle parallel turn while the bull emerges, settling to rest as it appears
+  if (bullModel) bullModel.rotation.y = (1 - clamp01(emerge)) * BULL_REVEAL_TURN;
+
+  bullRenderer.render(bullScene, bullCam);
+}
+
+// Black Monday label anchors above the FIRST crisis day (Oct 12) — its assembled
+// top (high), projected from world space to screen pixels.
+const LABEL_IDX = CRASH_START;
+const bmGroup = groups[LABEL_IDX];
+const _proj = new THREE.Vector3();
+function bmLabelScreenPos() {
+  _proj.set(bmGroup.baseX, priceToY(bmGroup.k.h), 0).project(camera);
+  return { x: (_proj.x * 0.5 + 0.5) * window.innerWidth, y: (-_proj.y * 0.5 + 0.5) * window.innerHeight };
+}
+
+// X axis: a few date labels under the chart, tracking the candle positions.
+const AXIS_IDX = [0, Math.round((N - 1) * 0.25), Math.round((N - 1) * 0.5), Math.round((N - 1) * 0.75), N - 1];
+const axisWrap = document.createElement('div'); axisWrap.id = 'xaxis';
+const axisLabels = AXIS_IDX.map(i => { const s = document.createElement('span'); s.textContent = fmtDate(candles[i].date); axisWrap.appendChild(s); return s; });
+document.body.appendChild(axisWrap);
+function updateAxis(sp, t) {
+  // fade in as the chart finishes building, fade out as the candles scatter
+  const op = clamp01((t - (BUILD_END - 0.8)) / 0.6) * (1 - smoothstep(clamp01((sp - PARAMS.startSp) / 0.12)));
+  axisWrap.style.opacity = op.toFixed(3);
+  if (op <= 0.004) return;
+  const yB = priceToY(pMin);
+  for (let j = 0; j < AXIS_IDX.length; j++) {
+    _proj.set(groups[AXIS_IDX[j]].baseX, yB, 0).project(camera);
+    axisLabels[j].style.left = ((_proj.x * 0.5 + 0.5) * window.innerWidth).toFixed(1) + 'px';
+    axisLabels[j].style.top = ((-_proj.y * 0.5 + 0.5) * window.innerHeight + 14).toFixed(1) + 'px';
+  }
+}
+
+// Continuous render loop. (An idle WebGL canvas gets its compositor layer
+// cleared in Chromium, so we keep rendering every frame — trivially cheap for
+// ~35 boxes — rather than rendering on-demand.)
+let t0 = null;
+function frame(ts) {
+  if (t0 == null) t0 = ts;
+  const t = (ts - t0) / 1000;
+
+  // The preview/window can report 0 size at module-init; re-fit whenever it changes.
+  if (window.innerWidth !== lastW || window.innerHeight !== lastH) resize();
+
+  // scroll → phase-2 progress
+  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+  const sp = clamp01(window.scrollY / Math.max(1, maxScroll));
+  const emerge = smootherstep(clamp01((sp - 0.10) / 0.30));  // 3D bull rises out of the dark, fully clear by ~0.40
+  const scatter = smootherstep(clamp01((sp - PARAMS.startSp) / PARAMS.duration)); // starts before the bull is fully revealed
+
+  // black mask over the bull lifts as you scroll (bull emerges from darkness)
+  maskEl.style.opacity = (1 - emerge).toFixed(3);
+
+  // 3D bull camera + scene texts (+ reveal turn driven by emerge)
+  updateBull(sp, emerge);
+
+  // Black Monday label: appears above the first crisis day as it's drawn,
+  // then fades out as the scatter begins.
+  const bmA = easeOut(buildProgress(LABEL_IDX, t));
+  const labelFadeOut = 1 - smoothstep(clamp01((sp - 0.16) / 0.14));
+  labelEl.style.opacity = Math.min(bmA, labelFadeOut).toFixed(3);
+  if (bmA > 0.01) {
+    const s = bmLabelScreenPos();
+    labelEl.style.left = Math.max(8, Math.min(window.innerWidth - 150, s.x - 12)) + 'px';
+    labelEl.style.top = Math.max(8, s.y - 72) + 'px';
+  }
+
+  // Title group appears IMMEDIATELY (before the candles build), then fades out
+  // as soon as the user scrolls.
+  const heroIn = clamp01((t - 0.15) / 0.7);
+  const heroOut = 1 - smootherstep(clamp01(sp / 0.3));
+  heroEl.style.opacity = Math.min(heroIn, heroOut).toFixed(3);
+
+  // X axis date labels under the chart
+  updateAxis(sp, t);
+
+  for (let i = 0; i < N; i++) {
+    const G = groups[i];
+    if (scatter <= 0) {
+      // assembled chart, with the build reveal still playing in — kept FLAT (thin z)
+      const a = easeOut(buildProgress(i, t));
+      G.g.position.set(G.baseX, G.baseY, 0);
+      G.g.rotation.set(0, 0, 0);
+      G.g.scale.set(lerp(0.7, 1, a), a, FLAT_Z);
+      G.bodyMat.opacity = a; if (G.wickMat) G.wickMat.opacity = a;
+    } else {
+      // 3D scatter: candle bursts radially (x/y) AND flies at the camera (z → near
+      // camZ) so it grows; it tumbles, then fades at the end as it passes us. The
+      // y-origin eases to centre (baseY * (1-f)) so the spray isn't biased upward.
+      const spread = (0.45 + G.rSpread * 0.75) * PARAMS.lateral;
+      const velX = Math.cos(G.rAng) * spread, velY = Math.sin(G.rAng) * spread;
+      const zEndFrac = clamp01(PARAMS.zReach * (0.85 + G.rZ * 0.15));
+      const delay = G.rDelay * PARAMS.stagger;
+      const f = easeOut(clamp01((scatter - delay) / (1 - delay)));
+      G.g.position.set(
+        G.baseX * (1 - f) + velX * f * worldW,
+        G.baseY * (1 - f) + velY * f * worldW,
+        zEndFrac * camZ * f
+      );
+      G.g.rotation.set(G.rSpin.x * PARAMS.spin * f, G.rSpin.y * PARAMS.spin * f, G.rSpin.z * PARAMS.spin * f);
+      const s = 1 + (PARAMS.sizeBoost - 1) * f;   // extra direct growth on top of perspective
+      const sz = lerp(FLAT_Z, s, smoothstep(clamp01(f / 0.30)));   // gains 3D thickness as it flies
+      G.g.scale.set(s, s, sz);
+      const fs = PARAMS.fadeStart;
+      const op = 1 - smoothstep(clamp01((f - fs) / (1 - fs)));
+      G.bodyMat.opacity = op; if (G.wickMat) G.wickMat.opacity = op;
+    }
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+
+</script>
+</body>
+</html>

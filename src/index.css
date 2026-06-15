@@ -1,0 +1,16 @@
+@import './fonts.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body { background: #000; }
+  body {
+    overflow-x: clip;
+    font-family: var(--font-struve);
+    color: #f5f3ee;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: #c9a961; color: #000; }
+}
