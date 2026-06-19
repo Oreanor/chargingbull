@@ -145,7 +145,14 @@ const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 
 // (Bowling Green — where the bull actually stands) while a black veil closes in,
 // handing off to the Datum bull scene that emerges from that darkness.
 const DIVE_FRAC = 0.18;
-const DIVE_ZOOM = 2.4; // extra mapbox zoom levels added across the dive
+const DIVE_ZOOM = 3.4;    // extra mapbox zoom levels added across the dive (~2× closer)
+const DIVE_BEARING = 30; // rotate the map (flat clock-face) counter-clockwise ~30° as we dive in
+const DIVE_PITCH = 38;    // tilt up toward the horizon (so the view matches the bull scene)
+
+// Intro punch: when the map first reveals (title dissolve), it flies in from this
+// many extra zoom levels and eases out to the stop-0 framing over INTRO_MS.
+const INTRO_ZOOM = 3;
+const INTRO_MS = 500;
 const journeyOf = (sp: number) => Math.min(1, sp / (1 - DIVE_FRAC));
 const diveOf = (sp: number) => clamp((sp - (1 - DIVE_FRAC)) / DIVE_FRAC, 0, 1);
 
@@ -188,6 +195,8 @@ export default function MapChapter({
   assetBase = '/chapters/bull/',
   introTitle,
   introBody,
+  revealUnderlay = false,
+  onDive,
 }: {
   dataUrl?: string;
   assetBase?: string;
@@ -195,8 +204,17 @@ export default function MapChapter({
    *  dissolves into the map (so it never slides up from below). */
   introTitle?: string;
   introBody?: string;
+  /** When true (used by MapBullHandoff), the map does NOT fade on the dive — it
+   *  keeps zooming while the bull scene unfolds OVER it. The standalone preview
+   *  (false) instead fades a black veil in across the dive's second half. */
+  revealUnderlay?: boolean;
+  /** Called every frame with the dive progress 0..1 (0 = journey, 1 = fully dived
+   *  into the bull spot). Lets a parent sync the revealed underlay (e.g. scale the
+   *  bull in as the map dissolves). */
+  onDive?: (dive: number) => void;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
+  const stickyRef = useRef<HTMLDivElement>(null);
   const mapHostRef = useRef<HTMLDivElement>(null);
   const introRef = useRef<HTMLDivElement>(null);
   const introTitleRef = useRef<HTMLHeadingElement>(null);
@@ -257,7 +275,7 @@ export default function MapChapter({
       container: host,
       style: 'mapbox://styles/mapbox/dark-v11',
       center: v0.center, zoom: v0.zoom, pitch: v0.pitch, bearing: v0.bearing,
-      antialias: true, minZoom: 0.5, maxZoom: 18, projection: 'mercator',
+      antialias: true, minZoom: 0.5, maxZoom: 20, projection: 'mercator',
       interactive: true,
     });
     mapRef.current = map;
@@ -352,6 +370,12 @@ export default function MapChapter({
 
   // scroll-driven camera
   useEffect(() => {
+    // intro punch: one-shot zoom-out fired when the map first reveals (title
+    // dissolve begins). A short rAF keeps the camera updating across INTRO_MS even
+    // between scroll events, so the fly-in plays as a smooth ~½s ease-out.
+    let punchT0 = -1;
+    let punchFired = false;
+    let punchRaf = 0;
     const apply = (sp: number) => {
       const map = mapRef.current;
       if (!map) return;
@@ -359,13 +383,49 @@ export default function MapChapter({
       // The journey is squeezed into the first (1 − DIVE_FRAC) of scroll; the tail
       // is the dive — zoom hard into the last stop while the outro veil closes in.
       const cam = lerpCamera(Math.max(0, stepProgress(journeyOf(sp), STEP_CAMERAS.length) - 1));
+      // dive: zoom into the last stop (where the bull stands), rotate CCW and tilt
+      // up toward the horizon so the framing lands on the bull-scene viewpoint.
       const dive = easeInOutCubic(diveOf(sp));
-      map.jumpTo({ center: cam.center, zoom: cam.zoom + DIVE_ZOOM * dive, pitch: cam.pitch, bearing: cam.bearing });
+      onDive?.(diveOf(sp));
+
+      // Fire the intro punch once, when the title starts dissolving into the map.
+      const revealProg = stepProgress(journeyOf(sp), steps.length || STEP_CAMERAS.length);
+      if (!punchFired && diveOf(sp) === 0 && revealProg > 0.45) {
+        punchFired = true;
+        punchT0 = performance.now();
+        const tick = () => {
+          apply(scrollYProgress.get());
+          if (performance.now() - punchT0 < INTRO_MS) punchRaf = requestAnimationFrame(tick);
+        };
+        punchRaf = requestAnimationFrame(tick);
+      }
+      let introZoom = 0;
+      if (punchT0 >= 0) {
+        const e = clamp((performance.now() - punchT0) / INTRO_MS, 0, 1);
+        introZoom = INTRO_ZOOM * (1 - e) * (1 - e); // start zoomed-in, ease out to 0
+      }
+
+      // The stop cameras are offset (and the left padding holds the card gutter) so
+      // the bull sits off-centre during the journey. On the dive, pan to the bull's
+      // ACTUAL coordinate and pull the left padding back to symmetric, so the bull
+      // ends up in the screen centre (where the revealed splat scene is centred).
+      const last = steps[steps.length - 1];
+      const bull: [number, number] = last ? [last.lng, last.lat] : cam.center;
+      const center: [number, number] = [lerp(cam.center[0], bull[0], dive), lerp(cam.center[1], bull[1], dive)];
+      const isNarrow = window.innerWidth < 720;
+      const padLeft = lerp(isNarrow ? 30 : 480, isNarrow ? 30 : 60, dive);
+      map.setPadding({ top: isNarrow ? 60 : 80, right: isNarrow ? 30 : 60, bottom: isNarrow ? 40 : 80, left: padLeft });
+      map.jumpTo({
+        center,
+        zoom: cam.zoom + DIVE_ZOOM * dive + introZoom,
+        pitch: Math.min(85, cam.pitch + DIVE_PITCH * dive),
+        bearing: cam.bearing + DIVE_BEARING * dive,
+      });
     };
     apply(scrollYProgress.get());
     const unsub = scrollYProgress.on('change', apply);
-    return () => unsub();
-  }, [scrollYProgress]);
+    return () => { unsub(); cancelAnimationFrame(punchRaf); };
+  }, [scrollYProgress, steps, onDive]);
 
   // step cards: only the active stop's card is shown; it fades in from the left
   // (~45px) and out the same way as the stop changes (no scroll-from-below).
@@ -378,22 +438,28 @@ export default function MapChapter({
         const d = clamp((prog - 0.45) / 0.55, 0, 1); // dissolve after the title dwell
         introRef.current.style.opacity = (1 - d * d * (3 - 2 * d)).toFixed(3);
       }
-      // outro veil: dissolves the whole map to black across the dive, so the bull
-      // scene can emerge from that darkness in the next section.
-      if (outroRef.current) outroRef.current.style.opacity = smoothstep(diveOf(sp)).toFixed(3);
+      // Cards clear out the instant the zoom begins (`dive`). In underlay mode the
+      // map does NOT melt — it keeps zooming while the bull unfolds OVER it; the
+      // standalone preview still fades to a black veil from the dive's halfway point.
+      const dive = smoothstep(diveOf(sp));
+      if (!revealUnderlay && outroRef.current) {
+        const melt = smoothstep(clamp((diveOf(sp) - 0.5) / 0.5, 0, 1));
+        outroRef.current.style.opacity = melt.toFixed(3);
+      }
       cardRefs.current.forEach((el, i) => {
         if (!el) return;
         const d = Math.abs(prog - (i + 1)); // card i lives at stop i+1 (stop 0 = title)
         const lin = clamp(1 - d / 0.55, 0, 1);
         const a = lin * lin * (3 - 2 * lin); // smoothstep
-        el.style.opacity = a.toFixed(3);
+        // cards clear out the instant the dive/zoom begins (the 5th plaque leaves)
+        el.style.opacity = (a * (1 - dive)).toFixed(3);
         el.style.transform = `translateY(-50%) translateX(${(-45 * (1 - a)).toFixed(1)}px)`;
       });
     };
     apply(scrollYProgress.get());
     const unsub = scrollYProgress.on('change', apply);
     return () => unsub();
-  }, [scrollYProgress, steps]);
+  }, [scrollYProgress, steps, revealUnderlay]);
 
   // title-card typed reveal (on pin) + scroll lock ONLY while the map is loading
   useEffect(() => {
@@ -447,11 +513,14 @@ export default function MapChapter({
       className="mc-section relative w-full bg-[#0a0a10]"
       style={{ height: `${(Math.max(N, 2) * 130) / (1 - DIVE_FRAC)}vh` }}
     >
-      <div className="sticky top-0 h-screen w-full overflow-hidden">
+      <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
         <div ref={mapHostRef} className="h-full w-full" />
         <div className="mc-vignette absolute inset-0 pointer-events-none z-[1]" />
-        {/* outro veil — dissolves the map to black across the final dive */}
-        <div ref={outroRef} className="absolute inset-0 z-20 bg-black pointer-events-none" style={{ opacity: 0 }} />
+        {/* outro veil — dissolves the map to black across the final dive (only when
+            standalone; in underlay mode the whole stage fades to transparent instead) */}
+        {revealUnderlay ? null : (
+          <div ref={outroRef} className="absolute inset-0 z-20 bg-black pointer-events-none" style={{ opacity: 0 }} />
+        )}
         {/* step cards — fixed overlay, fade in from the left */}
         <div className="absolute inset-0 z-10 pointer-events-none">
           {steps.map((s, i) => (

@@ -7,6 +7,7 @@ export { default as CandleIntro } from './CandleIntro';
 export { default as StageOverlay } from './StageOverlay';
 export { default as MapChapter } from './MapChapter';
 export { default as SplatHandoff } from './SplatHandoff';
+export { default as MapBullHandoff } from './MapBullHandoff';
 export { useChapterProgress, ChapterScrollContext } from './chapterScroll';
 export { sampleTrack, normalizeTrack } from './cameraTrack';
 export type { CameraTrack, CamKey, SampledPose } from './cameraTrack';

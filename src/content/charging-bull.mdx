@@ -44,21 +44,15 @@ import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TR
   />
 </ModelChapter>
 
-{/* ===================== I · The Way of the Bull — native map ============
-    De-iframed Mapbox + deck.gl. The chapter opens on its title card (FROM
-    DARKNESS, stop 0) which types in and dissolves into the map; the camera then
-    flies through the five stops, trail + 3D bull follow the road, step cards fade
-    in from the left. */}
-<MapChapter
+{/* ===================== I · The Way of the Bull → bull scene =============
+    De-iframed Mapbox + deck.gl, merged with the Datum bull scene into ONE
+    continuous handoff (MapBullHandoff): the map flies through its five stops,
+    then on the final dive it zooms into the bull's spot, tilts toward the horizon
+    and dissolves to transparent — revealing the bull splat scene that lies
+    underneath. The bull then holds (orbitable) and fades to black into II. */}
+<MapBullHandoff
   introTitle="The Way of the Bull"
   introBody="How three tonnes of bronze got from a SoHo studio to the entrance of the New York Stock Exchange in the back of a flatbed truck — and from there, two blocks south, to a slab of Manhattan it has never left since."
-/>
-
-{/* ===================== handoff target — bull in its environment (Datum) =====
-    The map zooms/dissolves into this Datum splat scene (loaded by id from the
-    Studio public API). Standalone section for now; the map→model zoom-dissolve
-    handoff comes next. */}
-<SplatHandoff
   label="bull-env"
   sceneId="32caa065-7eb1-43a1-b8fc-5d6017ed52ad"
   revision="1f515756-64b8-4e85-9dc8-eaa4359cbd1a"
