@@ -138,6 +138,16 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerpBearing = (a: number, b: number, t: number) => a + (((b - a + 540) % 360) - 180) * t;
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp = (t: number, lo: number, hi: number) => (t < lo ? lo : t > hi ? hi : t);
+const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 - 2 * x); };
+
+// The final slice of the chapter's scroll is the "dive": the journey is squeezed
+// into the first (1 − DIVE_FRAC), then the camera zooms hard into the last stop
+// (Bowling Green — where the bull actually stands) while a black veil closes in,
+// handing off to the Datum bull scene that emerges from that darkness.
+const DIVE_FRAC = 0.18;
+const DIVE_ZOOM = 2.4; // extra mapbox zoom levels added across the dive
+const journeyOf = (sp: number) => Math.min(1, sp / (1 - DIVE_FRAC));
+const diveOf = (sp: number) => clamp((sp - (1 - DIVE_FRAC)) / DIVE_FRAC, 0, 1);
 
 function stopAt(i: number) {
   return STEP_CAMERAS[Math.max(0, Math.min(STEP_CAMERAS.length - 1, i))];
@@ -191,6 +201,7 @@ export default function MapChapter({
   const introRef = useRef<HTMLDivElement>(null);
   const introTitleRef = useRef<HTMLHeadingElement>(null);
   const introBodyRef = useRef<HTMLParagraphElement>(null);
+  const outroRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -200,11 +211,14 @@ export default function MapChapter({
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end end'] });
 
-  // stop-frame navigation: a title-card intro stop (0), then one stop per location.
-  // The title dissolves into the map over stop 0→1; cards live at stops 1..N.
+  // stop-frame navigation: a title-card intro stop (0), then one stop per location,
+  // then a final "dive" stop (the zoom-and-dissolve into the bull scene). The
+  // title dissolves into the map over stop 0→1; cards live at stops 1..N; the dive
+  // is the last stop, reached after the journey is squeezed into (1 − DIVE_FRAC).
   const locCount = steps.length || STEP_CAMERAS.length;
-  const totalStops = locCount + 1;
-  const mapStops = Array.from({ length: totalStops }, (_, i) => i / (totalStops - 1));
+  const totalStops = locCount + 1; // title + locations (the dive is appended below)
+  const journeyStops = Array.from({ length: totalStops }, (_, i) => (i / (totalStops - 1)) * (1 - DIVE_FRAC));
+  const mapStops = [...journeyStops, 1];
   useStopFrames(sectionRef, { stops: mapStops, durationMs: 3000, enabled: locCount > 1 });
 
   // load step data
@@ -323,7 +337,7 @@ export default function MapChapter({
       overlay = new MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(0, 0, steps, routes) });
       map.addControl(overlay);
       const loop = (ts: number) => {
-        const prog = Math.max(0, stepProgress(scrollYProgress.get(), STEP_CAMERAS.length) - 1);
+        const prog = Math.max(0, stepProgress(journeyOf(scrollYProgress.get()), STEP_CAMERAS.length) - 1);
         overlay!.setProps({ layers: buildMarkerLayers(prog, (ts / 2200) % 1, steps, routes) });
         raf = requestAnimationFrame(loop);
       };
@@ -341,9 +355,12 @@ export default function MapChapter({
     const apply = (sp: number) => {
       const map = mapRef.current;
       if (!map) return;
-      // stop 0 is the title; locations are stops 1..N → location progress = stop − 1
-      const cam = lerpCamera(Math.max(0, stepProgress(sp, STEP_CAMERAS.length) - 1));
-      map.jumpTo({ center: cam.center, zoom: cam.zoom, pitch: cam.pitch, bearing: cam.bearing });
+      // stop 0 is the title; locations are stops 1..N → location progress = stop − 1.
+      // The journey is squeezed into the first (1 − DIVE_FRAC) of scroll; the tail
+      // is the dive — zoom hard into the last stop while the outro veil closes in.
+      const cam = lerpCamera(Math.max(0, stepProgress(journeyOf(sp), STEP_CAMERAS.length) - 1));
+      const dive = easeInOutCubic(diveOf(sp));
+      map.jumpTo({ center: cam.center, zoom: cam.zoom + DIVE_ZOOM * dive, pitch: cam.pitch, bearing: cam.bearing });
     };
     apply(scrollYProgress.get());
     const unsub = scrollYProgress.on('change', apply);
@@ -354,13 +371,16 @@ export default function MapChapter({
   // (~45px) and out the same way as the stop changes (no scroll-from-below).
   useEffect(() => {
     const apply = (sp: number) => {
-      const prog = stepProgress(sp, steps.length || STEP_CAMERAS.length);
+      const prog = stepProgress(journeyOf(sp), steps.length || STEP_CAMERAS.length);
       // title card is a STOP: the black HOLDS solid through stop 0 (title types on
       // a clean black screen) and only dissolves over stop 0→1, revealing the map.
       if (introRef.current) {
         const d = clamp((prog - 0.45) / 0.55, 0, 1); // dissolve after the title dwell
         introRef.current.style.opacity = (1 - d * d * (3 - 2 * d)).toFixed(3);
       }
+      // outro veil: dissolves the whole map to black across the dive, so the bull
+      // scene can emerge from that darkness in the next section.
+      if (outroRef.current) outroRef.current.style.opacity = smoothstep(diveOf(sp)).toFixed(3);
       cardRefs.current.forEach((el, i) => {
         if (!el) return;
         const d = Math.abs(prog - (i + 1)); // card i lives at stop i+1 (stop 0 = title)
@@ -425,11 +445,13 @@ export default function MapChapter({
     <section
       ref={sectionRef}
       className="mc-section relative w-full bg-[#0a0a10]"
-      style={{ height: `${Math.max(N, 2) * 130}vh` }}
+      style={{ height: `${(Math.max(N, 2) * 130) / (1 - DIVE_FRAC)}vh` }}
     >
       <div className="sticky top-0 h-screen w-full overflow-hidden">
         <div ref={mapHostRef} className="h-full w-full" />
         <div className="mc-vignette absolute inset-0 pointer-events-none z-[1]" />
+        {/* outro veil — dissolves the map to black across the final dive */}
+        <div ref={outroRef} className="absolute inset-0 z-20 bg-black pointer-events-none" style={{ opacity: 0 }} />
         {/* step cards — fixed overlay, fade in from the left */}
         <div className="absolute inset-0 z-10 pointer-events-none">
           {steps.map((s, i) => (

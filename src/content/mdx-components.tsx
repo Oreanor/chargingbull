@@ -1,5 +1,5 @@
 import type { MDXComponents } from 'mdx/types';
-import { Stage, HeavyBlock, IframeChapter, ModelChapter, CandleIntro, StageOverlay, MapChapter } from '../engine';
+import { Stage, HeavyBlock, IframeChapter, ModelChapter, CandleIntro, StageOverlay, MapChapter, SplatHandoff } from '../engine';
 import ImageCrossfade from '../components/ImageCrossfade';
 import Steps from '../components/Steps';
 import FakeSplat from '../components/FakeSplat';
@@ -16,6 +16,7 @@ export const mdxComponents: MDXComponents = {
   CandleIntro,
   StageOverlay,
   MapChapter,
+  SplatHandoff,
   ImageCrossfade,
   Steps,
   FakeSplat,

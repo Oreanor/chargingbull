@@ -58,15 +58,13 @@ import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TR
     The map zooms/dissolves into this Datum splat scene (loaded by id from the
     Studio public API). Standalone section for now; the map→model zoom-dissolve
     handoff comes next. */}
-<section className="relative h-screen w-full overflow-hidden bg-black">
-  <DatumSplat
-    label="bull-env"
-    sceneId="32caa065-7eb1-43a1-b8fc-5d6017ed52ad"
-    revision="1f515756-64b8-4e85-9dc8-eaa4359cbd1a"
-    background={[0, 0, 0, 1]}
-    cameraStateOverride={{ position: [71.62, 25.73, 57.54], orbitTarget: [0, 0, 0], fov: 60 }}
-  />
-</section>
+<SplatHandoff
+  label="bull-env"
+  sceneId="32caa065-7eb1-43a1-b8fc-5d6017ed52ad"
+  revision="1f515756-64b8-4e85-9dc8-eaa4359cbd1a"
+  background={[0, 0, 0, 1]}
+  cameraStateOverride={{ position: [76.37, 27.73, 51.08], orbitTarget: [0, -1.5, 0], fov: 60 }}
+/>
 
 {/* ===================== II · Bulls, Bears & Crises ====================== */}
 
