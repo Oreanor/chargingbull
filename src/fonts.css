@@ -10,14 +10,37 @@
    Martina Plantijn    (old-style serif body)     → Martina Plantijn (licensed, local)
    Space Mono          (mono labels)              → Space Mono     (local)
    Space Grotesk       (eyebrow labels)           → Space Grotesk  (local)
-   Ayer Poster Cursive (huge display italic)      → Playfair Display italic (substitute)
-   RR Repose Prop      (giant numerals)           → Archivo        (substitute)
+   Ayer Poster Cursive (huge display italic)      → Ayer Poster Cursive (licensed, local)
+   RR Repose Prop      (giant numerals)           → RR Repose Prop  (licensed, local)
+   Druk Condensed      (candle-intro hero)        → Druk Condensed  (licensed, local)
 
-   Only Ayer and Repose are still free substitutes — no licensed files yet.
+   All families now use licensed local files. Playfair/Archivo remain only as a
+   last-resort fallback in the variable chains below.
    ============================================================================ */
 
-/* --- Remaining substitutes (no licensed files): Ayer → Playfair, Repose → Archivo --- */
+/* --- Fallbacks only (real files below now drive Ayer/Repose) --- */
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap');
+
+/* ------------------------------------------------------------------ Druk --- */
+@font-face {
+  font-family: 'Druk Condensed';
+  src: url('./assets/fonts/DrukCondensed-Super.otf') format('opentype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+/* --------------------------------------------------- Ayer Poster Cursive --- */
+@font-face {
+  font-family: 'Ayer Poster Cursive';
+  src: url('./assets/fonts/AyerPosterCursive-BlackItalic.woff2') format('woff2');
+  font-weight: 900; font-style: italic; font-display: swap;
+}
+
+/* --------------------------------------------------------- RR Repose Prop --- */
+@font-face {
+  font-family: 'RR Repose Prop';
+  src: url('./assets/fonts/RRReposeProp-C.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
 
 /* ---------------------------------------------------------------- Struve --- */
 @font-face {
@@ -97,6 +120,7 @@
   --font-martina: 'Martina Plantijn', 'Times New Roman', serif; /* serif body     */
   --font-mono:    'Space Mono', ui-monospace, monospace;        /* mono labels    */
   --font-grotesk: 'Space Grotesk', system-ui, sans-serif;       /* eyebrow labels */
-  --font-ayer:    'Playfair Display', Georgia, serif;           /* display cursive (substitute) */
-  --font-repose:  'Archivo', 'Struve', sans-serif;              /* giant numerals (substitute)  */
+  --font-ayer:    'Ayer Poster Cursive', 'Playfair Display', Georgia, serif; /* display cursive */
+  --font-repose:  'RR Repose Prop', 'Archivo', 'Struve', sans-serif;         /* giant numerals  */
+  --font-druk:    'Druk Condensed', 'Archivo', system-ui, sans-serif;        /* condensed display */
 }

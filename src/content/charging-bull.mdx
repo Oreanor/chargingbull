@@ -1,3 +1,5 @@
+import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TRACK, OPENER_STOPS, OPENER_STOP_DURATIONS } from './openerBull';
+
 {/* ─────────────────────────────────────────────────────────────────────────
     Charging Bull — assembled longread.
     Three heavy chapters (splash candles+3D bull · bull map · S&P charts) are
@@ -6,52 +8,83 @@
     Ported 1:1 from charging-bull-handoff/index.html.
    ───────────────────────────────────────────────────────────────────────── */}
 
-{/* ===================== OPENER — Black Monday candles + 3D bull reveal ===== */}
+{/* ===================== OPENER — Black Monday candles + 3D bull reveal =====
+    Native (de-iframed): one chapter section on the timeline. The bull is a
+    <ModelChapter> (transparent canvas, track baked from stages.json + explode,
+    placed at the authored scale). Two overlay layers ride the SAME scroll:
+    <CandleIntro> (candles, first half) and <StageOverlay> (per-stage texts +
+    annotations). Camera flights + explode are editable via ?edit; texts/candles
+    are styled by hand. */}
 
-<IframeChapter
-  src="/chapters/splash/index.html"
-  title="S&P 500 — Black Monday 1987"
-  vh={1700}
+<ModelChapter
+  src={OPENER_MODEL}
+  frames={OPENER_FRAMES}
+  loader
+  stops={OPENER_STOPS}
+  stopDurationMs={OPENER_STOP_DURATIONS}
+  background={[0, 0, 0, 1]}
+  placement={OPENER_PLACEMENT}
+  extras={OPENER_EXTRAS}
+  track={OPENER_TRACK}
+>
+  <CandleIntro span={[0, 0.5]} />
+  <StageOverlay
+    stagesUrl="/chapters/splash/stages.json"
+    range={[0.52, 1]}
+    plaques={[
+      {
+        title: 'After Black Monday',
+        body: 'Black Monday 1987 wiped billions off the stock market, and a couple of years later, a bronze bull stood on Bowling Green in NYC, poised for eternal growth. Arturo Di Modica turned his personal fear of crises into a sculpture of the Charging Bull, which convinces New York every day: downturns are temporary, but stubbornness is not.',
+      },
+      {
+        title: "Bull's proportions",
+        body: 'Side-on, the proportions read true. 3.4 metres at the shoulder. 4.9 metres nose to tail. Heavier than a Manhattan delivery truck, low enough that tourists climb on its back for the photo. Di Modica wanted the silhouette of an animal mid-charge — not a monument — and the choice of pose forced everything else: a heavy front quarter, a planted hind, the centre of gravity dropped forward.',
+      },
+    ]}
+  />
+</ModelChapter>
+
+{/* ===================== I · The Way of the Bull — native map ============
+    De-iframed Mapbox + deck.gl. The chapter opens on its title card (FROM
+    DARKNESS, stop 0) which types in and dissolves into the map; the camera then
+    flies through the five stops, trail + 3D bull follow the road, step cards fade
+    in from the left. */}
+<MapChapter
+  introTitle="The Way of the Bull"
+  introBody="How three tonnes of bronze got from a SoHo studio to the entrance of the New York Stock Exchange in the back of a flatbed truck — and from there, two blocks south, to a slab of Manhattan it has never left since."
 />
 
-{/* ===================== I · The Way of the Bull ========================== */}
-
-<Break numeral="I" title="The Way of the Bull">
-  How three tonnes of bronze rolled out of a Brooklyn foundry, crossed the
-  Manhattan Bridge in the back of a flatbed truck, and ended up beneath the
-  Christmas tree at the New York Stock Exchange — then, two blocks south, on a
-  slab of Lower Manhattan it has never left since.
-</Break>
-
-{/* ===================== CHAPTER I — the map journey ===================== */}
-
-{/* Map journey, then an exit zone: the map zooms toward the viewer and fades
-    out while the 3D bull crossfades in from transparent and grows ~20%, then
-    dwells (draggable to rotate). Model is the existing splash GLB for now —
-    swap public/models/bull.glb later. */}
-<IframeChapter
-  src="/chapters/bull/index.html"
-  title="The way of the Bull"
-  vh={900}
-  wheelScale={0.4}
-  exitVh={200}
-  interactive
->
-  <BullViewer />
-</IframeChapter>
+{/* ===================== handoff target — bull in its environment (Datum) =====
+    The map zooms/dissolves into this Datum splat scene (loaded by id from the
+    Studio public API). Standalone section for now; the map→model zoom-dissolve
+    handoff comes next. */}
+<section className="relative h-screen w-full overflow-hidden bg-black">
+  <DatumSplat
+    label="bull-env"
+    sceneId="32caa065-7eb1-43a1-b8fc-5d6017ed52ad"
+    revision="1f515756-64b8-4e85-9dc8-eaa4359cbd1a"
+    background={[0, 0, 0, 1]}
+    cameraStateOverride={{ position: [71.62, 25.73, 57.54], orbitTarget: [0, 0, 0], fov: 60 }}
+  />
+</section>
 
 {/* ===================== II · Bulls, Bears & Crises ====================== */}
 
-<Break numeral="II" title="Bulls, Bears & Crises">
-  A bronze statue can hold a pose forever. Markets cannot. They move in two
-  distinct moods — named, since the 18th century, after the two ways an animal
-  attacks.
-</Break>
+<BreakReveal
+  titleNode={
+    <div className="flex items-end justify-center gap-[0.04em]">
+      <img src="/chapters/bears-bulls/BEARS.svg" alt="Bears" className="h-[clamp(46px,9.5vw,128px)] w-auto" />
+      <img src="/chapters/bears-bulls/vs.svg" alt="vs" className="h-[clamp(24px,5vw,66px)] w-auto mb-[0.28em] mx-[0.1em]" />
+      <img src="/chapters/bears-bulls/Bulls.svg" alt="Bulls" className="h-[clamp(52px,11vw,148px)] w-auto" />
+    </div>
+  }
+  body="A bronze statue can hold a pose forever. Markets cannot. They move in two distinct moods—named, since the 18th century, after the two ways an animal attacks."
+/>
 
 {/* ===================== EXPLAINER — bull / bear market ================== */}
 
 <Prose>
-  <p className="text-[clamp(17px,1.5vw,22px)] leading-[1.55] text-fg first:[&>b]:font-semibold">
+  <div className="text-[clamp(17px,1.5vw,22px)] leading-[1.55] text-fg first:[&>b]:font-semibold">
     A <strong className="text-emerald-300">bull market</strong> is when prices
     climb — broadly, persistently, for months or years at a stretch. A{' '}
     <strong className="text-rose-300">bear market</strong> is when they fall by
@@ -59,8 +92,8 @@
     animal strikes: a bull tosses its horns <em>upward</em>; a bear swipes its
     paw <em>down</em>. Eighteenth-century London coffee-houses borrowed the
     image, and the labels stuck.
-  </p>
-  <p>
+  </div>
+  <div>
     The difference isn't only direction. A bull market runs on confidence — easy
     credit, rising earnings, the comfortable belief that next quarter will look
     like this one, only larger. A bear market runs on the opposite: a sudden,
@@ -70,13 +103,13 @@
     <strong>~180%</strong>; the average bear has lasted about{' '}
     <strong>13 months</strong> and lost <strong>~35%</strong>. Both sides of that
     asymmetry are what every long-term chart is really drawing.
-  </p>
-  <p>
+  </div>
+  <div>
     Let's look at what those drops actually felt like. Five of the biggest and
     best-known crises of the past seventy years, charted against the same axis:
     how much the S&P 500 lost, how fast it fell, how long it stayed down before
     climbing back.
-  </p>
+  </div>
 </Prose>
 
 {/* ===================== CHAPTER II — S&P 500 + bear markets ============= */}
@@ -93,7 +126,7 @@
   <h3 className="font-serif font-semibold text-[clamp(24px,3vw,36px)] text-fg mb-2">
     What makes a crisis a crisis.
   </h3>
-  <p>
+  <div>
     Every bear has a story, and the stories are not interchangeable. A{' '}
     <strong>credit crisis</strong> begins inside the plumbing of the financial
     system itself — banks holding loans that won't repay, balance sheets that
@@ -102,8 +135,8 @@
     global panic when nobody trusted anybody's books. Credit crises are slow to
     build and brutal to unwind; the damage reaches the real economy through
     frozen lending, not falling prices.
-  </p>
-  <p>
+  </div>
+  <div>
     A <strong>bubble crisis</strong> is the opposite: a single story — railways,
     radios, dot-coms, crypto — convinces a generation of investors that the old
     rules of valuation no longer apply. Prices detach from earnings, then from
@@ -111,8 +144,8 @@
     $5 trillion in market value not because the companies vanished, but because
     the prices had been pretending to be something they weren't. Bubbles end on
     their own, usually with no single trigger anyone can name afterwards.
-  </p>
-  <p>
+  </div>
+  <div>
     An <strong>exogenous shock</strong> comes from outside the market entirely.
     Black Monday 1987 — the event that haunted Di Modica into his midnight
     installation — was a textbook one: program-trading feedback loops on a Monday
@@ -121,29 +154,29 @@
     history, ended by a fiscal-policy response just as fast. Exogenous shocks
     land hard but rarely break the underlying machinery; markets recover when the
     shock passes.
-  </p>
-  <p>
+  </div>
+  <div>
     What separates them, in the end, is what gets broken. Bubbles break a story.
     Shocks break a mood. Credit crises break the plumbing. The first two heal in
     months. The third can take a decade. And while every commentator on every
     front page swears <em>this</em> one is different, the empirical record is
     unhelpfully consistent: the same three shapes, in different costumes.
-  </p>
-  <p className="border-l-2 border-gold/50 pl-6 my-10 font-serif italic text-[clamp(18px,1.8vw,26px)] leading-[1.4] text-fg/90">
+  </div>
+  <div className="border-l-2 border-gold/50 pl-6 my-10 font-serif italic text-[clamp(18px,1.8vw,26px)] leading-[1.4] text-fg/90">
     "Bull markets are born on pessimism, grow on skepticism, mature on optimism,
     and die on euphoria."
     <span className="block mt-3 not-italic font-mono uppercase tracking-[2px] text-[11px] text-fg/55">
       — John Templeton
     </span>
-  </p>
-  <p>
+  </div>
+  <div>
     Today the air is thick with talk of an AI bubble — the most concentrated
     capex boom in a generation, valuations on a small handful of chipmakers and
     platform companies doing most of the index's heavy lifting. Maybe it ends
     like 2000. Maybe it doesn't. The bronze on Bowling Green doesn't have an
     opinion on that — it just keeps its head down and leans forward, the way Di
     Modica cast it, as a working argument that the next chapter is still up.
-  </p>
+  </div>
 </Prose>
 
 {/* ===================== OUTRO ========================================== */}

@@ -1,0 +1,52 @@
+/* CandleIntro overlay — gridlines, facts, the "Black Monday 1987" label.
+   Ported from wallst-rodeo/candlesticks-v4.html (#grid / #facts / #bmlabel),
+   re-pointed onto the longread's font variables. Element opacity is driven from
+   JS (per-frame), except the grid, which shares the container's --ci-grid. */
+
+.ci-overlay { --ci-grid: 0; --ci-pink: #de2053; --ci-coral: #e0655b; }
+
+/* date gridlines (dashed verticals + month labels) + price gridlines */
+.ci-overlay .ci-gl {
+  position: absolute; top: 0; bottom: 38px; width: 0;
+  border-left: 1px dashed rgba(255, 255, 255, 0.35);
+  opacity: var(--ci-grid);
+}
+.ci-overlay .ci-hl {
+  position: absolute; left: 0; right: 0; height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  opacity: var(--ci-grid);
+}
+.ci-overlay .ci-gd {
+  position: absolute; bottom: 14px; transform: translateX(-50%); white-space: nowrap;
+  font: 400 12px var(--font-mono); letter-spacing: 0.05em; color: rgba(255, 255, 255, 0.6);
+  opacity: var(--ci-grid);
+}
+.ci-overlay .ci-yl {
+  position: absolute; right: 14px; transform: translateY(-50%); text-align: right; white-space: nowrap;
+  font: 400 12px var(--font-mono); letter-spacing: 0.04em; color: rgba(255, 255, 255, 0.5);
+  opacity: var(--ci-grid);
+}
+
+/* pre-crash facts, anchored to a candle date */
+.ci-overlay .ci-fact {
+  position: absolute; max-width: 212px; opacity: 0;
+  font: 400 clamp(12px, 0.95vw, 15px) / 1.42 var(--font-struve);
+  color: #d8dcd8; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
+}
+.ci-overlay .ci-fd {
+  display: block; font: 700 10.5px var(--font-mono); letter-spacing: 0.14em;
+  color: var(--ci-pink); margin-bottom: 5px;
+}
+
+/* the "Black Monday / 1987" label on the settled chart */
+.ci-overlay .ci-bm {
+  position: absolute; left: 52%; bottom: 6%; opacity: 0;
+}
+.ci-overlay .ci-bm-nm {
+  display: block; font: 700 clamp(26px, 2.8vw, 44px) / 1.05 var(--font-struve);
+  color: #fff; margin-bottom: 16px;
+}
+.ci-overlay .ci-bm-yr {
+  display: block; font: 400 clamp(90px, 13vw, 190px) / 0.84 var(--font-repose);
+  color: var(--ci-coral); letter-spacing: 0.01em;
+}

@@ -1,0 +1,56 @@
+/* MapChapter — sticky map vignette + step cards. Ported from the bull map
+   iframe (#map-stage::after, .step-card …) onto the longread fonts. */
+
+.mc-vignette {
+  background:
+    radial-gradient(ellipse at 75% 50%, transparent 25%, rgba(10, 10, 16, 0.35) 70%, rgba(10, 10, 16, 0.65) 100%),
+    linear-gradient(to right, rgba(10, 10, 16, 0.85) 0%, rgba(10, 10, 16, 0.45) 30%, rgba(10, 10, 16, 0) 55%);
+}
+@media (max-width: 720px) {
+  .mc-vignette {
+    background:
+      radial-gradient(ellipse at center, transparent 35%, rgba(10, 10, 16, 0.55) 100%),
+      linear-gradient(to bottom, rgba(10, 10, 16, 0) 30%, rgba(10, 10, 16, 0.85) 75%);
+  }
+}
+
+.mc-card {
+  max-width: 440px; margin-left: clamp(24px, 5vw, 80px);
+  background: rgba(10, 10, 16, 0.82); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(201, 169, 97, 0.18); border-radius: 4px;
+  padding: 32px 36px 36px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  color: #f5f3ee;
+}
+.mc-card::before {
+  content: ''; display: block; width: 32px; height: 1px; background: #c9a961; margin-bottom: 22px;
+}
+.mc-card:has(.mc-card-img)::before { display: none; }
+
+.mc-card-img {
+  width: calc(100% + 72px); margin: -32px -36px 24px -36px; aspect-ratio: 16 / 10;
+  background: #1a1820; overflow: hidden; position: relative;
+}
+.mc-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.92; }
+.mc-card-img::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, transparent 60%, rgba(10, 10, 16, 0.55) 100%);
+}
+.mc-card-cap {
+  position: absolute; bottom: 8px; left: 12px; right: 12px; font-size: 10px;
+  color: rgba(245, 243, 238, 0.7); letter-spacing: 0.4px; font-style: italic;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.mc-num { display: inline-flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
+.mc-num .n { font: 600 52px/1 var(--font-martina); color: #c9a961; font-style: italic; }
+.mc-num .of { font: 500 11px var(--font-mono); letter-spacing: 2.5px; text-transform: uppercase; color: rgba(245, 243, 238, 0.5); }
+
+.mc-date { font: 500 11px var(--font-mono); letter-spacing: 2.5px; text-transform: uppercase; color: #e8c87c; margin-bottom: 8px; }
+.mc-title { font: 600 36px/1.05 var(--font-martina); letter-spacing: -0.5px; color: #f5f3ee; margin-bottom: 6px; }
+.mc-loc { font-size: 12px; color: rgba(245, 243, 238, 0.45); margin-bottom: 22px; font-style: italic; letter-spacing: 0.3px; }
+.mc-comment { font: 300 14.5px/1.7 var(--font-struve); color: rgba(245, 243, 238, 0.85); }
+
+@media (max-width: 720px) {
+  .mc-card { margin-left: 0; padding: 26px 24px 30px; max-width: 100%; }
+  .mc-title { font-size: 28px; }
+}

@@ -26,6 +26,7 @@ import type { DatumEngineStats, RenderStats } from '@datum-sdk/plugins';
 export type { RenderStats, RenderSettings, TierRenderSettingsMap, DeviceTier };
 
 const DEG2RAD = Math.PI / 180;
+const RAD2DEG = 180 / Math.PI;
 
 type SphericalToCartesian = (
   target: [number, number, number],
@@ -34,9 +35,32 @@ type SphericalToCartesian = (
   polar: number,
 ) => [number, number, number];
 
+type CartesianToSpherical = (
+  target: [number, number, number],
+  position: [number, number, number],
+) => { radius: number; azimuth: number; polar: number };
+
+/** Camera pose in the spherical terms the editor/track speak (degrees + distance). */
+export interface CameraSpherical {
+  azimuthDeg: number;
+  polarDeg: number;
+  distance: number;
+  target: [number, number, number];
+  fov: number;
+}
+
 export interface DatumSceneOptions {
   container: HTMLElement;
-  modelUrl: string;
+  /** Direct model file URL (.sog/.ply). Optional if `sceneId` is given. */
+  modelUrl?: string;
+  /** Datum Studio scene id — the engine fetches the published scene (models,
+   *  camera, environment) from the Studio API and renders it. Takes precedence
+   *  over `modelUrl`. */
+  sceneId?: string;
+  /** Optional published revision for `sceneId`. */
+  revision?: string;
+  /** Studio API base (no trailing slash). Default https://studio.thedatum.ai/api */
+  studioApiUrl?: string;
   /** [r, g, b, a]. a=0 → прозрачный канвас (накладывается на страницу), a=1 → opaque */
   background?: [number, number, number, number];
   /** 'orbit' | 'fps' — см. документацию SDK */
@@ -52,6 +76,11 @@ export interface DatumSceneOptions {
   /** Авто-кадрирование камеры по bounding box модели после загрузки. По умолчанию true.
    *  Углы (azimuthDeg/polarDeg) из camera сохраняются, distance/target вычисляются. */
   autoFrame?: boolean;
+  /** Явный спферический ракурс, применяется после загрузки поверх камеры сцены.
+   *  Для тюнинга published-сцен, чья сохранённая камера не подходит. */
+  cameraOverride?: CameraSpherical;
+  /** Сырой ракурс (position/orbitTarget/fov) — для зашивки позы, пойманной в FPS. */
+  cameraStateOverride?: { position: [number, number, number]; orbitTarget: [number, number, number]; fov: number };
   /** Потолок DPR рендера. По умолчанию 2. На retina/4K (DPR 2–3) филлрейт сплатов растёт
    *  квадратично — кап режет нагрузку почти без потери качества. Игнорируется, если
    *  renderSettings.pixelRatio задан явно. Передать Infinity, чтобы не капать. */
@@ -78,7 +107,9 @@ export class DatumScene {
   private splatMesh: SplatMesh | null = null;
   private destroyed = false;
   private sphericalToCartesian: SphericalToCartesian | null = null;
+  private cartesianToSpherical: CartesianToSpherical | null = null;
   private stats: DatumEngineStats | null = null;
+  private camPinRaf = 0;
   private readonly options: DatumSceneOptions;
 
   constructor(options: DatumSceneOptions) {
@@ -92,6 +123,7 @@ export class DatumScene {
     await import('@datum-sdk/engine/index.css');
     if (this.destroyed) return;
     this.sphericalToCartesian = engineModule.helpers.sphericalToCartesian;
+    this.cartesianToSpherical = engineModule.helpers.cartesianToSpherical;
 
     // DPR-кап: дефолт window.devicePixelRatio без потолка душит филлрейт на HiDPI.
     // Явный renderSettings.pixelRatio (через spread ниже) перекрывает кап.
@@ -143,10 +175,60 @@ export class DatumScene {
     this.engine.on('scene:loaded', () => {
       if (this.destroyed) return;
       const mesh = this.engine!.getSplatMesh();
-      if (mesh) {
-        this.splatMesh = mesh;
-        if (this.options.autoFrame !== false) this.frameCamera(mesh);
+      if (mesh) this.splatMesh = mesh;
+
+      const eng = this.engine as unknown as {
+        setSceneControlsMode?: (m: string) => void;
+        setRuntimeOptions?: (o: unknown) => void;
+      };
+
+      // Set the controls mode FIRST — loadScene applies the scene's saved cameraMode
+      // and re-asserting it resets the camera, so any pose override must come AFTER.
+      if (this.options.controlsMode) {
+        try { eng.setSceneControlsMode?.(this.options.controlsMode); } catch { /* older SDK */ }
       }
+
+      const hasOverride = !!(
+        this.options.cameraStateOverride ||
+        this.options.cameraOverride ||
+        this.options.autoFrame === true ||
+        (this.options.autoFrame !== false && !this.options.sceneId)
+      );
+
+      // Kill camera collisions whenever we pin a pose. This scene is a floating
+      // "island" in empty space; in orbit mode the collision capsule shoves the
+      // camera UNDER the invisible ground (FPS already disabled collisions to
+      // free-fly). Without this the pinned pose snaps below the model.
+      if (this.options.controlsMode === 'fps' || hasOverride) {
+        try { eng.setRuntimeOptions?.({ collisions: { enabled: false } }); } catch { /* ignore */ }
+      }
+
+      // …then pin the requested camera (wins over the scene's / mode's default).
+      const applyPose = (): boolean => {
+        if (this.options.cameraStateOverride) {
+          this.engine!.setCameraState(this.options.cameraStateOverride);
+        } else if (this.options.cameraOverride) {
+          this.setCameraSpherical(this.options.cameraOverride);
+        } else if (mesh && (this.options.autoFrame === true || (this.options.autoFrame !== false && !this.options.sceneId))) {
+          this.frameCamera(mesh);
+        } else {
+          return false; // published scene with no override → keep saved camera
+        }
+        return true;
+      };
+      if (applyPose()) {
+        // Re-assert for ~600ms: orbit damping (dampingFactor can't be 0 or drag
+        // breaks) "catches up" to setCameraState and would otherwise drift the
+        // camera back toward the scene's out-of-space default on the next frames.
+        const until = performance.now() + 600;
+        const repin = () => {
+          if (this.destroyed || performance.now() > until) { this.camPinRaf = 0; return; }
+          applyPose();
+          this.camPinRaf = requestAnimationFrame(repin);
+        };
+        this.camPinRaf = requestAnimationFrame(repin);
+      }
+
       if (this.options.onProgress) this.options.onProgress(1, 1, true);
     });
 
@@ -154,6 +236,33 @@ export class DatumScene {
       if (this.options.onError) this.options.onError(e.error);
       else console.error('[DatumScene] scene loading error:', e.error);
     });
+
+    // Published Studio scene by id: the engine fetches the scene (models, camera,
+    // environment) from the Studio API; formatStudioScene maps it to engine schema.
+    if (this.options.sceneId) {
+      // default to the same-origin dev proxy (see vite.config server.proxy) to dodge
+      // the Studio API's missing CORS header; override with studioApiUrl in prod.
+      const base = this.options.studioApiUrl ?? '/datum-api';
+      const rev = this.options.revision ? `?revision=${encodeURIComponent(this.options.revision)}` : '';
+      try {
+        const res = await fetch(`${base}/scenes/${this.options.sceneId}${rev}`);
+        if (!res.ok) throw new Error(`Studio API ${res.status} ${res.statusText}`);
+        const raw = await res.json();
+        if (this.destroyed) return;
+        void this.engine.loadScene(engineModule.helpers.formatStudioScene(raw));
+      } catch (err) {
+        if (this.options.onError) this.options.onError(err);
+        else console.error('[DatumScene] studio scene load failed:', err);
+      }
+      return;
+    }
+
+    const modelUrl = this.options.modelUrl;
+    if (!modelUrl) {
+      const err = new Error('DatumScene: neither sceneId nor modelUrl provided');
+      if (this.options.onError) this.options.onError(err); else console.error(err);
+      return;
+    }
 
     const now = new Date().toISOString();
     const cam = this.options.camera ?? {};
@@ -176,9 +285,9 @@ export class DatumScene {
           id: 'model-1',
           file: {
             id: 'file-1',
-            fileUrl: this.options.modelUrl,
+            fileUrl: modelUrl,
             sizeBytes: 0,
-            filename: this.options.modelUrl.split('/').pop() ?? 'model.sog',
+            filename: modelUrl.split('/').pop() ?? 'model.sog',
             uploadedAt: now,
           },
           isVisible: true,
@@ -225,6 +334,18 @@ export class DatumScene {
     this.engine.setCameraState({ position, orbitTarget: target, fov });
   }
 
+  /** Raw engine camera state (position/orbitTarget/fov) — mode-agnostic, used to
+   *  capture an FPS-flown pose for baking. */
+  getCameraStateRaw(): { position: [number, number, number]; orbitTarget: [number, number, number]; fov: number } | null {
+    if (!this.engine) return null;
+    const cs = this.engine.getCameraState();
+    return {
+      position: (cs.position ?? [0, 0, 3]) as [number, number, number],
+      orbitTarget: (cs.orbitTarget ?? [0, 0, 0]) as [number, number, number],
+      fov: cs.fov ?? 60,
+    };
+  }
+
   /** Программное обновление камеры. Полезно для скролл-привязанных анимаций */
   setCameraState(state: {
     position?: [number, number, number];
@@ -233,6 +354,36 @@ export class DatumScene {
   }): void {
     if (!this.engine) return;
     this.engine.setCameraState(state);
+  }
+
+  /** Drive the camera from a spherical pose (the editor/track language).
+   *  Conversion to cartesian lives here so call-sites speak only az/polar/dist. */
+  setCameraSpherical(p: CameraSpherical): void {
+    if (!this.engine || !this.sphericalToCartesian) return;
+    const position = this.sphericalToCartesian(
+      p.target,
+      p.distance,
+      p.azimuthDeg * DEG2RAD,
+      p.polarDeg * DEG2RAD,
+    );
+    this.engine.setCameraState({ position, orbitTarget: p.target, fov: p.fov });
+  }
+
+  /** Read the current camera pose back as spherical — used by the editor to
+   *  capture a keyframe after the author orbits/zooms freely. */
+  getCameraSpherical(): CameraSpherical | null {
+    if (!this.engine || !this.cartesianToSpherical) return null;
+    const cs = this.engine.getCameraState();
+    const target = (cs.orbitTarget ?? [0, 0, 0]) as [number, number, number];
+    const position = (cs.position ?? [0, 0, 3]) as [number, number, number];
+    const sph = this.cartesianToSpherical(target, position);
+    return {
+      azimuthDeg: sph.azimuth * RAD2DEG,
+      polarDeg: sph.polar * RAD2DEG,
+      distance: sph.radius,
+      target,
+      fov: cs.fov ?? 60,
+    };
   }
 
   /** falloff: 1 = натуральные гауссианы, 0 = плоские диски. apertureBlur: 0..1 */
@@ -251,6 +402,7 @@ export class DatumScene {
 
   dispose(): void {
     this.destroyed = true;
+    if (this.camPinRaf) { cancelAnimationFrame(this.camPinRaf); this.camPinRaf = 0; }
     if (this.stats) {
       this.stats.dispose();
       this.stats = null;

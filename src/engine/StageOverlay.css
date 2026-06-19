@@ -1,0 +1,52 @@
+/* StageOverlay — bull per-stage narrative + in-scene annotations.
+   Ported from the splash chapter (#scenes / #annos), on the longread fonts.
+   Opacity/position are driven from JS; these are base styles to be hand-tuned. */
+
+.so-root { --so-accent: #e8c87c; }
+
+/* narrative plaque, bottom-left — semi-transparent blurred card (per the mockup:
+   #25221E @ 85%, radius 30, padding 41/50/47/50, background-blur 12). */
+.so-text {
+  position: absolute; left: 56px; bottom: 9%; opacity: 0;
+  width: min(672px, calc(100vw - 64px));
+  background: rgba(37, 34, 30, 0.85);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-radius: 30px;
+  padding: 41px 50px 47px 50px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  font: 400 clamp(14px, 1.15vw, 16px) / 1.6 var(--font-struve);
+  color: rgba(245, 243, 238, 0.82);
+  will-change: opacity;
+}
+/* optional small kicker (1–2 lines) above the heading */
+.so-text .so-kicker {
+  display: block; margin-bottom: 12px;
+  font: 500 11px / 1.45 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(245, 243, 238, 0.5);
+}
+.so-text .so-eyebrow {
+  display: block; margin-bottom: 18px;
+  font: 600 clamp(20px, 2vw, 26px) / 1.1 var(--font-struve);
+  letter-spacing: -0.01em; text-transform: none;
+  color: #61e26b;
+}
+
+@media (max-width: 720px) {
+  .so-text { padding: 28px 28px 32px; border-radius: 22px; }
+}
+
+
+/* in-scene annotations (anchored by cx,cy) */
+.so-anno {
+  position: absolute; opacity: 0; transform: translate(-50%, -50%);
+  transition: opacity 0.4s ease; will-change: opacity;
+  color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+}
+.so-anno.so-txt {
+  white-space: nowrap; font-family: var(--font-struve); font-weight: 600; letter-spacing: 0.02em;
+}
+.so-anno.so-img img { display: block; opacity: 0.9; }
+
+@media (max-width: 640px) {
+  .so-text { left: 22px; width: calc(100vw - 44px); }
+}

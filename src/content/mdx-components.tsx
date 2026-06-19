@@ -1,16 +1,21 @@
 import type { MDXComponents } from 'mdx/types';
-import { Stage, HeavyBlock, IframeChapter } from '../engine';
+import { Stage, HeavyBlock, IframeChapter, ModelChapter, CandleIntro, StageOverlay, MapChapter } from '../engine';
 import ImageCrossfade from '../components/ImageCrossfade';
 import Steps from '../components/Steps';
 import FakeSplat from '../components/FakeSplat';
 import DatumSplat from '../components/DatumSplat';
 import BullViewer from '../components/BullViewer';
 import { Prose, Break, Outro } from '../components/Prose';
+import { BreakReveal } from '../components/BreakReveal';
 
 export const mdxComponents: MDXComponents = {
   Stage,
   HeavyBlock,
   IframeChapter,
+  ModelChapter,
+  CandleIntro,
+  StageOverlay,
+  MapChapter,
   ImageCrossfade,
   Steps,
   FakeSplat,
@@ -18,6 +23,7 @@ export const mdxComponents: MDXComponents = {
   BullViewer,
   Prose,
   Break,
+  BreakReveal,
   Outro,
   h1: (props) => (
     <h1

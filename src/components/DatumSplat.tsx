@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { DatumScene, type RenderStats, type DeviceTier } from '../engine/DatumScene';
+import { DatumScene, type RenderStats, type DeviceTier, type CameraSpherical } from '../engine/DatumScene';
 
 type CameraInit = {
   azimuthDeg?: number;
@@ -18,7 +18,15 @@ type CameraInit = {
  */
 export default function DatumSplat({
   label,
-  modelUrl = '/model.sog',
+  modelUrl,
+  sceneId,
+  revision,
+  studioApiUrl,
+  cameraOverride,
+  cameraStateOverride,
+  autoFrame,
+  controlsMode,
+  allowWheelZoom = false,
   stats = false,
   background = [0, 0, 0, 1],
   camera = { azimuthDeg: 0, polarDeg: 75, distance: 5, target: [0, 0, 0], fov: 60 },
@@ -27,6 +35,20 @@ export default function DatumSplat({
 }: {
   label: string;
   modelUrl?: string;
+  /** Datum Studio scene id — loads the published scene from the API by id. */
+  sceneId?: string;
+  revision?: string;
+  studioApiUrl?: string;
+  /** Explicit spherical pose applied after load (overrides the scene's camera). */
+  cameraOverride?: CameraSpherical;
+  /** Raw pose (position/orbitTarget/fov), e.g. captured in FPS, applied on load. */
+  cameraStateOverride?: { position: [number, number, number]; orbitTarget: [number, number, number]; fov: number };
+  /** Force bounding-box auto-frame (orbit pivots around the model centre). */
+  autoFrame?: boolean;
+  /** 'orbit' (default) or 'fps' free-fly — for tuning the start pose. */
+  controlsMode?: 'orbit' | 'fps';
+  /** Let the wheel zoom the camera instead of scrolling the page (for tuning). */
+  allowWheelZoom?: boolean;
   stats?: boolean;
   /** [r,g,b,a]; a=0 — прозрачный канвас поверх страницы. */
   background?: [number, number, number, number];
@@ -46,7 +68,7 @@ export default function DatumSplat({
   // camera/background — объекты, новая ссылка на каждый рендер. Сериализуем в
   // стабильный ключ, чтобы эффект пересоздавал сцену только при смене значений,
   // а не на каждый ререндер (иначе stats-апдейты раз в 500мс реинитят движок).
-  const cfgKey = JSON.stringify({ background, camera, maxPixelRatio, deviceTier });
+  const cfgKey = JSON.stringify({ background, camera, maxPixelRatio, deviceTier, sceneId, revision, studioApiUrl, cameraOverride, cameraStateOverride, autoFrame, controlsMode, allowWheelZoom });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -55,9 +77,15 @@ export default function DatumSplat({
     if (import.meta.env.DEV) console.log(`[DatumSplat:${label}] MOUNT — init Datum SDK`);
     const scene = new DatumScene({
       container,
-      modelUrl,
+      modelUrl: sceneId ? undefined : (modelUrl ?? '/model.sog'),
+      sceneId,
+      revision,
+      studioApiUrl,
+      cameraOverride,
+      cameraStateOverride,
+      autoFrame,
       background,
-      controlsMode: 'orbit',
+      controlsMode,
       camera,
       maxPixelRatio,
       deviceTier,
@@ -66,6 +94,14 @@ export default function DatumSplat({
         if (done) {
           setPct(100);
           setReady(true);
+          // auto-print the loaded (rendered-space) pose so it can be tuned/baked
+          setTimeout(() => {
+            const c = scene.getCameraSpherical();
+            if (c) console.log('[DatumSplat] loaded camera =', JSON.stringify({
+              azimuthDeg: +c.azimuthDeg.toFixed(1), polarDeg: +c.polarDeg.toFixed(1),
+              distance: +c.distance.toFixed(2), target: c.target.map((n) => +n.toFixed(2)), fov: c.fov,
+            }));
+          }, 150);
         }
       },
       onError: (err) => setError(err instanceof Error ? err.message : String(err)),
@@ -80,8 +116,28 @@ export default function DatumSplat({
     // capture-фазе на контейнере и гасим распространение (БЕЗ preventDefault) —
     // событие не доходит до канваса, браузер скроллит страницу как обычно.
     // Pointer-события не трогаем, поэтому драг-вращение продолжает работать.
+    // Normally swallow wheel so the page scrolls (not the canvas zooming). For
+    // camera tuning we let it through so the wheel zooms.
     const blockWheelZoom = (e: WheelEvent) => e.stopPropagation();
-    container.addEventListener('wheel', blockWheelZoom, { capture: true });
+    if (!allowWheelZoom) container.addEventListener('wheel', blockWheelZoom, { capture: true });
+
+    // Press `c` to print the current orbit pose — orbit to the view you want, hit
+    // `c`, copy the numbers from the console into the chapter's cameraOverride.
+    const logCam = (e: KeyboardEvent) => {
+      if (e.key !== 'c' && e.key !== 'C') return;
+      const raw = scene.getCameraStateRaw();
+      if (raw) console.log('[DatumSplat] cameraStateOverride =', JSON.stringify({
+        position: raw.position.map((n) => +n.toFixed(2)),
+        orbitTarget: raw.orbitTarget.map((n) => +n.toFixed(2)),
+        fov: raw.fov,
+      }));
+      const c = scene.getCameraSpherical();
+      if (c) console.log('[DatumSplat] spherical =', JSON.stringify({
+        azimuthDeg: +c.azimuthDeg.toFixed(1), polarDeg: +c.polarDeg.toFixed(1),
+        distance: +c.distance.toFixed(2), target: c.target.map((n) => +n.toFixed(2)), fov: c.fov,
+      }));
+    };
+    window.addEventListener('keydown', logCam);
 
     // Движок слушает только window 'resize'. Если контейнер меняет размер без
     // ресайза окна (мобильный address-bar, layout-сдвиги) — пинаем движок вручную.
@@ -100,6 +156,7 @@ export default function DatumSplat({
     return () => {
       if (import.meta.env.DEV) console.log(`[DatumSplat:${label}] UNMOUNT — dispose Datum SDK`);
       container.removeEventListener('wheel', blockWheelZoom, { capture: true });
+      window.removeEventListener('keydown', logCam);
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
       scene.dispose();
