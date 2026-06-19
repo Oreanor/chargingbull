@@ -4,7 +4,7 @@ import { DatumScene, type CameraSpherical } from './DatumScene';
 import { GlbScene, type ExtraModelSpec } from './GlbScene';
 import { useInViewMount } from './useInViewMount';
 import { ChapterScrollContext } from './chapterScroll';
-import { useStopFrames } from './useStopFrames';
+import { usePlayhead } from './usePlayhead';
 import './ModelChapter.css';
 import {
   sampleTrack,
@@ -71,7 +71,6 @@ export default function ModelChapter({
   extras,
   stagesUrl,
   stops,
-  stopDurationMs,
   loader = false,
   interactive = false,
   edit = false,
@@ -98,12 +97,9 @@ export default function ModelChapter({
    *  page scroll until the model is ready. For the opener / first heavy model;
    *  leave off for later chapters whose assets should preload invisibly. */
   loader?: boolean;
-  /** Stop-frame navigation: progress positions (0..1) the chapter snaps between,
-   *  one animated lock+play transition per scroll gesture. Off in the editor. */
+  /** Stop frames: progress positions (0..1) the playhead dwells on (holds the camera
+   *  while you scroll across each one's band). Off in the editor. */
   stops?: number[];
-  /** Transition duration in ms — single value, or per-segment array (index =
-   *  lower stop index), so e.g. the chart build can be slow and stages quick. */
-  stopDurationMs?: number | number[];
   /** Let the reader drag-rotate the model. Default false (cinematic). The editor
    *  always allows it. Turn on for the few scenes where free rotation is wanted. */
   interactive?: boolean;
@@ -133,8 +129,12 @@ export default function ModelChapter({
   const autoFrame = track.keys.length === 0;
   const active = editMode || mounted;
 
-  // Stop-frame navigation (runtime only; the editor stays free-scrub).
-  useStopFrames(ref, { stops: stops ?? [], durationMs: stopDurationMs, enabled: !editMode && !!stops?.length });
+  // Read-only damped playhead: scroll stays the sole, untouched source; the scene
+  // reads this eased value, which settles onto the nearest stop frame when idle.
+  // (Editor / stop-less chapters fall through to raw scroll inside the hook.)
+  // short dwell: leave the hero/stop-0 quickly (so the chart starts after a nudge,
+  // not 3 screens) and spend more of each band on the transition itself.
+  const playhead = usePlayhead(scrollYProgress, { stops: stops ?? [], dwell: 0.12, enabled: !editMode && !!stops?.length });
 
   // Title-intro timer (loader chapters only).
   useEffect(() => {
@@ -166,12 +166,12 @@ export default function ModelChapter({
           ) : null}
         </div>
         {children ? (
-          <ChapterScrollContext.Provider value={scrollYProgress}>
+          <ChapterScrollContext.Provider value={playhead}>
             <div className="absolute inset-0 z-10 pointer-events-none">{children}</div>
           </ChapterScrollContext.Provider>
         ) : null}
         {!editMode && scene ? (
-          <TrackDriver scene={scene} track={track} extras={extras} progress={scrollYProgress} fadeRef={fadeRef} />
+          <TrackDriver scene={scene} track={track} extras={extras} progress={playhead} fadeRef={fadeRef} />
         ) : null}
         {editMode ? (
           <KeyframeEditor scene={scene} src={src} frames={frames} track={track} stagesUrl={stagesUrl} fadeRef={fadeRef} />

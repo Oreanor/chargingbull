@@ -20,12 +20,12 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 /** Placement matching the splash chapter's bull (scale 0.3593, no recenter). */
 export const STAGES_MODEL_PLACEMENT = { scale: 0.3593, recenter: false } as const;
 
-export interface StageCamera {
+interface StageCamera {
   fov: number;
   target: [number, number, number];
   position: [number, number, number];
 }
-export interface StageSpec {
+interface StageSpec {
   name?: string;
   camera: StageCamera;
   explode?: number;

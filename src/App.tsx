@@ -11,7 +11,7 @@ import { OPENER_MODEL, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TRACK } from './c
 /**
  * `?edit` opens a standalone, full-screen keyframe editor for a model — no
  * longread around it. Override the model/frames via query, e.g.
- *   /?edit&model=/model.sog&frames=4
+ *   /?edit&model=/models/bull.glb&frames=4
  * Pass `stages=/path/stages.json` to seed the timeline from an old splash export
  * (cartesian cameras → spherical keyframes + explode); the model is then placed
  * with that file's authored transform so the framings land exactly, e.g.

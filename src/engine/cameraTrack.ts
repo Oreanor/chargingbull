@@ -82,7 +82,7 @@ const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 
 
 /** Shortest-path interpolation between two angles in degrees. */
 function lerpAngle(a: number, b: number, t: number): number {
-  let d = ((b - a) % 360 + 540) % 360 - 180; // wrap to (-180, 180]
+  const d = ((b - a) % 360 + 540) % 360 - 180; // wrap to (-180, 180]
   return a + d * t;
 }
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;

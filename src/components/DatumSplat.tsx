@@ -159,6 +159,9 @@ export default function DatumSplat({
       ro.disconnect();
       scene.dispose();
     };
+    // cfgKey serialises every config value the effect reads — it's the intentional
+    // dep, so the engine re-inits on a real config change, not on each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label, stats, cfgKey]);
 
   return (

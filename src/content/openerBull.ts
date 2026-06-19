@@ -9,12 +9,9 @@ import type { ChapterExtra } from '../engine/ModelChapter';
  */
 
 export const OPENER_MODEL = '/chapters/splash/models/Bullforweb2-butcher2.glb';
-export const OPENER_FRAMES = 16;
+export const OPENER_FRAMES = 24;
 export const OPENER_PLACEMENT = { scale: 0.3593, recenter: false } as const;
 export const OPENER_STOPS = [0, 0.3, 0.53, 0.63, 0.75, 0.88, 1];
-// per-segment transition durations (ms): [intro→chart (~3s draw), chart→scatter+kick,
-// then the 4 bull stages — ×1.5 longer & smoother].
-export const OPENER_STOP_DURATIONS = [4200, 1950, 1350, 1350, 1350, 1350];
 
 export const OPENER_EXTRAS: ChapterExtra[] = [
   {

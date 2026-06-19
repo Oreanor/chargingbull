@@ -23,7 +23,7 @@ import type {
 } from '@datum-sdk/engine';
 import type { DatumEngineStats, RenderStats } from '@datum-sdk/plugins';
 
-export type { RenderStats, RenderSettings, TierRenderSettingsMap, DeviceTier };
+export type { RenderStats, DeviceTier };
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;

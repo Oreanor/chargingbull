@@ -343,7 +343,6 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       renderer.domElement.remove();
       overlay.innerHTML = '';
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress]);
 
   return (

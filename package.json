@@ -6,15 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "knip": "knip"
   },
   "dependencies": {
     "@datum-sdk/engine": "file:./vendor/datum-sdk-engine-0.6.1.tgz",
     "@datum-sdk/plugins": "file:./vendor/datum-sdk-plugins-0.6.1.tgz",
+    "@deck.gl/layers": "^9.3.4",
     "@deck.gl/mapbox": "^9.3.4",
     "@deck.gl/mesh-layers": "^9.3.4",
     "@sparkjsdev/spark": "file:./vendor/datum-sdk-spark-fork-2.0.0-fork.3.tgz",
-    "deck.gl": "^9.3.4",
     "mapbox-gl": "^3.25.0",
     "motion": "^11.15.0",
     "react": "^18.3.1",
@@ -22,17 +24,23 @@
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@mdx-js/rollup": "^3.1.0",
-    "@types/mapbox-gl": "^3.4.1",
     "@types/mdx": "^2.0.13",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "eslint": "^10.5.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.6.0",
+    "knip": "^6.17.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.61.1",
     "vite": "^6.0.3"
   },
   "overrides": {

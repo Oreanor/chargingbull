@@ -1,7 +1,7 @@
 import { useCallback, useRef, type ComponentProps } from 'react';
 import MapChapter from './MapChapter';
 import DatumSplat from '../components/DatumSplat';
-import { useDeferUntilScroll } from './useDeferUntilScroll';
+import { useInViewMount } from './useInViewMount';
 
 /**
  * MapBullHandoff — merges the map chapter and the bull splat scene into ONE
@@ -58,17 +58,22 @@ export default function MapBullHandoff({
   const clipRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef<HTMLDivElement>(null);
 
-  // Hold the 54 MB bull splat off the initial paint: it mounts (and starts
-  // streaming) on the reader's first scroll. The opener above is 16 screens tall,
-  // so there's ample runway for it to land before the dive reaches it — no lock.
-  const armed = useDeferUntilScroll();
+  // Mount the 54 MB bull splat only as this section approaches — NOT during the
+  // opener. Otherwise its WebGL engine renders 60fps behind the opener (off-screen)
+  // and steals frames from the opener's 3D scene. mountMargin gives the (long) map
+  // journey to stream it in before the dive reveals it; it never unmounts after.
+  const { ref: gateRef, mounted: armed } = useInViewMount<HTMLDivElement>({
+    mountMargin: 1.5,
+    unmountMargin: Infinity,
+  });
 
   // Unfold the bull over the map. Iris mask + opacity on the outer (un-transformed)
   // layer, scale on the inner layer — kept separate so the mask isn't shrunk by scale.
   const onDive = useCallback((dive: number) => {
     const raw = clamp01((dive - REVEAL_FROM) / REVEAL_SPAN);
-    const e = easeOutCubic(raw); // bull arrives with deceleration (scale/opacity)
+    const e = easeOutCubic(raw); // scale arrives with deceleration
     const i = easeInCubic(raw);  // iris grows with acceleration
+    const op = raw * raw;        // bull "densifies": starts fully transparent, alpha eases IN as the circle grows
     if (clipRef.current) {
       const halfH = window.innerHeight / 2;
       const cornerPx = Math.hypot(window.innerWidth, window.innerHeight) / 2;
@@ -80,7 +85,7 @@ export default function MapBullHandoff({
       const mask = circleMask(r);
       clipRef.current.style.webkitMaskImage = mask;
       clipRef.current.style.maskImage = mask;
-      clipRef.current.style.opacity = e.toFixed(3);
+      clipRef.current.style.opacity = op.toFixed(3);
     }
     if (scaleRef.current) {
       scaleRef.current.style.transform = `scale(${(START_SCALE + (1 - START_SCALE) * e).toFixed(4)})`;
@@ -91,7 +96,7 @@ export default function MapBullHandoff({
   }, []);
 
   return (
-    <div className="relative bg-black">
+    <div ref={gateRef} className="relative bg-black">
       {/* BULL — overlay ON TOP; transparent + tiny circle until the dive reveals it,
           then slides up and away on the exit scroll. */}
       <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none">

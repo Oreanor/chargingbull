@@ -1,25 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { useScroll } from 'motion/react';
-import mapboxgl from 'mapbox-gl';
+import type { Map as MapboxMap } from 'mapbox-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { Layer } from '@deck.gl/core';
 import { ScatterplotLayer, PathLayer } from '@deck.gl/layers';
 import { ScenegraphLayer } from '@deck.gl/mesh-layers';
-import { useStopFrames } from './useStopFrames';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import { usePlayhead } from './usePlayhead';
 import './MapChapter.css';
 
 type LngLat = [number, number];
 const BULL_3D_MODEL_URL = '/chapters/bull/images/bull.glb';
+// Mapbox is dynamically imported in createMap (it's ~1MB+ and the map appears
+// chapters in); the access token is stashed here for the Directions fetch.
+let mapboxToken = '';
 
-/** Warm the map chapter's heavy assets (route data + 3D bull) into the HTTP cache
- *  ahead of time, so the map appears without a wait. Idempotent. */
-let mapPreloaded = false;
-export async function preloadMapAssets(dataUrl = '/chapters/bull/data.json') {
-  if (mapPreloaded) return;
-  mapPreloaded = true;
-  await Promise.allSettled([fetch(dataUrl), fetch(BULL_3D_MODEL_URL)]);
-}
 // Non-interleaved overlay renders on its own canvas above the map, so markers
 // don't need to fight building depth — but keep depth off for safety.
 const NO_DEPTH = { depthCompare: 'always', depthWriteEnabled: false } as const;
@@ -42,7 +36,7 @@ async function fetchAllRoutes(steps: { lng: number; lat: number }[]): Promise<Ln
     const b: LngLat = [steps[i + 1].lng, steps[i + 1].lat];
     if (Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5) { segments.push([a, b]); continue; }
     try {
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${a[0]},${a[1]};${b[0]},${b[1]}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${a[0]},${a[1]};${b[0]},${b[1]}?geometries=geojson&overview=full&access_token=${mapboxToken}`;
       const j = await (await fetch(url)).json();
       const coords = j.routes?.[0]?.geometry?.coordinates as LngLat[] | undefined;
       if (coords && coords.length >= 2) { coords[0] = a; coords[coords.length - 1] = b; segments.push(coords); }
@@ -175,19 +169,27 @@ function lerpCamera(progress: number) {
   };
 }
 
-// scrollYProgress 0..1 → continuous stop progress 0..seg, holding (dwell) while
-// each stop is centred, transitioning between. `seg` = number of stops − 1.
-const DWELL = 0.14;
-function stepProgress(sp: number, seg: number) {
-  const x = clamp(sp, 0, 1) * seg;
-  const i = Math.min(seg - 1e-6, x);
-  const base = Math.floor(i);
-  const local = x - base;
-  let t: number;
-  if (local < DWELL) t = 0;
-  else if (local > 1 - DWELL) t = 1;
-  else t = (local - DWELL) / (1 - 2 * DWELL);
-  return base + t;
+// Per-segment journey weights, ported from the source chapter (chapters/bull):
+// the long inter-borough flights — NYSE→Queens impound and Queens→Bowling Green —
+// get 1.8× the scroll room (180vh vs 100vh) so they aren't skipped two-at-a-time.
+const SEG_WEIGHTS = [1, 1, 1, 1.8, 1.8]; // title→Studio, →Foundry, →NYSE, →Impound, →Bowling Green
+// journey-space (0..1) position of each stop, from the cumulative weights.
+const STOP_BOUNDS = (() => {
+  const total = SEG_WEIGHTS.reduce((a, b) => a + b, 0);
+  const b = [0];
+  let acc = 0;
+  for (const w of SEG_WEIGHTS) { acc += w; b.push(acc / total); }
+  return b;
+})();
+
+// journey 0..1 → continuous stop progress 0..N over WEIGHTED bands. Linear: the
+// dwell-on-stops now lives in the playhead (usePlayhead), so this is a plain map.
+function stopProgress(jv: number) {
+  const N = SEG_WEIGHTS.length;
+  let k = 0;
+  while (k < N - 1 && jv > STOP_BOUNDS[k + 1]) k++;
+  const span = STOP_BOUNDS[k + 1] - STOP_BOUNDS[k] || 1;
+  return k + clamp((jv - STOP_BOUNDS[k]) / span, 0, 1);
 }
 
 export default function MapChapter({
@@ -220,7 +222,7 @@ export default function MapChapter({
   const introTitleRef = useRef<HTMLHeadingElement>(null);
   const introBodyRef = useRef<HTMLParagraphElement>(null);
   const outroRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const mapRef = useRef<MapboxMap | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -233,9 +235,16 @@ export default function MapChapter({
   // is the last stop, reached after the journey is squeezed into (1 − DIVE_FRAC).
   const locCount = steps.length || STEP_CAMERAS.length;
   const totalStops = locCount + 1; // title + locations (the dive is appended below)
-  const journeyStops = Array.from({ length: totalStops }, (_, i) => (i / (totalStops - 1)) * (1 - DIVE_FRAC));
+  // weighted stop positions (long flights get more room); falls back to even spacing
+  // if the data's stop count doesn't match the authored weights.
+  const journeyStops = (STOP_BOUNDS.length === totalStops
+    ? STOP_BOUNDS
+    : Array.from({ length: totalStops }, (_, i) => i / (totalStops - 1))
+  ).map((b) => b * (1 - DIVE_FRAC));
   const mapStops = [...journeyStops, 1];
-  useStopFrames(sectionRef, { stops: mapStops, durationMs: 3000, enabled: locCount > 1 });
+  // Read-only damped playhead (see usePlayhead). A slower damp keeps the map's
+  // cinematic flight smooth even on a fast flick; settles onto a stop when idle.
+  const playhead = usePlayhead(scrollYProgress, { stops: mapStops, enabled: locCount > 1 });
 
   // load step data
   useEffect(() => {
@@ -255,13 +264,19 @@ export default function MapChapter({
     const host = mapHostRef.current;
     if (!section || !host) return;
     let created = false;
+    let alive = true;
     let teardown = () => {};
 
-    const createMap = () => {
+    const createMap = async () => {
       if (created) return;
       created = true;
+    // Lazy-load mapbox-gl (and its CSS) only now — keeps ~1MB out of the initial bundle.
+    const mapboxgl = (await import('mapbox-gl')).default;
+    await import('mapbox-gl/dist/mapbox-gl.css');
+    if (!alive) return; // unmounted while the chunk was loading
     const token = (window as unknown as { MAPBOX_TOKEN?: string }).MAPBOX_TOKEN;
     if (!token) { setErr('MAPBOX_TOKEN missing (public/chapters/bull/config.js)'); return; }
+    mapboxToken = token;
     mapboxgl.accessToken = token;
 
     const isNarrow = window.innerWidth < 720;
@@ -333,11 +348,11 @@ export default function MapChapter({
     // create well ahead (~5 viewports) so the map is loaded by the time the title
     // card is reached — then no load-lock blocks the first stop-frame step.
     const trigger = new IntersectionObserver(
-      (ents) => { if (ents.some((x) => x.isIntersecting)) { createMap(); trigger.disconnect(); } },
+      (ents) => { if (ents.some((x) => x.isIntersecting)) { void createMap(); trigger.disconnect(); } },
       { rootMargin: '500% 0px' },
     );
     trigger.observe(section);
-    return () => { trigger.disconnect(); teardown(); };
+    return () => { alive = false; trigger.disconnect(); teardown(); };
   }, []);
 
   // deck.gl overlay: trail + stops + 3D bull moving along the fetched route.
@@ -347,14 +362,25 @@ export default function MapChapter({
     let cancelled = false;
     let raf = 0;
     let overlay: MapboxOverlay | null = null;
+    // Pause the per-frame deck.gl rebuild (incl. the 3D bull) while the section is
+    // off-screen — otherwise it re-renders 60fps for the whole page life and steals
+    // frames from other chapters.
+    let visible = true;
+    const section = sectionRef.current;
+    const visIO = section
+      ? new IntersectionObserver((es) => { visible = es.some((e) => e.isIntersecting); }, { rootMargin: '15% 0px' })
+      : null;
+    if (section && visIO) visIO.observe(section);
     (async () => {
       const routes = await fetchAllRoutes(steps);
       if (cancelled || !mapRef.current) return;
       overlay = new MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(0, 0, steps, routes) });
       map.addControl(overlay);
       const loop = (ts: number) => {
-        const prog = Math.max(0, stepProgress(journeyOf(scrollYProgress.get()), STEP_CAMERAS.length) - 1);
-        overlay!.setProps({ layers: buildMarkerLayers(prog, (ts / 2200) % 1, steps, routes) });
+        if (visible) {
+          const prog = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
+          overlay!.setProps({ layers: buildMarkerLayers(prog, (ts / 2200) % 1, steps, routes) });
+        }
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
@@ -362,9 +388,10 @@ export default function MapChapter({
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      visIO?.disconnect();
       if (overlay && mapRef.current) map.removeControl(overlay);
     };
-  }, [mapReady, steps, scrollYProgress]);
+  }, [mapReady, steps, playhead]);
 
   // scroll-driven camera
   useEffect(() => {
@@ -374,25 +401,29 @@ export default function MapChapter({
     let punchT0 = -1;
     let punchFired = false;
     let punchRaf = 0;
-    const apply = (sp: number) => {
+    const apply = () => {
       const map = mapRef.current;
       if (!map) return;
+      // journey framing rides the DAMPED playhead (settles on stops); the dive +
+      // bull reveal ride the RAW scroll, so they stay locked to the sticky/handoff
+      // layout — otherwise the damp lag lets the map unstick (slide up) before the
+      // zoom + reveal finish, flashing black with a half-grown bull iris.
+      const sj = playhead.get();
+      const sd = scrollYProgress.get();
       // stop 0 is the title; locations are stops 1..N → location progress = stop − 1.
-      // The journey is squeezed into the first (1 − DIVE_FRAC) of scroll; the tail
-      // is the dive — zoom hard into the last stop while the outro veil closes in.
-      const cam = lerpCamera(Math.max(0, stepProgress(journeyOf(sp), STEP_CAMERAS.length) - 1));
+      const cam = lerpCamera(Math.max(0, stopProgress(journeyOf(sj)) - 1));
       // dive: zoom into the last stop (where the bull stands), rotate CCW and tilt
       // up toward the horizon so the framing lands on the bull-scene viewpoint.
-      const dive = easeInOutCubic(diveOf(sp));
-      onDive?.(diveOf(sp));
+      const dive = easeInOutCubic(diveOf(sd));
+      onDive?.(diveOf(sd));
 
       // Fire the intro punch once, when the title starts dissolving into the map.
-      const revealProg = stepProgress(journeyOf(sp), steps.length || STEP_CAMERAS.length);
-      if (!punchFired && diveOf(sp) === 0 && revealProg > 0.45) {
+      const revealProg = stopProgress(journeyOf(sj));
+      if (!punchFired && diveOf(sd) === 0 && revealProg > 0.45) {
         punchFired = true;
         punchT0 = performance.now();
         const tick = () => {
-          apply(scrollYProgress.get());
+          apply();
           if (performance.now() - punchT0 < INTRO_MS) punchRaf = requestAnimationFrame(tick);
         };
         punchRaf = requestAnimationFrame(tick);
@@ -420,16 +451,23 @@ export default function MapChapter({
         bearing: cam.bearing + DIVE_BEARING * dive,
       });
     };
-    apply(scrollYProgress.get());
-    const unsub = scrollYProgress.on('change', apply);
-    return () => { unsub(); cancelAnimationFrame(punchRaf); };
-  }, [scrollYProgress, steps, onDive]);
+    // coalesce both sources into at most one apply per frame (else map.jumpTo fires
+    // ~2× per frame — once for playhead, once for raw scroll).
+    let pending = 0;
+    const schedule = () => { if (!pending) pending = requestAnimationFrame(() => { pending = 0; apply(); }); };
+    apply();
+    const unsubP = playhead.on('change', schedule);
+    const unsubS = scrollYProgress.on('change', schedule);
+    return () => { unsubP(); unsubS(); cancelAnimationFrame(punchRaf); if (pending) cancelAnimationFrame(pending); };
+  }, [playhead, scrollYProgress, steps, onDive]);
 
   // step cards: only the active stop's card is shown; it fades in from the left
   // (~45px) and out the same way as the stop changes (no scroll-from-below).
   useEffect(() => {
-    const apply = (sp: number) => {
-      const prog = stepProgress(journeyOf(sp), steps.length || STEP_CAMERAS.length);
+    const apply = () => {
+      const sj = playhead.get();        // journey (card positions / intro dissolve)
+      const sd = scrollYProgress.get();  // dive fades — raw, aligned to the handoff
+      const prog = stopProgress(journeyOf(sj));
       // title card is a STOP: the black HOLDS solid through stop 0 (title types on
       // a clean black screen) and only dissolves over stop 0→1, revealing the map.
       if (introRef.current) {
@@ -439,9 +477,9 @@ export default function MapChapter({
       // Cards clear out the instant the zoom begins (`dive`). In underlay mode the
       // map does NOT melt — it keeps zooming while the bull unfolds OVER it; the
       // standalone preview still fades to a black veil from the dive's halfway point.
-      const dive = smoothstep(diveOf(sp));
+      const dive = smoothstep(diveOf(sd));
       if (!revealUnderlay && outroRef.current) {
-        const melt = smoothstep(clamp((diveOf(sp) - 0.5) / 0.5, 0, 1));
+        const melt = smoothstep(clamp((diveOf(sd) - 0.5) / 0.5, 0, 1));
         outroRef.current.style.opacity = melt.toFixed(3);
       }
       cardRefs.current.forEach((el, i) => {
@@ -454,10 +492,13 @@ export default function MapChapter({
         el.style.transform = `translateY(-50%) translateX(${(-45 * (1 - a)).toFixed(1)}px)`;
       });
     };
-    apply(scrollYProgress.get());
-    const unsub = scrollYProgress.on('change', apply);
-    return () => unsub();
-  }, [scrollYProgress, steps, revealUnderlay]);
+    let pending = 0;
+    const schedule = () => { if (!pending) pending = requestAnimationFrame(() => { pending = 0; apply(); }); };
+    apply();
+    const unsubP = playhead.on('change', schedule);
+    const unsubS = scrollYProgress.on('change', schedule);
+    return () => { unsubP(); unsubS(); if (pending) cancelAnimationFrame(pending); };
+  }, [playhead, scrollYProgress, steps, revealUnderlay]);
 
   // title-card typed reveal (on pin). Scroll is never blocked on the map loading —
   // it streams in behind the title and just appears; the reader can scroll on.
@@ -498,7 +539,6 @@ export default function MapChapter({
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [introTitle, introBody]);
 
   const N = steps.length || STEP_CAMERAS.length;
@@ -506,7 +546,7 @@ export default function MapChapter({
     <section
       ref={sectionRef}
       className="mc-section relative w-full bg-[#0a0a10]"
-      style={{ height: `${(Math.max(N, 2) * 130) / (1 - DIVE_FRAC)}vh` }}
+      style={{ height: `${(Math.max(N, 2) * 400) / (1 - DIVE_FRAC)}vh` }}
     >
       <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
         <div ref={mapHostRef} className="h-full w-full" />
