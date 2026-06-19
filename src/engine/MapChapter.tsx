@@ -244,7 +244,9 @@ export default function MapChapter({
   const mapStops = [...journeyStops, 1];
   // Read-only damped playhead (see usePlayhead). A slower damp keeps the map's
   // cinematic flight smooth even on a fast flick; settles onto a stop when idle.
-  const playhead = usePlayhead(scrollYProgress, { stops: mapStops, enabled: locCount > 1 });
+  // bull speed is set by the timer (dockMs), not the section height — keep the section
+  // modest (~1 screen/segment) so scroll roughly matches the timer (no dead scrolls).
+  const playhead = usePlayhead(scrollYProgress, { stops: mapStops, dockMs: 1100, enabled: locCount > 1 });
 
   // load step data
   useEffect(() => {
@@ -408,18 +410,21 @@ export default function MapChapter({
       // bull reveal ride the RAW scroll, so they stay locked to the sticky/handoff
       // layout — otherwise the damp lag lets the map unstick (slide up) before the
       // zoom + reveal finish, flashing black with a half-grown bull iris.
+      // Everything rides the playhead so the dive + bull reveal COAST onto the 3D
+      // scene (dock) on idle too — not just track raw scroll and freeze. The playhead
+      // tracks scroll closely while moving, so the map still unsticks ≈ when the dive
+      // completes (no slide-up), and docks the reveal home when you pause.
       const sj = playhead.get();
-      const sd = scrollYProgress.get();
       // stop 0 is the title; locations are stops 1..N → location progress = stop − 1.
       const cam = lerpCamera(Math.max(0, stopProgress(journeyOf(sj)) - 1));
       // dive: zoom into the last stop (where the bull stands), rotate CCW and tilt
       // up toward the horizon so the framing lands on the bull-scene viewpoint.
-      const dive = easeInOutCubic(diveOf(sd));
-      onDive?.(diveOf(sd));
+      const dive = easeInOutCubic(diveOf(sj));
+      onDive?.(diveOf(sj));
 
       // Fire the intro punch once, when the title starts dissolving into the map.
       const revealProg = stopProgress(journeyOf(sj));
-      if (!punchFired && diveOf(sd) === 0 && revealProg > 0.45) {
+      if (!punchFired && diveOf(sj) === 0 && revealProg > 0.45) {
         punchFired = true;
         punchT0 = performance.now();
         const tick = () => {
@@ -453,20 +458,18 @@ export default function MapChapter({
     };
     // coalesce both sources into at most one apply per frame (else map.jumpTo fires
     // ~2× per frame — once for playhead, once for raw scroll).
-    let pending = 0;
-    const schedule = () => { if (!pending) pending = requestAnimationFrame(() => { pending = 0; apply(); }); };
     apply();
-    const unsubP = playhead.on('change', schedule);
-    const unsubS = scrollYProgress.on('change', schedule);
-    return () => { unsubP(); unsubS(); cancelAnimationFrame(punchRaf); if (pending) cancelAnimationFrame(pending); };
-  }, [playhead, scrollYProgress, steps, onDive]);
+    // playhead updates at most once per frame, so a direct subscription is already
+    // frame-throttled — no coalescing needed, and one jumpTo per frame.
+    const unsub = playhead.on('change', apply);
+    return () => { unsub(); cancelAnimationFrame(punchRaf); };
+  }, [playhead, steps, onDive]);
 
   // step cards: only the active stop's card is shown; it fades in from the left
   // (~45px) and out the same way as the stop changes (no scroll-from-below).
   useEffect(() => {
     const apply = () => {
-      const sj = playhead.get();        // journey (card positions / intro dissolve)
-      const sd = scrollYProgress.get();  // dive fades — raw, aligned to the handoff
+      const sj = playhead.get(); // everything on the playhead so cards/fades dock too
       const prog = stopProgress(journeyOf(sj));
       // title card is a STOP: the black HOLDS solid through stop 0 (title types on
       // a clean black screen) and only dissolves over stop 0→1, revealing the map.
@@ -474,31 +477,27 @@ export default function MapChapter({
         const d = clamp((prog - 0.45) / 0.55, 0, 1); // dissolve after the title dwell
         introRef.current.style.opacity = (1 - d * d * (3 - 2 * d)).toFixed(3);
       }
-      // Cards clear out the instant the zoom begins (`dive`). In underlay mode the
-      // map does NOT melt — it keeps zooming while the bull unfolds OVER it; the
-      // standalone preview still fades to a black veil from the dive's halfway point.
-      const dive = smoothstep(diveOf(sd));
+      // Outro veil (standalone preview only): fades the map to black across the dive's
+      // second half. In underlay mode the bull unfolds OVER the map instead.
       if (!revealUnderlay && outroRef.current) {
-        const melt = smoothstep(clamp((diveOf(sd) - 0.5) / 0.5, 0, 1));
+        const melt = smoothstep(clamp((diveOf(sj) - 0.5) / 0.5, 0, 1));
         outroRef.current.style.opacity = melt.toFixed(3);
       }
+      // EVENT cards: a card is shown while the bull is within ~a third of a stop of
+      // its stop; the card's CSS transition fades it up + grows 90%→100% in place on
+      // enter and back out on leave — never scrubbed by scroll. Card i = stop i+1.
+      const notDiving = diveOf(sj) === 0;
       cardRefs.current.forEach((el, i) => {
         if (!el) return;
-        const d = Math.abs(prog - (i + 1)); // card i lives at stop i+1 (stop 0 = title)
-        const lin = clamp(1 - d / 0.55, 0, 1);
-        const a = lin * lin * (3 - 2 * lin); // smoothstep
-        // cards clear out the instant the dive/zoom begins (the 5th plaque leaves)
-        el.style.opacity = (a * (1 - dive)).toFixed(3);
-        el.style.transform = `translateY(-50%) translateX(${(-45 * (1 - a)).toFixed(1)}px)`;
+        const shown = notDiving && Math.abs(prog - (i + 1)) < 0.18;
+        el.style.opacity = shown ? '1' : '0';
+        el.style.transform = `translateY(-50%) scale(${shown ? 1 : 0.9})`;
       });
     };
-    let pending = 0;
-    const schedule = () => { if (!pending) pending = requestAnimationFrame(() => { pending = 0; apply(); }); };
     apply();
-    const unsubP = playhead.on('change', schedule);
-    const unsubS = scrollYProgress.on('change', schedule);
-    return () => { unsubP(); unsubS(); if (pending) cancelAnimationFrame(pending); };
-  }, [playhead, scrollYProgress, steps, revealUnderlay]);
+    const unsub = playhead.on('change', apply);
+    return () => { unsub(); };
+  }, [playhead, steps, revealUnderlay]);
 
   // title-card typed reveal (on pin). Scroll is never blocked on the map loading —
   // it streams in behind the title and just appears; the reader can scroll on.
@@ -546,7 +545,7 @@ export default function MapChapter({
     <section
       ref={sectionRef}
       className="mc-section relative w-full bg-[#0a0a10]"
-      style={{ height: `${(Math.max(N, 2) * 400) / (1 - DIVE_FRAC)}vh` }}
+      style={{ height: `${(Math.max(N, 2) * 150) / (1 - DIVE_FRAC)}vh` }}
     >
       <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
         <div ref={mapHostRef} className="h-full w-full" />
@@ -562,8 +561,15 @@ export default function MapChapter({
             <div
               key={s.id}
               ref={(el) => { cardRefs.current[i] = el; }}
-              className="absolute left-0 top-1/2 will-change-transform"
-              style={{ opacity: 0, transform: 'translateY(-50%) translateX(-45px)' }}
+              className="absolute left-0 top-1/2 will-change-[opacity,transform]"
+              style={{
+                opacity: 0,
+                transform: 'translateY(-50%) scale(0.9)',
+                // EVENT animation: the card fades up from transparent and grows 90%→100%
+                // when the bull dwells on its stop, and back out when it moves on —
+                // driven by these CSS transitions, not scrubbed by scroll.
+                transition: 'opacity 0.45s ease, transform 0.5s cubic-bezier(0.22,1,0.36,1)',
+              }}
             >
               <div className="mc-card pointer-events-auto">
                 {s.image ? (

@@ -275,6 +275,16 @@ export default function IframeChapter({
       });
     };
 
+    // Pause the embedded app while the chapter is fully off-screen: a display:none
+    // iframe has its rendering (rAF/canvas) throttled by the browser, so the charts
+    // app stops eating frames once scrolled past. Reversible — the iframe stays
+    // loaded, so returning just shows it again (no reload, no re-inject).
+    const visIO = new IntersectionObserver(
+      ([e]) => { frame.style.display = e.isIntersecting ? '' : 'none'; },
+      { rootMargin: '25% 0px' },
+    );
+    visIO.observe(wrap);
+
     frame.addEventListener('load', injectBridge);
     window.addEventListener('message', onMessage);
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -288,6 +298,7 @@ export default function IframeChapter({
       window.removeEventListener('message', onMessage);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', applyInitialHeight);
+      visIO.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
   }, [src, vh, wheelScale, exitVh, exitScale, interactive]);

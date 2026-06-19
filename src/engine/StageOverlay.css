@@ -16,7 +16,8 @@
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
   font: 400 clamp(14px, 1.15vw, 16px) / 1.6 var(--font-struve);
   color: rgba(245, 243, 238, 0.82);
-  will-change: opacity;
+  transform-origin: left bottom;
+  will-change: opacity, transform;
 }
 /* optional small kicker (1–2 lines) above the heading */
 .so-text .so-kicker {

@@ -3,6 +3,8 @@ import { useScroll, type MotionValue } from 'motion/react';
 
 const StageProgressContext = createContext<MotionValue<number> | null>(null);
 
+// Lives with <Stage> (its context provider); the fast-refresh hint is dev-only.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useStageProgress(): MotionValue<number> {
   const v = useContext(StageProgressContext);
   if (!v) throw new Error('useStageProgress must be used inside <Stage>');

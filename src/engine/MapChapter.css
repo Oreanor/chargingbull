@@ -14,21 +14,20 @@
   }
 }
 
+/* map step cards wear the bull plaque design (.so-text): warm semi-transparent
+   blurred card, radius 30, green eyebrow title, struve body. */
 .mc-card {
-  max-width: 440px; margin-left: clamp(24px, 5vw, 80px);
-  background: rgba(10, 10, 16, 0.82); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(201, 169, 97, 0.18); border-radius: 4px;
-  padding: 32px 36px 36px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
-  color: #f5f3ee;
+  max-width: min(560px, calc(100vw - 64px)); margin-left: clamp(24px, 5vw, 80px);
+  background: rgba(37, 34, 30, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-radius: 30px;
+  padding: 41px 50px 47px 50px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  color: rgba(245, 243, 238, 0.82);
+  font: 400 clamp(14px, 1.15vw, 16px) / 1.6 var(--font-struve);
 }
-.mc-card::before {
-  content: ''; display: block; width: 32px; height: 1px; background: #c9a961; margin-bottom: 22px;
-}
-.mc-card:has(.mc-card-img)::before { display: none; }
 
 .mc-card-img {
-  width: calc(100% + 72px); margin: -32px -36px 24px -36px; aspect-ratio: 16 / 10;
-  background: #1a1820; overflow: hidden; position: relative;
+  width: calc(100% + 100px); margin: -41px -50px 24px -50px; aspect-ratio: 16 / 10;
+  background: #1a1820; overflow: hidden; position: relative; border-radius: 30px 30px 0 0;
 }
 .mc-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.92; }
 .mc-card-img::after {
@@ -45,12 +44,12 @@
 .mc-num .n { font: 600 52px/1 var(--font-martina); color: #c9a961; font-style: italic; }
 .mc-num .of { font: 500 11px var(--font-mono); letter-spacing: 2.5px; text-transform: uppercase; color: rgba(245, 243, 238, 0.5); }
 
-.mc-date { font: 500 11px var(--font-mono); letter-spacing: 2.5px; text-transform: uppercase; color: #e8c87c; margin-bottom: 8px; }
-.mc-title { font: 600 36px/1.05 var(--font-martina); letter-spacing: -0.5px; color: #f5f3ee; margin-bottom: 6px; }
-.mc-loc { font-size: 12px; color: rgba(245, 243, 238, 0.45); margin-bottom: 22px; font-style: italic; letter-spacing: 0.3px; }
-.mc-comment { font: 300 14.5px/1.7 var(--font-struve); color: rgba(245, 243, 238, 0.85); }
+.mc-date { font: 500 11px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: rgba(245, 243, 238, 0.5); margin-bottom: 8px; }
+.mc-title { font: 600 clamp(20px, 2vw, 26px)/1.1 var(--font-struve); letter-spacing: -0.01em; color: #61e26b; margin-bottom: 6px; }
+.mc-loc { font-size: 12px; color: rgba(245, 243, 238, 0.45); margin-bottom: 18px; font-style: italic; letter-spacing: 0.3px; }
+.mc-comment { font: 400 clamp(14px, 1.15vw, 16px)/1.6 var(--font-struve); color: rgba(245, 243, 238, 0.82); }
 
 @media (max-width: 720px) {
-  .mc-card { margin-left: 0; padding: 26px 24px 30px; max-width: 100%; }
-  .mc-title { font-size: 28px; }
+  .mc-card { margin-left: 0; padding: 28px 28px 32px; max-width: 100%; border-radius: 22px; }
+  .mc-card-img { margin: -28px -28px 22px -28px; width: calc(100% + 56px); border-radius: 22px 22px 0 0; }
 }

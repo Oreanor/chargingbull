@@ -71,6 +71,7 @@ export default function ModelChapter({
   extras,
   stagesUrl,
   stops,
+  stopDockMs,
   loader = false,
   interactive = false,
   edit = false,
@@ -97,9 +98,11 @@ export default function ModelChapter({
    *  page scroll until the model is ready. For the opener / first heavy model;
    *  leave off for later chapters whose assets should preload invisibly. */
   loader?: boolean;
-  /** Stop frames: progress positions (0..1) the playhead dwells on (holds the camera
-   *  while you scroll across each one's band). Off in the editor. */
+  /** Stop frames: progress positions (0..1) the playhead magnetises onto. Off in the editor. */
   stops?: number[];
+  /** Per-segment magnetise pace (ms, index = lower stop), so e.g. the chart segment
+   *  can settle much calmer than the bull stages. Single number applies to all. */
+  stopDockMs?: number | number[];
   /** Let the reader drag-rotate the model. Default false (cinematic). The editor
    *  always allows it. Turn on for the few scenes where free rotation is wanted. */
   interactive?: boolean;
@@ -132,9 +135,7 @@ export default function ModelChapter({
   // Read-only damped playhead: scroll stays the sole, untouched source; the scene
   // reads this eased value, which settles onto the nearest stop frame when idle.
   // (Editor / stop-less chapters fall through to raw scroll inside the hook.)
-  // short dwell: leave the hero/stop-0 quickly (so the chart starts after a nudge,
-  // not 3 screens) and spend more of each band on the transition itself.
-  const playhead = usePlayhead(scrollYProgress, { stops: stops ?? [], dwell: 0.12, enabled: !editMode && !!stops?.length });
+  const playhead = usePlayhead(scrollYProgress, { stops: stops ?? [], dockMs: stopDockMs, enabled: !editMode && !!stops?.length });
 
   // Title-intro timer (loader chapters only).
   useEffect(() => {

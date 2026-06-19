@@ -52,6 +52,10 @@ export default function StageOverlay({
 }) {
   const progress = useChapterProgress();
   const rootRef = useRef<HTMLDivElement>(null);
+  // serialise config so the effect re-runs (re-fetches stages.json + rebuilds the DOM)
+  // only on a real content change — not on every parent re-render where `range`/`plaques`
+  // get fresh array identities.
+  const cfgKey = JSON.stringify({ stagesUrl, range, plaques });
 
   useEffect(() => {
     const root = rootRef.current;
@@ -109,8 +113,14 @@ export default function StageOverlay({
           for (let i = 0; i < n; i++) {
             const at = atOf(i);
             const d = Math.abs(p - at);
-            // text fades up to full at its `at`, out by half a gap away
-            texts[i].style.opacity = clamp01(1 - d / (gap * 0.5)).toFixed(3);
+            // plaque is FULLY opaque on a plateau around its `at` (±0.3·gap, so it's
+            // solid even if the rest-stop lands a hair off the stage), then fades to 0
+            // by ±0.45·gap — a real pause before the next one. Grows 90%→100% with it.
+            const FULL = gap * 0.3;
+            const VIS = gap * 0.45;
+            const a = clamp01((VIS - d) / (VIS - FULL));
+            texts[i].style.opacity = a.toFixed(3);
+            texts[i].style.transform = `scale(${(0.9 + 0.1 * a).toFixed(4)})`;
             const dwell = d < gap * 0.42;
             for (const node of annos[i]) {
               const x = fw / 2 + (node.cx ?? 0) * fh;
@@ -141,7 +151,9 @@ export default function StageOverlay({
       window.removeEventListener('resize', onResize);
       root.innerHTML = '';
     };
-  }, [progress, stagesUrl, plaques]);
+    // cfgKey captures stagesUrl/range/plaques by value (re-run on content change only).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress, cfgKey]);
 
   return <div ref={rootRef} className="so-root absolute inset-0 pointer-events-none" />;
 }

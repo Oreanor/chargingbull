@@ -151,12 +151,24 @@ export default function DatumSplat({
     });
     ro.observe(container);
 
+    // Drop the (54 MB) splat canvas out of paint/composite while it's scrolled off
+    // screen — reversible, NOT a dispose (the scene stays loaded). The Datum engine
+    // self-idles its render loop when nothing's dirty, so a hidden static bull is
+    // cheap; this also spares the compositor the big layer. `visibility` keeps the
+    // buffer size, so there's no resize churn when it comes back.
+    const visIO = new IntersectionObserver(
+      ([e]) => { container.style.visibility = e.isIntersecting ? '' : 'hidden'; },
+      { rootMargin: '20% 0px' },
+    );
+    visIO.observe(container);
+
     return () => {
       if (import.meta.env.DEV) console.log(`[DatumSplat:${label}] UNMOUNT — dispose Datum SDK`);
       container.removeEventListener('wheel', blockWheelZoom, { capture: true });
       window.removeEventListener('keydown', logCam);
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
+      visIO.disconnect();
       scene.dispose();
     };
     // cfgKey serialises every config value the effect reads — it's the intentional
