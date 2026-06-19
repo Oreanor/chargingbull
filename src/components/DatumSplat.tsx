@@ -11,14 +11,14 @@ type CameraInit = {
 
 /**
  * Real Datum SDK splat viewer — drop-in replacement for FakeSplat.
- * Mounts a DatumEngine into its container, streams a .sog model, and disposes
- * on unmount (so HeavyBlock tears down the WebGL context when scrolled past).
+ * Mounts a DatumEngine into its container, loads the published scene from the
+ * Studio API by `sceneId`, and disposes on unmount (so HeavyBlock tears down
+ * the WebGL context when scrolled past).
  *
  * Pass `stats` to overlay a live FPS / splat-count / memory panel.
  */
 export default function DatumSplat({
   label,
-  modelUrl,
   sceneId,
   revision,
   studioApiUrl,
@@ -34,9 +34,8 @@ export default function DatumSplat({
   deviceTier,
 }: {
   label: string;
-  modelUrl?: string;
   /** Datum Studio scene id — loads the published scene from the API by id. */
-  sceneId?: string;
+  sceneId: string;
   revision?: string;
   studioApiUrl?: string;
   /** Explicit spherical pose applied after load (overrides the scene's camera). */
@@ -77,7 +76,6 @@ export default function DatumSplat({
     if (import.meta.env.DEV) console.log(`[DatumSplat:${label}] MOUNT — init Datum SDK`);
     const scene = new DatumScene({
       container,
-      modelUrl: sceneId ? undefined : (modelUrl ?? '/model.sog'),
       sceneId,
       revision,
       studioApiUrl,
@@ -161,7 +159,7 @@ export default function DatumSplat({
       ro.disconnect();
       scene.dispose();
     };
-  }, [label, modelUrl, stats, cfgKey]);
+  }, [label, stats, cfgKey]);
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#08080c]">
