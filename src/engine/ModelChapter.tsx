@@ -143,14 +143,9 @@ export default function ModelChapter({
     return () => clearTimeout(t);
   }, [loader]);
 
-  // Lock page scroll only while the bull is still LOADING (released the moment it
-  // loads; no lock if it was already loaded).
-  useEffect(() => {
-    if (!loader || !active || scene) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [loader, active, scene]);
+  // Scroll is never blocked on loading: while the bull streams in, the page stays
+  // fully scrollable — the reveal veil just fades it up from black once it lands
+  // (see bullRevealed). Nothing waits on the asset.
 
   return (
     <section ref={ref} style={{ height: `${frames * 100}dvh` }} className="relative w-full">

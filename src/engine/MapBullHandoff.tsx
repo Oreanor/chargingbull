@@ -1,6 +1,7 @@
 import { useCallback, useRef, type ComponentProps } from 'react';
 import MapChapter from './MapChapter';
 import DatumSplat from '../components/DatumSplat';
+import { useDeferUntilScroll } from './useDeferUntilScroll';
 
 /**
  * MapBullHandoff — merges the map chapter and the bull splat scene into ONE
@@ -24,7 +25,7 @@ const easeInCubic = (t: number) => t * t * t;                // accelerate (for 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 // The bull flies in over the back of the dive: opacity 0→1, scale 15%→100% and a
 // circular iris that grows from a small disc and opens past the screen corners.
-const REVEAL_FROM = 0.5;
+const REVEAL_FROM = 0.4;
 const REVEAL_SPAN = 0.4; // dive fraction the reveal plays over (smaller = bull arrives faster)
 const START_SCALE = 0.15;
 // Iris in two phases: (1) a round disc grows from a small dot to radius = half the
@@ -56,6 +57,11 @@ export default function MapBullHandoff({
   const overlayRef = useRef<HTMLDivElement>(null);
   const clipRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef<HTMLDivElement>(null);
+
+  // Hold the 54 MB bull splat off the initial paint: it mounts (and starts
+  // streaming) on the reader's first scroll. The opener above is 16 screens tall,
+  // so there's ample runway for it to land before the dive reaches it — no lock.
+  const armed = useDeferUntilScroll();
 
   // Unfold the bull over the map. Iris mask + opacity on the outer (un-transformed)
   // layer, scale on the inner layer — kept separate so the mask isn't shrunk by scale.
@@ -91,7 +97,7 @@ export default function MapBullHandoff({
       <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none">
         <div ref={clipRef} className="h-full w-full" style={{ opacity: 0 }}>
           <div ref={scaleRef} className="h-full w-full will-change-transform" style={{ transform: `scale(${START_SCALE})` }}>
-            <DatumSplat {...splatProps} />
+            {armed ? <DatumSplat {...splatProps} /> : null}
           </div>
         </div>
       </div>

@@ -224,8 +224,6 @@ export default function MapChapter({
   const [steps, setSteps] = useState<Step[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const mapReadyRef = useRef(false);
-  mapReadyRef.current = mapReady;
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end end'] });
 
@@ -461,7 +459,8 @@ export default function MapChapter({
     return () => unsub();
   }, [scrollYProgress, steps, revealUnderlay]);
 
-  // title-card typed reveal (on pin) + scroll lock ONLY while the map is loading
+  // title-card typed reveal (on pin). Scroll is never blocked on the map loading —
+  // it streams in behind the title and just appears; the reader can scroll on.
   useEffect(() => {
     const section = sectionRef.current;
     if (!section || !introTitle) return;
@@ -480,29 +479,25 @@ export default function MapChapter({
       });
     }
     const REVEAL_END = BODY_START + body.length * perChar + 300;
-    let triggered = false, t0 = 0, raf = 0, locked = false, prevOverflow = '';
+    let triggered = false, t0 = 0, raf = 0;
     const c01 = (t: number) => clamp(t, 0, 1);
-    const lock = () => { if (!locked) { prevOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'; locked = true; } };
-    const unlock = () => { if (locked) { document.body.style.overflow = prevOverflow; locked = false; } };
     const loop = () => {
       const t = performance.now() - t0;
       if (introTitleRef.current) introTitleRef.current.style.opacity = c01(t / 600).toFixed(3);
       for (const c of chars) c.el.style.opacity = c01((t - c.delay) / 150).toFixed(3);
-      if (locked && mapReadyRef.current) unlock();
-      if (t < REVEAL_END || locked) raf = requestAnimationFrame(loop);
+      if (t < REVEAL_END) raf = requestAnimationFrame(loop);
     };
     const onScroll = () => {
       if (triggered) return;
       const r = section.getBoundingClientRect();
       if (r.top <= 2 && r.bottom > window.innerHeight * 0.5) {
         triggered = true; t0 = performance.now();
-        if (!mapReadyRef.current) lock();
         raf = requestAnimationFrame(loop);
       }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
-    return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); unlock(); };
+    return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [introTitle, introBody]);
 

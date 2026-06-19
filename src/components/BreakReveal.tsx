@@ -51,13 +51,7 @@ export function BreakReveal({
 
     let triggered = false;
     let t0 = 0;
-    let preloadDone = !preload;
-    let scrollLocked = false;
     let raf = 0;
-    let prevOverflow = '';
-
-    const lock = () => { if (!scrollLocked) { prevOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'; scrollLocked = true; } };
-    const unlock = () => { if (scrollLocked) { document.body.style.overflow = prevOverflow; scrollLocked = false; } };
 
     const loop = () => {
       const t = performance.now() - t0;
@@ -70,12 +64,9 @@ export function BreakReveal({
       if (triggered) return;
       triggered = true;
       t0 = performance.now();
-      // only lock scroll while the next chapter's assets are still loading; if
-      // they're already warm, the reveal just plays and scroll stays free
-      if (preload && !preloadDone) {
-        lock();
-        preload().catch(() => {}).finally(() => { preloadDone = true; unlock(); });
-      }
+      // warm up the next chapter's assets during the reveal lull — but never block
+      // scroll on it: the reader can scroll on through while it streams in back.
+      if (preload) preload().catch(() => {});
       raf = requestAnimationFrame(loop);
     };
 
@@ -91,7 +82,6 @@ export function BreakReveal({
     return () => {
       window.removeEventListener('scroll', onScroll);
       cancelAnimationFrame(raf);
-      unlock();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
