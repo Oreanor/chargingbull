@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useSmoothScroll } from './smoothScroll';
 
 /**
  * IframeChapter — embeds a self-contained scrollytelling chapter (its own
@@ -158,6 +159,10 @@ export default function IframeChapter({
   const frameRef = useRef<HTMLIFrameElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const maxRef = useRef(0);
+  // The iframe's internal scroll is driven by the SMOOTHED page position (the soft
+  // chase), so its content lags in lockstep with the rest of the longread instead
+  // of jumping to the raw thumb. Null outside <SmoothScroll> → raw scroll fallback.
+  const smoothed = useSmoothScroll();
   // Mount the (heavy) overlay only near the crossfade, unmount otherwise.
   const [mountOverlay, setMountOverlay] = useState(false);
 
@@ -219,7 +224,9 @@ export default function IframeChapter({
     };
 
     // Map parent scroll → child internal scrollTop, and (in the exit zone) drive
-    // the iframe→overlay crossfade. rAF-throttled.
+    // the iframe→overlay crossfade. rAF-throttled. Reads the smoothed (chased)
+    // position so the iframe lags with the page, not the raw thumb.
+    const scrollPos = () => (smoothed ? smoothed.get() : window.scrollY);
     let raf = 0;
     const onScroll = () => {
       if (raf) return;
@@ -229,7 +236,7 @@ export default function IframeChapter({
         if (!max) return;
         const vhpx = window.innerHeight;
         const top = wrap.offsetTop;
-        const localY = window.scrollY - top;
+        const localY = scrollPos() - top;
         const exitPx = exitPxFor();
 
         if (exitPx <= 0) {
@@ -287,7 +294,12 @@ export default function IframeChapter({
 
     frame.addEventListener('load', injectBridge);
     window.addEventListener('message', onMessage);
-    window.addEventListener('scroll', onScroll, { passive: true });
+    // Drive off the smoothed position every frame when inside <SmoothScroll>; fall
+    // back to the raw scroll event for standalone use.
+    const detachDriver = smoothed
+      ? smoothed.on('change', onScroll)
+      : (window.addEventListener('scroll', onScroll, { passive: true }),
+        () => window.removeEventListener('scroll', onScroll));
     window.addEventListener('resize', applyInitialHeight);
     // iframe may already be loaded (cached) before listener attaches.
     injectBridge();
@@ -296,12 +308,12 @@ export default function IframeChapter({
     return () => {
       frame.removeEventListener('load', injectBridge);
       window.removeEventListener('message', onMessage);
-      window.removeEventListener('scroll', onScroll);
+      detachDriver();
       window.removeEventListener('resize', applyInitialHeight);
       visIO.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [src, vh, wheelScale, exitVh, exitScale, interactive]);
+  }, [src, vh, wheelScale, exitVh, exitScale, interactive, smoothed]);
 
   return (
     <section ref={wrapRef} className={`relative w-full ${className}`}>

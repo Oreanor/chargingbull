@@ -1,5 +1,6 @@
 import { createContext, useContext, useRef, type ReactNode } from 'react';
-import { useScroll, type MotionValue } from 'motion/react';
+import { type MotionValue } from 'motion/react';
+import { useSmoothProgress } from './smoothScroll';
 
 const StageProgressContext = createContext<MotionValue<number> | null>(null);
 
@@ -21,10 +22,7 @@ export default function Stage({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ['start start', 'end end'],
-  });
+  const scrollYProgress = useSmoothProgress(ref);
 
   return (
     <section

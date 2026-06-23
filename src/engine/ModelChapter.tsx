@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useScroll, type MotionValue } from 'motion/react';
+import { type MotionValue } from 'motion/react';
 import { DatumScene, type CameraSpherical } from './DatumScene';
 import { GlbScene, type ExtraModelSpec } from './GlbScene';
 import { useInViewMount } from './useInViewMount';
 import { ChapterScrollContext } from './chapterScroll';
-import { usePlayhead } from './usePlayhead';
+import { useSmoothProgress } from './smoothScroll';
 import './ModelChapter.css';
 import {
   sampleTrack,
@@ -70,8 +70,6 @@ export default function ModelChapter({
   placement,
   extras,
   stagesUrl,
-  stops,
-  stopDockMs,
   loader = false,
   interactive = false,
   edit = false,
@@ -98,11 +96,6 @@ export default function ModelChapter({
    *  page scroll until the model is ready. For the opener / first heavy model;
    *  leave off for later chapters whose assets should preload invisibly. */
   loader?: boolean;
-  /** Stop frames: progress positions (0..1) the playhead magnetises onto. Off in the editor. */
-  stops?: number[];
-  /** Per-segment magnetise pace (ms, index = lower stop), so e.g. the chart segment
-   *  can settle much calmer than the bull stages. Single number applies to all. */
-  stopDockMs?: number | number[];
   /** Let the reader drag-rotate the model. Default false (cinematic). The editor
    *  always allows it. Turn on for the few scenes where free rotation is wanted. */
   interactive?: boolean;
@@ -115,7 +108,6 @@ export default function ModelChapter({
     edit || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('edit'));
 
   const { ref, mounted } = useInViewMount<HTMLElement>({ mountMargin: 1, unmountMargin: 1.5 });
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end end'] });
   const fadeRef = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<ModelSceneHandle | null>(null);
   // The opener's title intro plays for ~INTRO_MS on black while the bull loads;
@@ -132,10 +124,10 @@ export default function ModelChapter({
   const autoFrame = track.keys.length === 0;
   const active = editMode || mounted;
 
-  // Read-only damped playhead: scroll stays the sole, untouched source; the scene
-  // reads this eased value, which settles onto the nearest stop frame when idle.
-  // (Editor / stop-less chapters fall through to raw scroll inside the hook.)
-  const playhead = usePlayhead(scrollYProgress, { stops: stops ?? [], dockMs: stopDockMs, enabled: !editMode && !!stops?.length });
+  // The chapter rides the global smoothed scroll (the soft chase) — no stop frames.
+  // Camera + overlays read this; in the editor it falls back to raw scroll (the
+  // editor drives the scene from the scrub handle, not this value).
+  const playhead = useSmoothProgress(ref);
 
   // Title-intro timer (loader chapters only).
   useEffect(() => {

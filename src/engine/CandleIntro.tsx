@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { useScroll, type MotionValue } from 'motion/react';
+import { type MotionValue } from 'motion/react';
 import * as THREE from 'three';
 import './CandleIntro.css';
 import { useChapterProgress } from './chapterScroll';
+import { useSmoothProgress } from './smoothScroll';
 
 /**
  * CandleIntro — native, self-contained "Black Monday 1987" candle intro, ported
@@ -407,7 +408,7 @@ export default function CandleIntro({
 }) {
   const ctxProgress = useChapterProgress();
   const sectionRef = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end end'] });
+  const scrollYProgress = useSmoothProgress(sectionRef);
 
   // Layer mode: the enclosing ModelChapter already provides a sticky, positioned
   // container (its children layer) — just fill it.

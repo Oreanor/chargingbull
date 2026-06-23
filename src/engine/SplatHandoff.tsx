@@ -1,6 +1,7 @@
 import { useRef, type ComponentProps } from 'react';
-import { useScroll, useTransform, motion } from 'motion/react';
+import { useTransform, motion } from 'motion/react';
 import DatumSplat from '../components/DatumSplat';
+import { useSmoothProgress } from './smoothScroll';
 
 /**
  * SplatHandoff — wraps a <DatumSplat> in a tall, sticky section with scroll-driven
@@ -30,7 +31,7 @@ export default function SplatHandoff({
   exitStart?: number;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end end'] });
+  const scrollYProgress = useSmoothProgress(sectionRef);
   // 1 (black) → 0 (clear) → hold → 0 → 1 (black)
   const veil = useTransform(scrollYProgress, [0, enterEnd, exitStart, 1], [1, 0, 0, 1]);
 

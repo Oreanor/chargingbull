@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useScroll } from 'motion/react';
 import type { Map as MapboxMap } from 'mapbox-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { Layer } from '@deck.gl/core';
 import { ScatterplotLayer, PathLayer } from '@deck.gl/layers';
 import { ScenegraphLayer } from '@deck.gl/mesh-layers';
-import { usePlayhead } from './usePlayhead';
+import { useSmoothProgress } from './smoothScroll';
 import './MapChapter.css';
 
 type LngLat = [number, number];
@@ -182,8 +181,9 @@ const STOP_BOUNDS = (() => {
   return b;
 })();
 
-// journey 0..1 → continuous stop progress 0..N over WEIGHTED bands. Linear: the
-// dwell-on-stops now lives in the playhead (usePlayhead), so this is a plain map.
+// journey 0..1 → continuous stop progress 0..N over WEIGHTED bands. Linear: there
+// are no stop frames any more — the smooth chase carries the flight, so this is a
+// plain weighted map (no dwell magnetism).
 function stopProgress(jv: number) {
   const N = SEG_WEIGHTS.length;
   let k = 0;
@@ -227,26 +227,11 @@ export default function MapChapter({
   const [err, setErr] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end end'] });
-
-  // stop-frame navigation: a title-card intro stop (0), then one stop per location,
-  // then a final "dive" stop (the zoom-and-dissolve into the bull scene). The
-  // title dissolves into the map over stop 0→1; cards live at stops 1..N; the dive
-  // is the last stop, reached after the journey is squeezed into (1 − DIVE_FRAC).
-  const locCount = steps.length || STEP_CAMERAS.length;
-  const totalStops = locCount + 1; // title + locations (the dive is appended below)
-  // weighted stop positions (long flights get more room); falls back to even spacing
-  // if the data's stop count doesn't match the authored weights.
-  const journeyStops = (STOP_BOUNDS.length === totalStops
-    ? STOP_BOUNDS
-    : Array.from({ length: totalStops }, (_, i) => i / (totalStops - 1))
-  ).map((b) => b * (1 - DIVE_FRAC));
-  const mapStops = [...journeyStops, 1];
-  // Read-only damped playhead (see usePlayhead). A slower damp keeps the map's
-  // cinematic flight smooth even on a fast flick; settles onto a stop when idle.
-  // bull speed is set by the timer (dockMs), not the section height — keep the section
-  // modest (~1 screen/segment) so scroll roughly matches the timer (no dead scrolls).
-  const playhead = usePlayhead(scrollYProgress, { stops: mapStops, dockMs: 1100, enabled: locCount > 1 });
+  // The map rides the global smoothed scroll (the soft chase) — no stop frames.
+  // The flight, dive, cards and bull marker all read this one value, so they lag
+  // in lockstep with the rest of the page. The weighted stop bands (SEG_WEIGHTS)
+  // still shape how much scroll each leg of the journey gets.
+  const playhead = useSmoothProgress(sectionRef);
 
   // load step data
   useEffect(() => {

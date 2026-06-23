@@ -13,8 +13,6 @@ import { useChapterProgress } from './chapterScroll';
  * the chapter's progress the bull occupies — match the bull track's `at`s).
  */
 
-const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
-
 interface Anno {
   kind?: 'text' | 'image';
   text?: string;
@@ -112,15 +110,34 @@ export default function StageOverlay({
           const fh = root.clientHeight;
           for (let i = 0; i < n; i++) {
             const at = atOf(i);
-            const d = Math.abs(p - at);
-            // plaque is FULLY opaque on a plateau around its `at` (±0.3·gap, so it's
-            // solid even if the rest-stop lands a hair off the stage), then fades to 0
-            // by ±0.45·gap — a real pause before the next one. Grows 90%→100% with it.
-            const FULL = gap * 0.3;
-            const VIS = gap * 0.45;
-            const a = clamp01((VIS - d) / (VIS - FULL));
-            texts[i].style.opacity = a.toFixed(3);
-            texts[i].style.transform = `scale(${(0.9 + 0.1 * a).toFixed(4)})`;
+            const sd = p - at; // signed: <0 below its stop, >0 past it
+            const d = Math.abs(sd);
+            // The plaque does NOT crossfade. It rides UP through the frame: drives in
+            // from below as you approach its stop, HOLDS at rest (bottom-left) for
+            // about one screen of scroll, then slides on UP and off the top. Off both
+            // ends it parks off-screen at opacity 0 (the cut is hidden out of frame).
+            const HOLD_HALF = gap * 0.1; // ~one screen of dwell at rest (±half)
+            const ENTER = gap * 0.26;    // scroll distance of the drive-in from below
+            const EXIT = gap * 0.26;     // scroll distance of the exit up and away
+            const enterDist = fh * 0.55; // starts this far below its rest position
+            const exitDist = fh * 1.15;  // travels this far up (clears the top edge)
+            let ty: number;
+            let op = 1;
+            if (sd < -HOLD_HALF - ENTER || sd > HOLD_HALF + EXIT) {
+              op = 0; // off-screen, parked
+              ty = sd < 0 ? enterDist : -exitDist;
+            } else if (sd < -HOLD_HALF) {
+              const t = (sd + HOLD_HALF + ENTER) / ENTER; // 0→1 over the drive-in
+              const e = 1 - (1 - t) * (1 - t); // ease-out: decelerate into rest
+              ty = enterDist * (1 - e);
+            } else if (sd <= HOLD_HALF) {
+              ty = 0; // held at rest
+            } else {
+              const t = (sd - HOLD_HALF) / EXIT; // 0→1 over the exit
+              ty = -exitDist * (t * t); // ease-in: accelerate up and away
+            }
+            texts[i].style.opacity = op.toFixed(3);
+            texts[i].style.transform = `translateY(${ty.toFixed(1)}px)`;
             const dwell = d < gap * 0.42;
             for (const node of annos[i]) {
               const x = fw / 2 + (node.cx ?? 0) * fh;

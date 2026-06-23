@@ -11,10 +11,6 @@ import type { ChapterExtra } from '../engine/ModelChapter';
 export const OPENER_MODEL = '/chapters/splash/models/Bullforweb2-butcher2.glb';
 export const OPENER_FRAMES = 10;
 export const OPENER_PLACEMENT = { scale: 0.3593, recenter: false } as const;
-export const OPENER_STOPS = [0, 0.3, 0.53, 0.63, 0.75, 0.88, 1];
-// Per-segment magnetise pace (ms, index = lower stop). The chart-draw segment (0→0.3)
-// settles much calmer than the rest so the graph draws slowly; others are snappy.
-export const OPENER_STOP_DOCK = [1600, 420, 420, 420, 420, 420];
 
 export const OPENER_EXTRAS: ChapterExtra[] = [
   {
