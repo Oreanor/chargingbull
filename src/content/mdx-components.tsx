@@ -1,29 +1,17 @@
 import type { MDXComponents } from 'mdx/types';
-import { Stage, HeavyBlock, IframeChapter, ModelChapter, ChartsChapter, CandleIntro, StageOverlay, MapChapter, SplatHandoff, MapBullHandoff } from '../engine';
-import ImageCrossfade from '../components/ImageCrossfade';
-import Steps from '../components/Steps';
-import FakeSplat from '../components/FakeSplat';
+import { ModelChapter, ChartsChapter, CandleIntro, StageOverlay, MapChapter, MapBullHandoff } from '../engine';
 import DatumSplat from '../components/DatumSplat';
-import BullViewer from '../components/BullViewer';
 import { Prose, Break, Outro } from '../components/Prose';
 import { BreakReveal } from '../components/BreakReveal';
 
 export const mdxComponents: MDXComponents = {
-  Stage,
-  HeavyBlock,
-  IframeChapter,
   ModelChapter,
   ChartsChapter,
   CandleIntro,
   StageOverlay,
   MapChapter,
-  SplatHandoff,
   MapBullHandoff,
-  ImageCrossfade,
-  Steps,
-  FakeSplat,
   DatumSplat,
-  BullViewer,
   Prose,
   Break,
   BreakReveal,
