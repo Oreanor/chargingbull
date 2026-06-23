@@ -1,5 +1,5 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
 
@@ -7,8 +7,18 @@ import App from './App';
 // (handy while tuning chapters further down — no forced jump back to the top).
 if ('scrollRestoration' in history) history.scrollRestoration = 'auto';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root')!;
+const app = (
   <React.StrictMode>
     <App />
-  </React.StrictMode>,
+  </React.StrictMode>
 );
+
+// Prerendered build (SSG) ships server-rendered markup inside #root → hydrate it.
+// Plain dev (vite) ships an empty #root → client-render. children.length counts
+// only element nodes, so the `<!--app-html-->` marker comment reads as empty.
+if (root.children.length > 0) {
+  hydrateRoot(root, app);
+} else {
+  createRoot(root).render(app);
+}

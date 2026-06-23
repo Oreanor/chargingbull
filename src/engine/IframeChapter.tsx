@@ -316,7 +316,9 @@ export default function IframeChapter({
   }, [src, vh, wheelScale, exitVh, exitScale, interactive, smoothed]);
 
   return (
-    <section ref={wrapRef} className={`relative w-full ${className}`}>
+    // Reserve an initial height in the markup (SSR / pre-JS) so the section's box is
+    // correct before the bridge measures the child; the effect then sets the exact px.
+    <section ref={wrapRef} style={{ height: `${vh}vh` }} className={`relative w-full ${className}`}>
       <div className="sticky top-0 h-[100dvh] w-full overflow-hidden">
         {/* Overlay layer (behind the iframe). Crossfades in during the exit
             zone; gets pointer-events once it's mostly visible so the bull is

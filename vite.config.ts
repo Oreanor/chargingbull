@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import mdx from '@mdx-js/rollup';
 
-export default defineConfig({
+export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
     { enforce: 'pre', ...mdx() },
     react({ include: /\.(mdx|js|jsx|ts|tsx)$/ }),
@@ -28,11 +28,15 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      output: {
-        manualChunks: {
-          'splat-vendor': ['@sparkjsdev/spark', '@datum-sdk/engine', '@datum-sdk/plugins'],
-        },
-      },
+      // manualChunks is a CLIENT concern; in the SSR build these vendors are external
+      // modules, and naming them in manualChunks errors. Only set it for the client build.
+      output: isSsrBuild
+        ? {}
+        : {
+            manualChunks: {
+              'splat-vendor': ['@sparkjsdev/spark', '@datum-sdk/engine', '@datum-sdk/plugins'],
+            },
+          },
     },
   },
-});
+}));

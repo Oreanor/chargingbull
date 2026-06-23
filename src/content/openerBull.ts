@@ -8,7 +8,7 @@ import type { ChapterExtra } from '../engine/ModelChapter';
  * "copy MDX" there, and paste the resulting `keys` back into OPENER_TRACK here.
  */
 
-export const OPENER_MODEL = '/chapters/splash/models/Bullforweb2-butcher2.glb';
+export const OPENER_MODEL = '/chapters/splash/models/Bullforweb2-butcher4.glb';
 export const OPENER_FRAMES = 10;
 export const OPENER_PLACEMENT = { scale: 0.3593, recenter: false } as const;
 

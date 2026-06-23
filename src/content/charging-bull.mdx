@@ -55,7 +55,7 @@ import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TR
   sceneId="32caa065-7eb1-43a1-b8fc-5d6017ed52ad"
   revision="1f515756-64b8-4e85-9dc8-eaa4359cbd1a"
   background={[0, 0, 0, 1]}
-  cameraStateOverride={{ position: [76.37, 27.73, 51.08], orbitTarget: [0, -1.5, 0], fov: 60 }}
+  cameraStateOverride={{ position: [97.855, 79.605, 30.468], orbitTarget: [-50.901, 58.09, -3.408], fov: 60 }}
 />
 
 {/* ===================== II · Bulls, Bears & Crises ====================== */}
@@ -102,13 +102,11 @@ import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TR
   </div>
 </Prose>
 
-{/* ===================== CHAPTER II — S&P 500 + bear markets ============= */}
+{/* ===================== CHAPTER II — S&P 500 + bear markets =============
+    De-iframed: native canvas chart (chartsEngine) driven by the smoothed scroll,
+    cards scroll in flow over the pinned chart. */}
 
-<IframeChapter
-  src="/chapters/charts/index.html"
-  title="S&P 500 — Bear Markets"
-  vh={900}
-/>
+<ChartsChapter />
 
 {/* ===================== PROSE — what makes a crisis a crisis =========== */}
 

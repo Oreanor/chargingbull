@@ -141,7 +141,11 @@ export class DatumScene {
     this.engine = new engineModule.DatumEngine({
       container: this.options.container,
       controlsMode: this.options.controlsMode ?? 'orbit',
-      cameraController: { orbit: { dampingFactor: 0.1, minDistance: 0 } },
+      // Authored orbit constraints (minDistance 0.5 / maxDistance 3000) + a near-horizon
+      // floor (maxPolarAngle = π/2 + 10°) so the camera can dip a touch below the horizon
+      // but not orbit under the ground. The scene's value is also clamped on load; this
+      // covers non-scene models too. dampingFactor stays 0.1 (engine forces enableDamping).
+      cameraController: { orbit: { dampingFactor: 0.1, minDistance: 0.5, maxDistance: 3000, maxPolarAngle: Math.PI / 2 + Math.PI / 18 } },
       environment: { background: this.options.background ?? [0, 0, 0, 1] },
       renderSettings,
       renderSettingsByTier: this.options.renderSettingsByTier,
@@ -198,7 +202,8 @@ export class DatumScene {
       // Kill camera collisions whenever we pin a pose. This scene is a floating
       // "island" in empty space; in orbit mode the collision capsule shoves the
       // camera UNDER the invisible ground (FPS already disabled collisions to
-      // free-fly). Without this the pinned pose snaps below the model.
+      // free-fly). Without this the pinned pose snaps below the model. (Tried
+      // re-enabling them on request — it broke the scene, confirming the bug.)
       if (this.options.controlsMode === 'fps' || hasOverride) {
         try { eng.setRuntimeOptions?.({ collisions: { enabled: false } }); } catch { /* ignore */ }
       }
@@ -240,15 +245,25 @@ export class DatumScene {
     // Published Studio scene by id: the engine fetches the scene (models, camera,
     // environment) from the Studio API; formatStudioScene maps it to engine schema.
     if (this.options.sceneId) {
-      // default to the same-origin dev proxy (see vite.config server.proxy) to dodge
-      // the Studio API's missing CORS header; override with studioApiUrl in prod.
-      const base = this.options.studioApiUrl ?? '/datum-api';
+      // Load the scene DIRECTLY from the public Studio API (no proxy) — the dev
+      // `/datum-api` proxy doesn't exist in production, so a proxied default would
+      // never load the splat once built. Override with studioApiUrl if needed.
+      const base = this.options.studioApiUrl ?? 'https://api.studio.thedatum.ai/api/v2/public';
       const rev = this.options.revision ? `?revision=${encodeURIComponent(this.options.revision)}` : '';
       try {
         const res = await fetch(`${base}/scenes/${this.options.sceneId}${rev}`);
         if (!res.ok) throw new Error(`Studio API ${res.status} ${res.statusText}`);
         const raw = await res.json();
         if (this.destroyed) return;
+        // Floor the orbit: clamp maxPolarAngle to the horizon (π/2) so a fly-around
+        // can't dip the camera below the look-at point ("under the ground"). The
+        // authored scene allows full π. This replaces camera collisions, which
+        // mis-resolve on this floating "island" scene (no real floor collider) and
+        // shove the camera underground — so collisions stay off (see scene:loaded).
+        const orbit = raw?.settings?.cameraController?.orbit;
+        // π/2 = horizon; +10° lets the fly-around dip a little below it (but not underground).
+        const ORBIT_FLOOR = Math.PI / 2 + Math.PI / 18;
+        if (orbit) orbit.maxPolarAngle = Math.min(orbit.maxPolarAngle ?? Math.PI, ORBIT_FLOOR);
         void this.engine.loadScene(engineModule.helpers.formatStudioScene(raw));
       } catch (err) {
         if (this.options.onError) this.options.onError(err);

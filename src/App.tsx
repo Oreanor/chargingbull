@@ -15,11 +15,15 @@ import { OPENER_MODEL, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TRACK } from './c
  * Pass `stages=/path/stages.json` to seed the timeline from an old splash export
  * (cartesian cameras → spherical keyframes + explode); the model is then placed
  * with that file's authored transform so the framings land exactly, e.g.
- *   /?edit&model=/chapters/splash/models/Bullforweb2-butcher2.glb&stages=/chapters/splash/stages.json&frames=6
+ *   /?edit&model=/chapters/splash/models/Bullforweb2-butcher4.glb&stages=/chapters/splash/stages.json&frames=6
  * Without `?edit` the real Charging Bull longread renders as before.
  */
 export default function App() {
-  const params = new URLSearchParams(window.location.search);
+  // SSR-safe: no window during prerender → empty params → renders the longread
+  // (the ?edit/?candles/?map preview branches are client/dev-only).
+  const params = new URLSearchParams(
+    typeof window !== 'undefined' ? window.location.search : '',
+  );
 
   // `?candles` previews the native Black Monday candle intro standalone (no
   // longread around it), so the provisional candle layer can be eyeballed/tuned
@@ -53,7 +57,7 @@ export default function App() {
           revision={params.get('rev') || '1f515756-64b8-4e85-9dc8-eaa4359cbd1a'}
           studioApiUrl={params.get('api') || undefined}
           controlsMode={params.get('fps') != null ? 'fps' : undefined}
-          cameraStateOverride={{ position: [76.37, 27.73, 51.08], orbitTarget: [0, -1.5, 0], fov: 60 }}
+          cameraStateOverride={{ position: [97.855, 79.605, 30.468], orbitTarget: [-50.901, 58.09, -3.408], fov: 60 }}
           allowWheelZoom
           stats
         />

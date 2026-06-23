@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Map as MapboxMap } from 'mapbox-gl';
-import { MapboxOverlay } from '@deck.gl/mapbox';
-import { Layer } from '@deck.gl/core';
-import { ScatterplotLayer, PathLayer } from '@deck.gl/layers';
-import { ScenegraphLayer } from '@deck.gl/mesh-layers';
+import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
 import './MapChapter.css';
+
+// deck.gl is imported DYNAMICALLY (in the overlay effect) — it touches browser
+// globals at module load and would crash the SSR prerender. Type-only imports
+// above are erased, so this module stays server-safe; the classes arrive here.
+type DeckLayers = {
+  MapboxOverlay: typeof import('@deck.gl/mapbox').MapboxOverlay;
+  ScatterplotLayer: typeof import('@deck.gl/layers').ScatterplotLayer;
+  PathLayer: typeof import('@deck.gl/layers').PathLayer;
+  ScenegraphLayer: typeof import('@deck.gl/mesh-layers').ScenegraphLayer;
+};
 
 type LngLat = [number, number];
 const BULL_3D_MODEL_URL = '/chapters/bull/images/bull.glb';
@@ -66,7 +73,8 @@ function computeTrailCoords(progress: number, steps: { lng: number; lat: number 
 }
 
 /** deck.gl layers: stop dots · trail · bull head (pulsing rings + 3D model). */
-function buildMarkerLayers(progress: number, pulse: number, steps: { lng: number; lat: number }[], routes: LngLat[][]): Layer[] {
+function buildMarkerLayers(DL: DeckLayers, progress: number, pulse: number, steps: { lng: number; lat: number }[], routes: LngLat[][]): Layer[] {
+  const { ScatterplotLayer, PathLayer, ScenegraphLayer } = DL;
   const layers: Layer[] = [];
   const activeStop = Math.round(progress);
   layers.push(new ScatterplotLayer({
@@ -348,7 +356,7 @@ export default function MapChapter({
     if (!map || !mapReady || steps.length < 2) return;
     let cancelled = false;
     let raf = 0;
-    let overlay: MapboxOverlay | null = null;
+    let overlay: InstanceType<DeckLayers['MapboxOverlay']> | null = null;
     // Pause the per-frame deck.gl rebuild (incl. the 3D bull) while the section is
     // off-screen — otherwise it re-renders 60fps for the whole page life and steals
     // frames from other chapters.
@@ -359,14 +367,26 @@ export default function MapChapter({
       : null;
     if (section && visIO) visIO.observe(section);
     (async () => {
+      // Load deck.gl now (client only) — kept out of the module graph for SSR.
+      const [mb, layersMod, meshMod] = await Promise.all([
+        import('@deck.gl/mapbox'),
+        import('@deck.gl/layers'),
+        import('@deck.gl/mesh-layers'),
+      ]);
+      const DL: DeckLayers = {
+        MapboxOverlay: mb.MapboxOverlay,
+        ScatterplotLayer: layersMod.ScatterplotLayer,
+        PathLayer: layersMod.PathLayer,
+        ScenegraphLayer: meshMod.ScenegraphLayer,
+      };
       const routes = await fetchAllRoutes(steps);
       if (cancelled || !mapRef.current) return;
-      overlay = new MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(0, 0, steps, routes) });
+      overlay = new DL.MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(DL, 0, 0, steps, routes) });
       map.addControl(overlay);
       const loop = (ts: number) => {
         if (visible) {
           const prog = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
-          overlay!.setProps({ layers: buildMarkerLayers(prog, (ts / 2200) % 1, steps, routes) });
+          overlay!.setProps({ layers: buildMarkerLayers(DL, prog, (ts / 2200) % 1, steps, routes) });
         }
         raf = requestAnimationFrame(loop);
       };
