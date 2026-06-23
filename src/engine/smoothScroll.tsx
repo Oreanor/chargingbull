@@ -30,10 +30,10 @@ const SMOOTH_TIME = 0.18;
 
 const SmoothCtx = createContext<MotionValue<number> | null>(null);
 
-/** The scroll position in pixels (currently a 1:1 mirror of window.scrollY), or
- *  null outside <SmoothScroll> (standalone previews fall back to raw scroll). */
-// eslint-disable-next-line react-refresh/only-export-components
-export function useSmoothScroll(): MotionValue<number> | null {
+/** The smoothed scroll position in pixels, or null outside <SmoothScroll>
+ *  (standalone previews fall back to raw scroll). Internal — consumers use
+ *  useSmoothProgress. */
+function useSmoothScroll(): MotionValue<number> | null {
   return useContext(SmoothCtx);
 }
 
@@ -59,6 +59,7 @@ function layoutTop(el: HTMLElement): number {
  * The section box is measured once and re-measured on resize and after fonts
  * load — so heights must be set up front (no late reflow) or progress remaps.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useSmoothProgress<T extends HTMLElement>(
   ref: RefObject<T | null>,
 ): MotionValue<number> {

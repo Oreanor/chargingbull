@@ -1,0 +1,122 @@
+{
+  "opener": {
+    "logoAlt": "Meridian",
+    "wordmarkAlt": "WALL ST Rodeo",
+    "hero": {
+      "subtitle": [
+        "From Black Monday to SpaceX IPO:",
+        "Why are global stock exchanges going wild?"
+      ],
+      "coordsCity": "NEW YORK",
+      "coordsGeo": "40°42′N 74°01′W"
+    },
+    "candles": {
+      "blackMondayName": "Black<br>Monday",
+      "blackMondayYear": "1987",
+      "months": ["AUG", "SEP", "OCT"],
+      "facts": [
+        { "label": "AUG 25", "text": "Five years of gains have tripled the market — and today it tops out at an all-time high." },
+        { "label": "SEP 4", "text": "The Fed raises rates for the first time in three years — the cheap money fuelling the boom starts to dry up." },
+        { "label": "OCT 16", "text": "Over the weekend Washington threatens to let the dollar slide unless Germany cuts rates — markets brace for a currency war." }
+      ]
+    },
+    "plaques": [
+      {
+        "title": "After Black Monday",
+        "body": "Black Monday 1987 wiped billions off the stock market, and a couple of years later, a bronze bull stood on Bowling Green in NYC, poised for eternal growth. Arturo Di Modica turned his personal fear of crises into a sculpture of the Charging Bull, which convinces New York every day: downturns are temporary, but stubbornness is not."
+      },
+      {
+        "title": "Bull's proportions",
+        "body": "Side-on, the proportions read true. 3.4 metres at the shoulder. 4.9 metres nose to tail. Heavier than a Manhattan delivery truck, low enough that tourists climb on its back for the photo. Di Modica wanted the silhouette of an animal mid-charge — not a monument — and the choice of pose forced everything else: a heavy front quarter, a planted hind, the centre of gravity dropped forward."
+      }
+    ]
+  },
+  "map": {
+    "intro": {
+      "title": "The Way of the Bull",
+      "body": "How three tonnes of bronze got from a SoHo studio to the entrance of the New York Stock Exchange in the back of a flatbed truck — and from there, two blocks south, to a slab of Manhattan it has never left since."
+    },
+    "ofCount": "of",
+    "errorPrefix": "map:"
+  },
+  "bearsBulls": {
+    "altBears": "Bears",
+    "altVs": "vs",
+    "altBulls": "Bulls",
+    "body": "A bronze statue can hold a pose forever. Markets cannot. They move in two distinct moods—named, since the 18th century, after the two ways an animal attacks."
+  },
+  "explainer": {
+    "lead": "A <strong class=\"text-emerald-300\">bull market</strong> is when prices climb — broadly, persistently, for months or years at a stretch. A <strong class=\"text-rose-300\">bear market</strong> is when they fall by 20% or more from a recent peak and stay there. The names come from how each animal strikes: a bull tosses its horns <em class=\"italic text-accent font-normal\">upward</em>; a bear swipes its paw <em class=\"italic text-accent font-normal\">down</em>. Eighteenth-century London coffee-houses borrowed the image, and the labels stuck.",
+    "p2": "The difference isn't only direction. A bull market runs on confidence — easy credit, rising earnings, the comfortable belief that next quarter will look like this one, only larger. A bear market runs on the opposite: a sudden, contagious doubt that yesterday's prices were ever real. Bulls climb a staircase; bears fall down an elevator shaft. Since World War II, the average S&amp;P 500 bull has lasted about <strong class=\"font-semibold text-fg\">five years</strong> and gained <strong class=\"font-semibold text-fg\">~180%</strong>; the average bear has lasted about <strong class=\"font-semibold text-fg\">13 months</strong> and lost <strong class=\"font-semibold text-fg\">~35%</strong>. Both sides of that asymmetry are what every long-term chart is really drawing.",
+    "p3": "Let's look at what those drops actually felt like. Five of the biggest and best-known crises of the past seventy years, charted against the same axis: how much the S&amp;P 500 lost, how fast it fell, how long it stayed down before climbing back."
+  },
+  "charts": {
+    "topbarSmall": "Wall Street · 1973–2026",
+    "topbarTitle": "Bear Markets",
+    "labels": {
+      "peak": "peak",
+      "months": "mo.",
+      "investArrow": "$350k → ",
+      "buyDate": "Oct 1987",
+      "compareDate": "Feb 2021"
+    },
+    "crises": [
+      { "troughLbl": "Sep 1974", "label": "1973–74" },
+      { "troughLbl": "Nov 1987", "label": "1987" },
+      { "troughLbl": "Sep 2002", "label": "2000" },
+      { "troughLbl": "Mar 2009", "label": "2008" },
+      { "troughLbl": "Mar 2020", "label": "2020" }
+    ],
+    "captions": {
+      "0a": "01 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0b": "02 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0c": "03 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0d": "04 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0e": "05 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "1": "06 — Each crisis normalized to its own peak = 100%. Monthly, real",
+      "1a": "07 — S&P 500 nominal price. Monthly. Source: Robert Shiller",
+      "1b": "08 — S&P 500 nominal price, zoom 1986–1991. Monthly",
+      "2": "09 — S&P 500 nominal price + a hypothetical $350k buy-and-hold from Oct 1987",
+      "3": "10 — S&P 500 real price (CPI-adjusted) + the same $350k position"
+    },
+    "steps": [
+      { "view": "0a", "date": "October 19, 1987", "title": "Black Monday",
+        "comment": "In a single day S&P 500 plunged <b>−20%</b> — still the largest one-day crash in Wall Street history. About $500 billion of market cap evaporated in hours. Margin calls hit brokers in waves, NYSE trading barely crawled, the Hong Kong exchange shut for the rest of that week. By early December the peak-to-trough drawdown reached <b>−33%</b>." },
+      { "view": "0b", "date": "February — March 2020", "title": "COVID",
+        "comment": "The fastest plunge in history: <b>−19% real in a month</b> (nominal −34% from peak to March 23). The fall was so abrupt that US exchanges automatically halted trading four times in two weeks — unseen since 1987. Trigger: the global lockdown, an instantaneous freeze of everything from aviation to restaurants." },
+      { "view": "0c", "date": "Oct 2007 — Mar 2009", "title": "Global Financial Crisis",
+        "comment": "Unlike a single-day shock — slow torture lasting <b>17 months and −53% in real $</b>. The subprime mortgage bubble burst: banks fell one after another, Lehman Brothers (158 years on the market) collapsed over a single weekend on September 15, 2008. Millions of Americans saw their 401(k) retirement accounts turn into \"201(k)s\" — the running joke of the era." },
+      { "view": "0d", "date": "1973 — 1974", "title": "Oil & Stagflation",
+        "comment": "<b>21 months of relentless grinding, −52% in real $.</b> OPEC quadrupled the price of oil; gas station lines stretched for hours. At the same time US inflation accelerated to 12% with unemployment at 8% — a combination economists hadn't seen and considered impossible." },
+      { "view": "0e", "date": "2000 — 2002", "title": "Dotcom Bust",
+        "comment": "Over 25 months <b>$5 trillion</b> of market capitalization evaporated — more than Germany's annual GDP at the time. NASDAQ lost <b>−78%</b> (hundreds of \"new economy\" names left the exchange forever); broad S&P fell <b>−42% real</b>. Compounded by 9/11 and the Enron & WorldCom corporate scandals." },
+      { "view": "1", "date": "1970 — 2026", "title": "A real roller coaster?",
+        "comment": "Look at this: regular drops of <b>30 to 50%</b>, long climbs out of the pit. On the scale of any single life, this is a real roller coaster — the kind that makes people swear off the market for good. But hold that thought for one more frame…" },
+      { "view": "1a", "date": "1970 — 2026", "title": "Each one bounced back",
+        "comment": "Today (2026) S&P is around <b>5000</b> — after 1987 the price grew more than 14×, after 2008 already 5×. On the long timeline, what felt like a catastrophe shrinks to a notch." },
+      { "view": "1b", "date": "December 1989", "title": "Charging Bull",
+        "comment": "A small irony hiding in this curve: when Arturo Di Modica rolled his bull onto Wall Street in December 1989 — as «a symbol of strength in response to the crash» — the S&P 500 had already been back at its pre-1987 high for almost <b>five months</b>. The bronze answer arrived after the recovery." },
+      { "view": "2", "date": "Oct 1987 → Feb 2021", "title": "$350k in S&P",
+        "comment": "If those same <b>$350k</b> (the cost of the sculpture) had instead been put into S&P 500 in October 1987, by February 2021 (the GameStop mania peak) the portfolio would be worth <b>$4.85M</b> nominal — ×13.9 over 33 years, dividends excluded." },
+      { "view": "3", "date": "Same, in real $", "title": "Minus inflation",
+        "comment": "But that's nominal. Adjusted for inflation, the real value is only <b>$2.13M</b> (×6.1). Inflation ate roughly <b>$2.72M</b> of the nominal gains — slower growth, longer recoveries." }
+    ]
+  },
+  "crisisProse": {
+    "heading": "What makes a crisis a crisis.",
+    "p1": "Every bear has a story, and the stories are not interchangeable. A <strong class=\"font-semibold text-fg\">credit crisis</strong> begins inside the plumbing of the financial system itself — banks holding loans that won't repay, balance sheets that look fine until a question is asked too loudly. 2008 is the canonical version: a US mortgage market backed by securities nobody could price, then a global panic when nobody trusted anybody's books. Credit crises are slow to build and brutal to unwind; the damage reaches the real economy through frozen lending, not falling prices.",
+    "p2": "A <strong class=\"font-semibold text-fg\">bubble crisis</strong> is the opposite: a single story — railways, radios, dot-coms, crypto — convinces a generation of investors that the old rules of valuation no longer apply. Prices detach from earnings, then from common sense, then from each other. The 2000 dot-com bust wiped out roughly $5 trillion in market value not because the companies vanished, but because the prices had been pretending to be something they weren't. Bubbles end on their own, usually with no single trigger anyone can name afterwards.",
+    "p3": "An <strong class=\"font-semibold text-fg\">exogenous shock</strong> comes from outside the market entirely. Black Monday 1987 — the event that haunted Di Modica into his midnight installation — was a textbook one: program-trading feedback loops on a Monday morning, no recession in sight, the Dow down 22.6% by closing bell. COVID in 2020 was another: a 34% peak-to-trough drop in 33 days, the fastest bear in history, ended by a fiscal-policy response just as fast. Exogenous shocks land hard but rarely break the underlying machinery; markets recover when the shock passes.",
+    "p4": "What separates them, in the end, is what gets broken. Bubbles break a story. Shocks break a mood. Credit crises break the plumbing. The first two heal in months. The third can take a decade. And while every commentator on every front page swears <em class=\"italic text-accent font-normal\">this</em> one is different, the empirical record is unhelpfully consistent: the same three shapes, in different costumes.",
+    "quote": "\"Bull markets are born on pessimism, grow on skepticism, mature on optimism, and die on euphoria.\"",
+    "quoteAuthor": "— John Templeton",
+    "p5": "Today the air is thick with talk of an AI bubble — the most concentrated capex boom in a generation, valuations on a small handful of chipmakers and platform companies doing most of the index's heavy lifting. Maybe it ends like 2000. Maybe it doesn't. The bronze on Bowling Green doesn't have an opinion on that — it just keeps its head down and leans forward, the way Di Modica cast it, as a working argument that the next chapter is still up."
+  },
+  "outro": {
+    "lines": [
+      { "text": "Downturns are temporary." },
+      { "text": "Stubbornness is not.", "emphasis": true }
+    ],
+    "credit": "A long-form scroll-piece · candlesticks-v2 · charging_bull · finance_charts<br/>Bowling Green, New York · bronze, 3,200 kg, since 15 December 1989"
+  }
+}

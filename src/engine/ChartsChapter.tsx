@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useInViewMount } from './useInViewMount';
 import { useSmoothProgress } from './smoothScroll';
 import { createChartsEngine, CHART_STEPS, type ChartsEngine } from './charts/chartsEngine';
+import { t } from '../i18n';
 import './ChartsChapter.css';
 
 /**
@@ -58,8 +59,8 @@ export default function ChartsChapter({
         <div className="cc-gradient" aria-hidden />
         <div className="cc-topbar">
           <div className="cc-brand">
-            <span className="cc-small">Wall Street · 1973–2026</span>
-            Bear Markets
+            <span className="cc-small">{t('charts.topbarSmall')}</span>
+            {t('charts.topbarTitle')}
           </div>
         </div>
         <div ref={captionRef} className="cc-caption" />

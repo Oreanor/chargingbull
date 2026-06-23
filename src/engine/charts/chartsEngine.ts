@@ -9,7 +9,12 @@
  * draw(progress) takes a continuous step index in [0, CHART_STEPS.length-1]; it
  * applies the per-step dwell, morphs between the two surrounding views, paints, and
  * returns the caption string for the current dominant view.
+ *
+ * All copy (step cards, captions, crisis labels, the small canvas annotations)
+ * comes from the active locale's dictionary — see src/i18n. The `view` keys stay
+ * in the data because they're stable identifiers, not display text.
  */
+import { t } from '../../i18n';
 
 export interface ChartStep {
   /** View key the chart morphs to on this step. */
@@ -20,29 +25,12 @@ export interface ChartStep {
   comment: string;
 }
 
-/** The 10 scroll steps (cards), in order. Rendered in flow by <ChartsChapter>. */
-export const CHART_STEPS: ChartStep[] = [
-  { view: '0a', date: 'October 19, 1987', title: 'Black Monday',
-    comment: 'In a single day S&P 500 plunged <b>−20%</b> — still the largest one-day crash in Wall Street history. About $500 billion of market cap evaporated in hours. Margin calls hit brokers in waves, NYSE trading barely crawled, the Hong Kong exchange shut for the rest of that week. By early December the peak-to-trough drawdown reached <b>−33%</b>.' },
-  { view: '0b', date: 'February — March 2020', title: 'COVID',
-    comment: 'The fastest plunge in history: <b>−19% real in a month</b> (nominal −34% from peak to March 23). The fall was so abrupt that US exchanges automatically halted trading four times in two weeks — unseen since 1987. Trigger: the global lockdown, an instantaneous freeze of everything from aviation to restaurants.' },
-  { view: '0c', date: 'Oct 2007 — Mar 2009', title: 'Global Financial Crisis',
-    comment: 'Unlike a single-day shock — slow torture lasting <b>17 months and −53% in real $</b>. The subprime mortgage bubble burst: banks fell one after another, Lehman Brothers (158 years on the market) collapsed over a single weekend on September 15, 2008. Millions of Americans saw their 401(k) retirement accounts turn into "201(k)s" — the running joke of the era.' },
-  { view: '0d', date: '1973 — 1974', title: 'Oil & Stagflation',
-    comment: '<b>21 months of relentless grinding, −52% in real $.</b> OPEC quadrupled the price of oil; gas station lines stretched for hours. At the same time US inflation accelerated to 12% with unemployment at 8% — a combination economists hadn\'t seen and considered impossible.' },
-  { view: '0e', date: '2000 — 2002', title: 'Dotcom Bust',
-    comment: 'Over 25 months <b>$5 trillion</b> of market capitalization evaporated — more than Germany\'s annual GDP at the time. NASDAQ lost <b>−78%</b> (hundreds of "new economy" names left the exchange forever); broad S&P fell <b>−42% real</b>. Compounded by 9/11 and the Enron & WorldCom corporate scandals.' },
-  { view: '1', date: '1970 — 2026', title: 'A real roller coaster?',
-    comment: 'Look at this: regular drops of <b>30 to 50%</b>, long climbs out of the pit. On the scale of any single life, this is a real roller coaster — the kind that makes people swear off the market for good. But hold that thought for one more frame…' },
-  { view: '1a', date: '1970 — 2026', title: 'Each one bounced back',
-    comment: 'Today (2026) S&P is around <b>5000</b> — after 1987 the price grew more than 14×, after 2008 already 5×. On the long timeline, what felt like a catastrophe shrinks to a notch.' },
-  { view: '1b', date: 'December 1989', title: 'Charging Bull',
-    comment: 'A small irony hiding in this curve: when Arturo Di Modica rolled his bull onto Wall Street in December 1989 — as «a symbol of strength in response to the crash» — the S&P 500 had already been back at its pre-1987 high for almost <b>five months</b>. The bronze answer arrived after the recovery.' },
-  { view: '2', date: 'Oct 1987 → Feb 2021', title: '$350k in S&P',
-    comment: 'If those same <b>$350k</b> (the cost of the sculpture) had instead been put into S&P 500 in October 1987, by February 2021 (the GameStop mania peak) the portfolio would be worth <b>$4.85M</b> nominal — ×13.9 over 33 years, dividends excluded.' },
-  { view: '3', date: 'Same, in real $', title: 'Minus inflation',
-    comment: 'But that\'s nominal. Adjusted for inflation, the real value is only <b>$2.13M</b> (×6.1). Inflation ate roughly <b>$2.72M</b> of the nominal gains — slower growth, longer recoveries.' },
-];
+/** The 10 scroll steps (cards), in order, from the active locale's dictionary.
+ *  Rendered in flow by <ChartsChapter>. */
+export const CHART_STEPS: ChartStep[] = t<ChartStep[]>('charts.steps');
+
+/** Small canvas labels (axis annotations + the $350k investment overlay). */
+const LBL = t<Record<string, string>>('charts.labels');
 
 const GRID = '#1f1f28';
 const AXIS = 'rgba(245,243,238,0.55)';
@@ -56,12 +44,15 @@ const BG = '#0a0a10';
 type YM = [number, number];
 interface Crisis { peak: YM; trough: YM; troughLbl: string; label: string }
 
+// Numeric peak/trough are data; the trough date + crisis label are localized text
+// (merged by index from the dictionary's `charts.crises`).
+const CRISIS_LABELS = t<{ troughLbl: string; label: string }[]>('charts.crises');
 const CRISES: Crisis[] = [
-  { peak: [1973, 1], trough: [1974, 9], troughLbl: 'Sep 1974', label: '1973–74' },
-  { peak: [1987, 8], trough: [1987, 11], troughLbl: 'Nov 1987', label: '1987' },
-  { peak: [2000, 8], trough: [2002, 9], troughLbl: 'Sep 2002', label: '2000' },
-  { peak: [2007, 10], trough: [2009, 3], troughLbl: 'Mar 2009', label: '2008' },
-  { peak: [2020, 1], trough: [2020, 3], troughLbl: 'Mar 2020', label: '2020' },
+  { peak: [1973, 1], trough: [1974, 9], ...CRISIS_LABELS[0] },
+  { peak: [1987, 8], trough: [1987, 11], ...CRISIS_LABELS[1] },
+  { peak: [2000, 8], trough: [2002, 9], ...CRISIS_LABELS[2] },
+  { peak: [2007, 10], trough: [2009, 3], ...CRISIS_LABELS[3] },
+  { peak: [2020, 1], trough: [2020, 3], ...CRISIS_LABELS[4] },
 ];
 
 const ymToX = ([y, m]: YM) => y + (m - 1) / 12;
@@ -125,18 +116,7 @@ function viewConfig(key: string): Cfg {
     visibleYears: s.years, focusYear: s.focus, focusAll: false };
 }
 
-const CAPTION: Record<string, string> = {
-  '0a': '01 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)',
-  '0b': '02 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)',
-  '0c': '03 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)',
-  '0d': '04 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)',
-  '0e': '05 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)',
-  '1': '06 — Each crisis normalized to its own peak = 100%. Monthly, real',
-  '1a': '07 — S&P 500 nominal price. Monthly. Source: Robert Shiller',
-  '1b': '08 — S&P 500 nominal price, zoom 1986–1991. Monthly',
-  '2': '09 — S&P 500 nominal price + a hypothetical $350k buy-and-hold from Oct 1987',
-  '3': '10 — S&P 500 real price (CPI-adjusted) + the same $350k position',
-};
+const CAPTION = t<Record<string, string>>('charts.captions');
 
 function lerpState2Cfg(a: Cfg, b: Cfg, t: number): Cfg {
   const am = (a.modeBlend as number) ?? (a.mode === 'real' ? 1 : 0);
@@ -183,7 +163,7 @@ export interface ChartsEngine {
 const DWELL_HOLD_FRAC = 0.32;
 
 export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
-  let xs: number[] = [], yNom: number[] = [], yReal: number[] = [];
+  const xs: number[] = [], yNom: number[] = [], yReal: number[] = [];
   let mode: 'nominal' | 'real' = 'nominal';
   let scale: 'lin' | 'log' = 'lin';
   let fromKey = CHART_STEPS[0].view, toKey = CHART_STEPS[0].view, animT = 1;
@@ -268,7 +248,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         if (m < xMin - 0.5 || m > xMax + 0.5) continue;
         const x = sx(m);
         if (m > 0) { ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); }
-        ctx.fillText(m === 0 ? 'peak' : (m + ' mo.'), x, y1 + 8);
+        ctx.fillText(m === 0 ? LBL.peak : (m + ' ' + LBL.months), x, y1 + 8);
       }
     } else {
       for (let yr = 1970; yr <= 2030; yr += 10) {
@@ -499,7 +479,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.font = FONT_BOLD;
       ctx.fillStyle = CRISIS;
       ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-      ctx.fillText('$350k → ', xP + 8, yP - 10);
+      ctx.fillText(LBL.investArrow, xP + 8, yP - 10);
       ctx.font = FONT_BIG;
       ctx.textAlign = 'right';
       const inv = getInvest();
@@ -508,9 +488,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.font = FONT;
       ctx.fillStyle = AXIS;
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillText('Oct 1987', xP + 4, y1 - 18);
+      ctx.fillText(LBL.buyDate, xP + 4, y1 - 18);
       ctx.textAlign = 'right';
-      ctx.fillText('Feb 2021', xC - 4, y1 - 18);
+      ctx.fillText(LBL.compareDate, xC - 4, y1 - 18);
       ctx.restore();
     }
 

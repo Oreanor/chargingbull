@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import './StageOverlay.css';
 import { useChapterProgress } from './chapterScroll';
+import { localizeAssetUrl } from '../i18n';
 
 /**
  * StageOverlay — the bull's per-stage narrative: an eyebrow + paragraph (bottom
@@ -62,8 +63,15 @@ export default function StageOverlay({
     let unsub = () => {};
     let onResize = () => {};
 
-    fetch(stagesUrl)
-      .then((r) => r.json() as Promise<{ stages: Stage[] }>)
+    // Prefer the active locale's stages variant (stages.<locale>.json); fall back
+    // to the base file when no translation has been dropped in yet.
+    const localized = localizeAssetUrl(stagesUrl);
+    const getStages = (url: string) =>
+      fetch(url).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+        return r.json() as Promise<{ stages: Stage[] }>;
+      });
+    (localized === stagesUrl ? getStages(stagesUrl) : getStages(localized).catch(() => getStages(stagesUrl)))
       .then((file) => {
         if (cancelled) return;
         const stages = file.stages ?? [];

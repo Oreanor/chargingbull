@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import './CandleIntro.css';
 import { useChapterProgress } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
+import { t } from '../i18n';
 
 /**
  * CandleIntro — native, self-contained "Black Monday 1987" candle intro, ported
@@ -65,13 +66,16 @@ const OHLC: [string, number, number, number, number][] = [
   ['1987-10-19', 282.7, 282.7, 224.83, 224.84],
 ];
 
+// Dates/positions are data; the label + text are localized (merged by index).
+const FACT_COPY = t<{ label: string; text: string }[]>('opener.candles.facts');
 const FACTS = [
-  { date: '1987-08-25', pos: 'top' as const, label: 'AUG 25', text: 'Five years of gains have tripled the market — and today it tops out at an all-time high.' },
-  { date: '1987-09-04', pos: 'bottom' as const, label: 'SEP 4', text: 'The Fed raises rates for the first time in three years — the cheap money fuelling the boom starts to dry up.' },
-  { date: '1987-10-16', pos: 'top' as const, label: 'OCT 16', text: 'Over the weekend Washington threatens to let the dollar slide unless Germany cuts rates — markets brace for a currency war.' },
+  { date: '1987-08-25', pos: 'top' as const, ...FACT_COPY[0] },
+  { date: '1987-09-04', pos: 'bottom' as const, ...FACT_COPY[1] },
+  { date: '1987-10-16', pos: 'top' as const, ...FACT_COPY[2] },
 ];
-// month markers at the first trading day of each month
-const GRID = [{ d: '1987-08-03', t: 'AUG' }, { d: '1987-09-01', t: 'SEP' }, { d: '1987-10-01', t: 'OCT' }];
+// month markers at the first trading day of each month (labels are localized)
+const MONTHS = t<string[]>('opener.candles.months');
+const GRID = [{ d: '1987-08-03' }, { d: '1987-09-01' }, { d: '1987-10-01' }];
 
 function niceTicks(min: number, max: number): number[] {
   const cands = [5, 10, 20, 25, 50, 100, 200, 250, 500];
@@ -171,18 +175,18 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       return { x: (_proj.x * 0.5 + 0.5) * host.clientWidth, y: (-_proj.y * 0.5 + 0.5) * host.clientHeight };
     };
     const mk = (cls: string, parent: HTMLElement = overlay) => { const el = document.createElement('div'); el.className = cls; parent.appendChild(el); return el; };
-    const gridItems = GRID.map((g) => ({ idx: candles.findIndex((c) => c.date === g.d), line: mk('ci-gl'), lab: Object.assign(mk('ci-gd'), { textContent: g.t }) }));
+    const gridItems = GRID.map((g, mi) => ({ idx: candles.findIndex((c) => c.date === g.d), line: mk('ci-gl'), lab: Object.assign(mk('ci-gd'), { textContent: MONTHS[mi] }) }));
     const yTicks = niceTicks(pMin, pMax).map((v) => ({ v, line: mk('ci-hl'), lab: Object.assign(mk('ci-yl'), { textContent: String(v) }) }));
     const factItems = FACTS.map((f) => {
       const el = mk('ci-fact'); el.innerHTML = `<span class="ci-fd">${f.label}</span>${f.text}`;
       return { ...f, idx: candles.findIndex((c) => c.date === f.date), el };
     });
-    const bmEl = mk('ci-bm'); bmEl.innerHTML = '<span class="ci-bm-nm">Black<br>Monday</span><span class="ci-bm-yr">1987</span>';
+    const bmEl = mk('ci-bm'); bmEl.innerHTML = `<span class="ci-bm-nm">${t('opener.candles.blackMondayName')}</span><span class="ci-bm-yr">${t('opener.candles.blackMondayYear')}</span>`;
 
     // --- title intro (time-based, plays once on mount) ---
     const introT0 = performance.now();
     let subDone = false;
-    const SUB = ['From Black Monday to SpaceX IPO:', 'Why are global stock exchanges going wild?'];
+    const SUB = t<string[]>('opener.hero.subtitle');
     const subChars: { el: HTMLSpanElement; delay: number }[] = [];
     if (subtitleRef.current) {
       subtitleRef.current.textContent = '';
@@ -356,7 +360,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       <img
         ref={logoRef}
         src="/brand/meridian-logo.svg"
-        alt="Meridian"
+        alt={t('opener.logoAlt')}
         className="absolute left-[46px] top-[36px] h-[68px] w-auto z-20 pointer-events-none will-change-transform"
       />
       {/* hero — each element slides off independently (staggered in the loop). */}
@@ -368,7 +372,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
             className="whitespace-nowrap text-white will-change-transform"
             style={{ font: '700 15px var(--font-mono)', letterSpacing: '0.12em' }}
           >
-            NEW YORK <span style={{ color: '#DE2053' }}>●</span> 40°42′N 74°01′W
+            {t('opener.hero.coordsCity')} <span style={{ color: '#DE2053' }}>●</span> {t('opener.hero.coordsGeo')}
           </div>
         </div>
         {/* wordmark (biggest, leaves first) + subtitle (leaves second) */}
@@ -376,7 +380,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           <img
             ref={wordmarkRef}
             src="/brand/wall-st-rodeo.svg"
-            alt="WALL ST Rodeo"
+            alt={t('opener.wordmarkAlt')}
             className="w-[clamp(320px,72vw,1000px)] h-auto will-change-transform"
           />
           {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}

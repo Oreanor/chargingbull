@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Map as MapboxMap } from 'mapbox-gl';
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
+import { t, localizeAssetUrl } from '../i18n';
 import './MapChapter.css';
 
 // deck.gl is imported DYNAMICALLY (in the overlay effect) — it touches browser
@@ -241,11 +242,20 @@ export default function MapChapter({
   // still shape how much scroll each leg of the journey gets.
   const playhead = useSmoothProgress(sectionRef);
 
-  // load step data
+  // load step data — prefer the active locale's variant (data.<locale>.json),
+  // falling back to the base file when no translation has been dropped in yet.
   useEffect(() => {
     let cancelled = false;
-    fetch(dataUrl)
-      .then((r) => r.json())
+    const localized = localizeAssetUrl(dataUrl);
+    const getJson = async (url: string) => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+      return r.json();
+    };
+    const load = localized === dataUrl
+      ? getJson(dataUrl)
+      : getJson(localized).catch(() => getJson(dataUrl));
+    load
       .then((d) => { if (!cancelled) setSteps(d.steps ?? []); })
       .catch((e) => { if (!cancelled) setErr(String(e)); });
     return () => { cancelled = true; };
@@ -584,7 +594,7 @@ export default function MapChapter({
                     {s.imageCaption ? <div className="mc-card-cap">{s.imageCaption}</div> : null}
                   </div>
                 ) : null}
-                <div className="mc-num"><span className="n">{String(i + 1).padStart(2, '0')}</span><span className="of">of {N}</span></div>
+                <div className="mc-num"><span className="n">{String(i + 1).padStart(2, '0')}</span><span className="of">{t('map.ofCount')} {N}</span></div>
                 <div className="mc-date">{s.date}</div>
                 <h2 className="mc-title">{s.title}</h2>
                 <div className="mc-loc">{s.location}{s.address ? ` · ${s.address}` : ''}</div>
@@ -618,7 +628,7 @@ export default function MapChapter({
           </div>
         ) : null}
         {err ? (
-          <div className="absolute bottom-6 left-6 z-20 text-[11px] text-rose-300/80 font-mono">map: {err}</div>
+          <div className="absolute bottom-6 left-6 z-20 text-[11px] text-rose-300/80 font-mono">{t('map.errorPrefix')} {err}</div>
         ) : null}
       </div>
     </section>

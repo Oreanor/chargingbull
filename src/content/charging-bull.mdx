@@ -1,4 +1,5 @@
 import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TRACK } from './openerBull';
+import { t } from '../i18n';
 
 {/* ─────────────────────────────────────────────────────────────────────────
     Charging Bull — assembled longread.
@@ -29,16 +30,7 @@ import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TR
   <StageOverlay
     stagesUrl="/chapters/splash/stages.json"
     range={[0.52, 1]}
-    plaques={[
-      {
-        title: 'After Black Monday',
-        body: 'Black Monday 1987 wiped billions off the stock market, and a couple of years later, a bronze bull stood on Bowling Green in NYC, poised for eternal growth. Arturo Di Modica turned his personal fear of crises into a sculpture of the Charging Bull, which convinces New York every day: downturns are temporary, but stubbornness is not.',
-      },
-      {
-        title: "Bull's proportions",
-        body: 'Side-on, the proportions read true. 3.4 metres at the shoulder. 4.9 metres nose to tail. Heavier than a Manhattan delivery truck, low enough that tourists climb on its back for the photo. Di Modica wanted the silhouette of an animal mid-charge — not a monument — and the choice of pose forced everything else: a heavy front quarter, a planted hind, the centre of gravity dropped forward.',
-      },
-    ]}
+    plaques={t('opener.plaques')}
   />
 </ModelChapter>
 
@@ -49,8 +41,8 @@ import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TR
     and dissolves to transparent — revealing the bull splat scene that lies
     underneath. The bull then holds (orbitable) and fades to black into II. */}
 <MapBullHandoff
-  introTitle="The Way of the Bull"
-  introBody="How three tonnes of bronze got from a SoHo studio to the entrance of the New York Stock Exchange in the back of a flatbed truck — and from there, two blocks south, to a slab of Manhattan it has never left since."
+  introTitle={t('map.intro.title')}
+  introBody={t('map.intro.body')}
   label="bull-env"
   sceneId="32caa065-7eb1-43a1-b8fc-5d6017ed52ad"
   revision="1f515756-64b8-4e85-9dc8-eaa4359cbd1a"
@@ -63,43 +55,23 @@ import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TR
 <BreakReveal
   titleNode={
     <div className="flex items-end justify-center gap-[0.04em]">
-      <img src="/chapters/bears-bulls/BEARS.svg" alt="Bears" className="h-[clamp(46px,9.5vw,128px)] w-auto" />
-      <img src="/chapters/bears-bulls/vs.svg" alt="vs" className="h-[clamp(24px,5vw,66px)] w-auto mb-[0.28em] mx-[0.1em]" />
-      <img src="/chapters/bears-bulls/Bulls.svg" alt="Bulls" className="h-[clamp(52px,11vw,148px)] w-auto" />
+      <img src="/chapters/bears-bulls/BEARS.svg" alt={t('bearsBulls.altBears')} className="h-[clamp(46px,9.5vw,128px)] w-auto" />
+      <img src="/chapters/bears-bulls/vs.svg" alt={t('bearsBulls.altVs')} className="h-[clamp(24px,5vw,66px)] w-auto mb-[0.28em] mx-[0.1em]" />
+      <img src="/chapters/bears-bulls/Bulls.svg" alt={t('bearsBulls.altBulls')} className="h-[clamp(52px,11vw,148px)] w-auto" />
     </div>
   }
-  body="A bronze statue can hold a pose forever. Markets cannot. They move in two distinct moods—named, since the 18th century, after the two ways an animal attacks."
+  body={t('bearsBulls.body')}
 />
 
 {/* ===================== EXPLAINER — bull / bear market ================== */}
 
 <Prose>
-  <div className="text-[clamp(17px,1.5vw,22px)] leading-[1.55] text-fg first:[&>b]:font-semibold">
-    A <strong className="text-emerald-300">bull market</strong> is when prices
-    climb — broadly, persistently, for months or years at a stretch. A{' '}
-    <strong className="text-rose-300">bear market</strong> is when they fall by
-    20% or more from a recent peak and stay there. The names come from how each
-    animal strikes: a bull tosses its horns <em>upward</em>; a bear swipes its
-    paw <em>down</em>. Eighteenth-century London coffee-houses borrowed the
-    image, and the labels stuck.
-  </div>
-  <div>
-    The difference isn't only direction. A bull market runs on confidence — easy
-    credit, rising earnings, the comfortable belief that next quarter will look
-    like this one, only larger. A bear market runs on the opposite: a sudden,
-    contagious doubt that yesterday's prices were ever real. Bulls climb a
-    staircase; bears fall down an elevator shaft. Since World War II, the average
-    S&P 500 bull has lasted about <strong>five years</strong> and gained{' '}
-    <strong>~180%</strong>; the average bear has lasted about{' '}
-    <strong>13 months</strong> and lost <strong>~35%</strong>. Both sides of that
-    asymmetry are what every long-term chart is really drawing.
-  </div>
-  <div>
-    Let's look at what those drops actually felt like. Five of the biggest and
-    best-known crises of the past seventy years, charted against the same axis:
-    how much the S&P 500 lost, how fast it fell, how long it stayed down before
-    climbing back.
-  </div>
+  <div
+    className="text-[clamp(17px,1.5vw,22px)] leading-[1.55] text-fg first:[&>b]:font-semibold"
+    dangerouslySetInnerHTML={{ __html: t('explainer.lead') }}
+  />
+  <div dangerouslySetInnerHTML={{ __html: t('explainer.p2') }} />
+  <div dangerouslySetInnerHTML={{ __html: t('explainer.p3') }} />
 </Prose>
 
 {/* ===================== CHAPTER II — S&P 500 + bear markets =============
@@ -112,73 +84,24 @@ import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TR
 
 <Prose variant="dark">
   <h3 className="font-serif font-semibold text-[clamp(24px,3vw,36px)] text-fg mb-2">
-    What makes a crisis a crisis.
+    {t('crisisProse.heading')}
   </h3>
-  <div>
-    Every bear has a story, and the stories are not interchangeable. A{' '}
-    <strong>credit crisis</strong> begins inside the plumbing of the financial
-    system itself — banks holding loans that won't repay, balance sheets that
-    look fine until a question is asked too loudly. 2008 is the canonical
-    version: a US mortgage market backed by securities nobody could price, then a
-    global panic when nobody trusted anybody's books. Credit crises are slow to
-    build and brutal to unwind; the damage reaches the real economy through
-    frozen lending, not falling prices.
-  </div>
-  <div>
-    A <strong>bubble crisis</strong> is the opposite: a single story — railways,
-    radios, dot-coms, crypto — convinces a generation of investors that the old
-    rules of valuation no longer apply. Prices detach from earnings, then from
-    common sense, then from each other. The 2000 dot-com bust wiped out roughly
-    $5 trillion in market value not because the companies vanished, but because
-    the prices had been pretending to be something they weren't. Bubbles end on
-    their own, usually with no single trigger anyone can name afterwards.
-  </div>
-  <div>
-    An <strong>exogenous shock</strong> comes from outside the market entirely.
-    Black Monday 1987 — the event that haunted Di Modica into his midnight
-    installation — was a textbook one: program-trading feedback loops on a Monday
-    morning, no recession in sight, the Dow down 22.6% by closing bell. COVID in
-    2020 was another: a 34% peak-to-trough drop in 33 days, the fastest bear in
-    history, ended by a fiscal-policy response just as fast. Exogenous shocks
-    land hard but rarely break the underlying machinery; markets recover when the
-    shock passes.
-  </div>
-  <div>
-    What separates them, in the end, is what gets broken. Bubbles break a story.
-    Shocks break a mood. Credit crises break the plumbing. The first two heal in
-    months. The third can take a decade. And while every commentator on every
-    front page swears <em>this</em> one is different, the empirical record is
-    unhelpfully consistent: the same three shapes, in different costumes.
-  </div>
+  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p1') }} />
+  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p2') }} />
+  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p3') }} />
+  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p4') }} />
   <div className="border-l-2 border-gold/50 pl-6 my-10 font-serif italic text-[clamp(18px,1.8vw,26px)] leading-[1.4] text-fg/90">
-    "Bull markets are born on pessimism, grow on skepticism, mature on optimism,
-    and die on euphoria."
+    {t('crisisProse.quote')}
     <span className="block mt-3 not-italic font-mono uppercase tracking-[2px] text-[11px] text-fg/55">
-      — John Templeton
+      {t('crisisProse.quoteAuthor')}
     </span>
   </div>
-  <div>
-    Today the air is thick with talk of an AI bubble — the most concentrated
-    capex boom in a generation, valuations on a small handful of chipmakers and
-    platform companies doing most of the index's heavy lifting. Maybe it ends
-    like 2000. Maybe it doesn't. The bronze on Bowling Green doesn't have an
-    opinion on that — it just keeps its head down and leans forward, the way Di
-    Modica cast it, as a working argument that the next chapter is still up.
-  </div>
+  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p5') }} />
 </Prose>
 
 {/* ===================== OUTRO ========================================== */}
 
 <Outro
-  lines={[
-    { text: 'Downturns are temporary.' },
-    { text: 'Stubbornness is not.', emphasis: true },
-  ]}
-  credit={
-    <>
-      A long-form scroll-piece · candlesticks-v2 · charging_bull · finance_charts
-      <br />
-      Bowling Green, New York · bronze, 3,200 kg, since 15 December 1989
-    </>
-  }
+  lines={t('outro.lines')}
+  credit={<span dangerouslySetInnerHTML={{ __html: t('outro.credit') }} />}
 />
