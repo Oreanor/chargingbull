@@ -23,6 +23,11 @@ export interface GlbSceneOptions {
   modelUrl: string;
   /** [r,g,b,a]; a=0 → transparent canvas over the page. */
   background?: [number, number, number, number];
+  /** Spotlight look: a soft radial glow at the centre fading to black at the edges
+   *  (ported from the wallst-rodeo bull viewer's `--depth`). Renders as the scene
+   *  background, so the model reads as lit-from-darkness. Overrides the flat clear
+   *  colour. */
+  vignette?: boolean;
   /** How the model is placed in the scene.
    *  - omitted / `recenter !== false`: auto-center at origin + auto-frame camera
    *    (sensible default for a bare model).
@@ -111,6 +116,26 @@ export class GlbScene {
 
     const scene = new THREE.Scene();
     this.scene = scene;
+    // Spotlight background: a radial glow at ~centre falling off to black, matching
+    // the reference viewer's `--depth`. Rendered as the scene background so the bull
+    // emerges from darkness with edge-shading instead of a flat black field.
+    if (this.options.vignette) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 512;
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        const cx = 0.5 * c.width, cy = 0.38 * c.height;
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(c.width, c.height) * 0.92);
+        g.addColorStop(0, '#181b22');
+        g.addColorStop(0.55, '#0b0c10');
+        g.addColorStop(1, '#000000');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, c.width, c.height);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        scene.background = tex;
+      }
+    }
     const camera = new THREE.PerspectiveCamera(60, w / h, 0.01, 5000);
     this.camera = camera;
 

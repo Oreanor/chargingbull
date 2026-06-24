@@ -22,3 +22,15 @@ if (root.children.length > 0) {
 } else {
   createRoot(root).render(app);
 }
+
+// In-page layout editor (the top-right ✎ toggle) is DISABLED — the offsets it
+// produced are already baked into src/engine/tune-layout.json and still applied at
+// runtime via tuneStore. To tune again, uncomment the block below.
+//
+// TODO(refactor): delete the layout editor entirely — src/engine/tuneEditor.ts, the
+// `data-tune` attributes (CandleIntro), and the tuneStore reads — folding the final
+// offsets straight into the layout. Kept for now, just not mounted.
+//
+// if (import.meta.env.DEV) {
+//   void import('./engine/tuneEditor').then((m) => m.initTuneEditor());
+// }

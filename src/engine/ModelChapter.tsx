@@ -47,9 +47,9 @@ export interface ChapterExtra extends ExtraModelSpec {
 
 const isMeshModel = (src: string) => /\.(glb|gltf)$/i.test(src);
 
-/** Duration of the opener title intro (logo → typed subtitle → wordmark → coords)
- *  that plays on black before the bull is revealed. Keep in sync with CandleIntro. */
-const LOADER_INTRO_MS = 4500;
+/** Delay before the bull is revealed from black. The title intro now shows all at
+ *  once (no typed reveal), so the bull lifts as soon as it has loaded — no wait. */
+const LOADER_INTRO_MS = 0;
 
 /**
  * ModelChapter — native (no-iframe) scrollytelling chapter for a Datum SDK
@@ -67,6 +67,7 @@ export default function ModelChapter({
   frames = 4,
   track = { keys: [] },
   background = [0, 0, 0, 1],
+  vignette = false,
   placement,
   extras,
   stagesUrl,
@@ -83,6 +84,8 @@ export default function ModelChapter({
   track?: CameraTrack;
   /** Canvas clear colour [r,g,b,a]; a=0 → transparent over the page. */
   background?: [number, number, number, number];
+  /** Spotlight background: radial glow at centre → black edges (mesh models). */
+  vignette?: boolean;
   /** Model placement (mesh models). `recenter:false` + `scale` keeps an authored
    *  transform so cartesian-derived camera poses stay valid (e.g. stages.json). */
   placement?: { scale?: number; recenter?: boolean };
@@ -148,6 +151,7 @@ export default function ModelChapter({
             <ModelScene
               src={src}
               background={background}
+              vignette={vignette}
               autoFrame={autoFrame}
               placement={placement}
               extras={extras}
@@ -187,6 +191,7 @@ export default function ModelChapter({
 function ModelScene({
   src,
   background,
+  vignette,
   autoFrame,
   placement,
   extras,
@@ -197,6 +202,7 @@ function ModelScene({
 }: {
   src: string;
   background: [number, number, number, number];
+  vignette?: boolean;
   autoFrame: boolean;
   placement?: { scale?: number; recenter?: boolean };
   extras?: ChapterExtra[];
@@ -235,7 +241,7 @@ function ModelScene({
     // Pick the renderer from the file extension: meshes → three.js GlbScene,
     // Datum splats (.sog/.ply) → DatumScene. Both expose the same pose API.
     const scene: ModelSceneHandle = isMeshModel(src)
-      ? new GlbScene({ container, modelUrl: src, background, placement, extras, rotate, pan, onProgress, onError })
+      ? new GlbScene({ container, modelUrl: src, background, vignette, placement, extras, rotate, pan, onProgress, onError })
       : new DatumScene({ container, modelUrl: src, background, controlsMode: 'orbit', autoFrame, onProgress, onError });
     void scene.init();
 
@@ -262,7 +268,7 @@ function ModelScene({
       scene.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, bgKey, placementKey, extrasKey, rotate, pan, autoFrame, blockWheel]);
+  }, [src, bgKey, vignette, placementKey, extrasKey, rotate, pan, autoFrame, blockWheel]);
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#08080c]">

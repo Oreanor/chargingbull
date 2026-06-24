@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Map as MapboxMap } from 'mapbox-gl';
+import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } from 'mapbox-gl';
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
 import { t, localizeAssetUrl } from '../i18n';
@@ -200,6 +200,55 @@ function stopProgress(jv: number) {
   const span = STOP_BOUNDS[k + 1] - STOP_BOUNDS[k] || 1;
   return k + clamp((jv - STOP_BOUNDS[k]) / span, 0, 1);
 }
+
+// ── Building x-ray (ported from wallst-rodeo/map) ─────────────────────────────
+// Foreground structures around the NYSE close-up are moved to a translucent
+// sister layer so the bronze-highlighted exchange behind them shows through.
+
+// Precise NYSE building footprint (11 Wall Street). Buildings whose centroid
+// falls inside get feature-state `nyse:true` → bright bronze highlight.
+const NYSE_FOOTPRINT: LngLat[] = [
+  [-74.011251, 40.7074775], [-74.0115968, 40.7069027], [-74.0110914, 40.7067031],
+  [-74.0107881, 40.7071851], [-74.0108785, 40.7072476], [-74.0110222, 40.7073303],
+  [-74.0111393, 40.707415], [-74.011251, 40.7074775],
+];
+// Buildings whose centroid sits inside this polygon are faded (made
+// see-through) — the structures that block the NYSE / bull view on the close-up.
+const TRANSPARENT_BUILDINGS_POLY: LngLat[] = [
+  [-74.0110738, 40.7062909], [-74.0114533, 40.7053415], [-74.0115293, 40.7035],
+  [-74.0110928, 40.7018312], [-74.008901, 40.7024354], [-74.0062252, 40.7042553],
+  [-74.0047925, 40.705212], [-74.0079806, 40.7075425], [-74.0093374, 40.7085695],
+  [-74.0104351, 40.7071894], [-74.0108099, 40.7067632], [-74.0110738, 40.7062909],
+];
+
+/** Centroid of a Polygon/MultiPolygon geometry (outer ring only). */
+function geomCentroid(geometry: GeoJSON.Geometry): LngLat | null {
+  let ring: number[][] | undefined;
+  if (geometry.type === 'Polygon') ring = geometry.coordinates[0];
+  else if (geometry.type === 'MultiPolygon') ring = geometry.coordinates[0]?.[0];
+  else return null;
+  if (!ring || !ring.length) return null;
+  let sx = 0, sy = 0;
+  for (const [x, y] of ring) { sx += x; sy += y; }
+  return [sx / ring.length, sy / ring.length];
+}
+
+/** Standard ray-casting point-in-polygon; poly is an array of [lng,lat]. */
+function pointInPolygon(pt: LngLat, poly: LngLat[]): boolean {
+  const x = pt[0], y = pt[1];
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+// Fade is only active around the NYSE step. In location-progress space (the value
+// the overlay/cards use, where Studio=0, Foundry=1, NYSE=2, Queens=3, Bowling=4)
+// it switches on as we zoom toward the exchange and off as we head to Queens.
+const isFadeActiveForProgress = (p: number) => p >= 1.5 && p < 2.6;
 
 export default function MapChapter({
   dataUrl = '/chapters/bull/data.json',
@@ -409,6 +458,120 @@ export default function MapChapter({
       if (overlay && mapRef.current) map.removeControl(overlay);
     };
   }, [mapReady, steps, playhead]);
+
+  // building x-ray: foreground structures near the NYSE close-up fade to a
+  // translucent sister layer, revealing the bronze-highlighted exchange behind
+  // them. Tagging rides idle/sourcedata (Mapbox streams building fragments per
+  // zoom); the filters toggle on the location-progress band around NYSE.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !map.getLayer('building-3d')) return;
+
+    // Highlight the NYSE footprint in bronze on the main layer (faded buildings
+    // are excluded from it, so the exchange stays solid and lit).
+    const buildingColor: ExpressionSpecification = [
+      'case', ['boolean', ['feature-state', 'nyse'], false], '#d4a52a',
+      ['interpolate', ['linear'], ['get', 'height'],
+        0, '#2c2632', 60, '#4a3e3a', 160, '#705541', 400, '#a07a4a'],
+    ];
+    try { map.setPaintProperty('building-3d', 'fill-extrusion-color', buildingColor); } catch { /* style not ready */ }
+
+    // Translucent sister layer — real layer-level opacity gives Mapbox the cue to
+    // render fill-extrusion see-through (structures behind genuinely show).
+    if (!map.getLayer('building-3d-fade')) {
+      try {
+        const labelLayer = map.getStyle()?.layers?.find((l) => l.type === 'symbol' && /label|place/.test(l.id))?.id;
+        map.addLayer({
+          id: 'building-3d-fade', source: 'composite', 'source-layer': 'building',
+          type: 'fill-extrusion', minzoom: 13,
+          filter: ['in', ['id'], ['literal', []]],
+          paint: {
+            'fill-extrusion-color': '#6c5a48',
+            'fill-extrusion-height': ['get', 'height'],
+            'fill-extrusion-base': ['get', 'min_height'],
+            'fill-extrusion-opacity': 0.28,
+          },
+        }, labelLayer);
+      } catch (e) { console.warn('building-3d-fade layer failed', e); }
+    }
+
+    const nyseIds = new Set<string | number>();
+    const fadedIds = new Set<string | number>();
+    // location-progress (Studio=0…Bowling=4): stop 0 is the title, so subtract 1.
+    let cachedProgress = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
+
+    const updateFilters = () => {
+      const ids = [...fadedIds];
+      try {
+        if (isFadeActiveForProgress(cachedProgress)) {
+          map.setFilter('building-3d', ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true'], ['!', ['in', ['id'], ['literal', ids]]]] as FilterSpecification);
+          map.setFilter('building-3d-fade', ['in', ['id'], ['literal', ids]] as FilterSpecification);
+        } else {
+          map.setFilter('building-3d', ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']] as FilterSpecification);
+          map.setFilter('building-3d-fade', ['in', ['id'], ['literal', []]] as FilterSpecification);
+        }
+      } catch { /* layer/style transient */ }
+    };
+
+    // Query the on-screen building fragments overlapping a polygon's bbox and run
+    // each centroid through the ray-cast test (Mapbox supplies different fragments
+    // per zoom, so we keep tagging newcomers — never stop early).
+    const queryPoly = (poly: LngLat[]) => {
+      let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+      for (const [lng, lat] of poly) {
+        if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+      }
+      const sw = map.project([minLng, minLat]); const ne = map.project([maxLng, maxLat]);
+      const x0 = Math.min(sw.x, ne.x), x1 = Math.max(sw.x, ne.x);
+      const y0 = Math.min(sw.y, ne.y), y1 = Math.max(sw.y, ne.y);
+      return map.queryRenderedFeatures([[x0, y0], [x1, y1]], { layers: ['building-3d'] });
+    };
+
+    const tagNYSE = () => {
+      if (!map.getLayer('building-3d')) return;
+      for (const f of queryPoly(NYSE_FOOTPRINT)) {
+        if (f.id == null || nyseIds.has(f.id)) continue;
+        const c = geomCentroid(f.geometry); if (!c || !pointInPolygon(c, NYSE_FOOTPRINT)) continue;
+        map.setFeatureState({ source: 'composite', sourceLayer: 'building', id: f.id }, { nyse: true });
+        nyseIds.add(f.id);
+      }
+    };
+    const tagFaded = () => {
+      if (!map.getLayer('building-3d')) return;
+      let added = 0;
+      for (const f of queryPoly(TRANSPARENT_BUILDINGS_POLY)) {
+        if (f.id == null || fadedIds.has(f.id) || nyseIds.has(f.id)) continue; // never fade NYSE
+        const c = geomCentroid(f.geometry); if (!c || !pointInPolygon(c, TRANSPARENT_BUILDINGS_POLY)) continue;
+        fadedIds.add(f.id); added++;
+      }
+      if (added) updateFilters();
+    };
+
+    const onIdle = () => { tagNYSE(); tagFaded(); };
+    const onSourceData = (e: { sourceId?: string; isSourceLoaded?: boolean }) => {
+      if (e.sourceId === 'composite' && e.isSourceLoaded) { tagNYSE(); tagFaded(); }
+    };
+    map.on('idle', onIdle);
+    map.on('sourcedata', onSourceData);
+
+    const onPlayhead = () => {
+      cachedProgress = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
+      updateFilters();
+    };
+    onPlayhead();
+    const unsub = playhead.on('change', onPlayhead);
+
+    return () => {
+      map.off('idle', onIdle);
+      map.off('sourcedata', onSourceData);
+      unsub();
+      // Restore the solid layer (drop the "exclude faded ids" filter) before
+      // removing its translucent sister, so no buildings are left invisible.
+      try { if (map.getLayer('building-3d')) map.setFilter('building-3d', ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']] as FilterSpecification); } catch { /* map gone */ }
+      try { if (map.getLayer('building-3d-fade')) map.removeLayer('building-3d-fade'); } catch { /* map gone */ }
+    };
+  }, [mapReady, playhead]);
 
   // scroll-driven camera
   useEffect(() => {

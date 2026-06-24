@@ -4,7 +4,14 @@ import * as THREE from 'three';
 import './CandleIntro.css';
 import { useChapterProgress } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
+import { tuneStore } from './tuneEditor';
 import { t } from '../i18n';
+// Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
+// drop straight into the overlay: arrow-in-circle (green up / pink down) and the
+// skull. Colors are baked into the files.
+import ICON_UP from '../assets/icons/candle-arrow-up.svg?raw';
+import ICON_DOWN from '../assets/icons/candle-arrow-down.svg?raw';
+import ICON_SKULL from '../assets/icons/candle-skull.svg?raw';
 
 /**
  * CandleIntro — native, self-contained "Black Monday 1987" candle intro, ported
@@ -18,8 +25,10 @@ import { t } from '../i18n';
  * touches nothing else in the engine.
  */
 
+// Candle colors taken straight from the chart.svg reference (docs/chart.svg):
+// up = #61E26B, down = #DE2053 (the brand pink, same as --ci-pink in the CSS).
 const UP = 0x61e26b;
-const DOWN = 0xef5350;
+const DOWN = 0xde2053;
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); };
@@ -66,13 +75,22 @@ const OHLC: [string, number, number, number, number][] = [
   ['1987-10-19', 282.7, 282.7, 224.83, 224.84],
 ];
 
-// Dates/positions are data; the label + text are localized (merged by index).
-const FACT_COPY = t<{ label: string; text: string }[]>('opener.candles.facts');
+// Dates/positions/marker are data; the heading (date) + body text are localized.
+const FACT_COPY = t<{ date: string; text: string }[]>('opener.candles.facts');
 const FACTS = [
-  { date: '1987-08-25', pos: 'top' as const, ...FACT_COPY[0] },
-  { date: '1987-09-04', pos: 'bottom' as const, ...FACT_COPY[1] },
-  { date: '1987-10-16', pos: 'top' as const, ...FACT_COPY[2] },
+  { anchor: '1987-08-25', pos: 'top' as const, marker: 'up' as const, ...FACT_COPY[0] },
+  { anchor: '1987-09-04', pos: 'bottom' as const, marker: 'down' as const, ...FACT_COPY[1] },
+  { anchor: '1987-10-16', pos: 'top' as const, marker: 'down' as const, ...FACT_COPY[2] },
 ];
+const CRASH = t<{ date: string; title: string; figure: string }>('opener.candles.crash');
+const INDEX_LABEL = t('opener.candles.indexLabel');
+
+// Placement nudges for the fact callouts + crash block come from the shared
+// layout editor (tuneStore): each block is draggable via the top-right edit
+// toggle, and the saved offsets live in tune-layout.json under these ids.
+const FACT_TUNE_ID = (i: number) => `candle.fact${i}`;
+const CRASH_TUNE_ID = 'candle.crash';
+
 // month markers at the first trading day of each month (labels are localized)
 const MONTHS = t<string[]>('opener.candles.months');
 const GRID = [{ d: '1987-08-03' }, { d: '1987-09-01' }, { d: '1987-10-01' }];
@@ -177,32 +195,39 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const mk = (cls: string, parent: HTMLElement = overlay) => { const el = document.createElement('div'); el.className = cls; parent.appendChild(el); return el; };
     const gridItems = GRID.map((g, mi) => ({ idx: candles.findIndex((c) => c.date === g.d), line: mk('ci-gl'), lab: Object.assign(mk('ci-gd'), { textContent: MONTHS[mi] }) }));
     const yTicks = niceTicks(pMin, pMax).map((v) => ({ v, line: mk('ci-hl'), lab: Object.assign(mk('ci-yl'), { textContent: String(v) }) }));
-    const factItems = FACTS.map((f) => {
-      const el = mk('ci-fact'); el.innerHTML = `<span class="ci-fd">${f.label}</span>${f.text}`;
-      return { ...f, idx: candles.findIndex((c) => c.date === f.date), el };
+    // "S&P 500 INDEX" caption, top-right (shares the grid's fade via --ci-grid).
+    Object.assign(mk('ci-index'), { textContent: INDEX_LABEL });
+    const factItems = FACTS.map((f, i) => {
+      const el = mk('ci-fact');
+      el.dataset.tune = FACT_TUNE_ID(i);   // draggable via the layout editor
+      el.dataset.tuneMode = 'store';        // JS-positioned → offset read in the loop
+      const icon = f.marker === 'up' ? ICON_UP : ICON_DOWN;
+      el.innerHTML =
+        `<span class="ci-icon ci-icon-${f.marker}">${icon}</span>` +
+        `<div class="ci-plate"><div class="ci-fh">${f.date}</div><div class="ci-fb">${f.text}</div></div>`;
+      return { ...f, idx: candles.findIndex((c) => c.date === f.anchor), el };
     });
-    const bmEl = mk('ci-bm'); bmEl.innerHTML = `<span class="ci-bm-nm">${t('opener.candles.blackMondayName')}</span><span class="ci-bm-yr">${t('opener.candles.blackMondayYear')}</span>`;
+    const bmEl = mk('ci-bm');
+    bmEl.dataset.tune = CRASH_TUNE_ID;
+    bmEl.dataset.tuneMode = 'store';
+    // The leading minus/dash hangs in the left margin (ci-bm-sign is absolute) so
+    // the figure aligns on the "20", not on the dash — matching the reference.
+    const dash = /^[‒–—−-]/.exec(CRASH.figure)?.[0] ?? '';
+    const figNum = CRASH.figure.slice(dash.length);
+    bmEl.innerHTML =
+      `<span class="ci-skull">${ICON_SKULL}</span>` +
+      `<div class="ci-bm-date">${CRASH.date}</div>` +
+      `<div class="ci-bm-title">${CRASH.title}</div>` +
+      `<div class="ci-bm-fig"><span class="ci-bm-sign">${dash}</span>${figNum}</div>`;
 
-    // --- title intro (time-based, plays once on mount) ---
-    const introT0 = performance.now();
-    let subDone = false;
+    // --- title: shown all at once (no typed reveal, no logo fade, no wordmark glow) ---
     const SUB = t<string[]>('opener.hero.subtitle');
-    const subChars: { el: HTMLSpanElement; delay: number }[] = [];
     if (subtitleRef.current) {
       subtitleRef.current.textContent = '';
-      const total = SUB.reduce((n, l) => n + l.length, 0);
-      let gi = 0;
       for (const line of SUB) {
         const lineEl = document.createElement('span');
         lineEl.style.display = 'block';
-        for (const ch of line) {
-          const s = document.createElement('span');
-          s.textContent = ch;
-          s.style.opacity = ch === ' ' ? '1' : '0';
-          lineEl.appendChild(s);
-          subChars.push({ el: s, delay: (gi / total) * 2800 }); // typed over ~2.8s
-          gi++;
-        }
+        lineEl.textContent = line;
         subtitleRef.current.appendChild(lineEl);
       }
     }
@@ -213,7 +238,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       raf = requestAnimationFrame(tick);
       const [s0, s1] = spanRef.current;
       const raw = clamp01(progress.get());
-      const sp = clamp01(s1 > s0 ? (raw - s0) / (s1 - s0) : raw);
+      let sp = clamp01(s1 > s0 ? (raw - s0) / (s1 - s0) : raw);
+      // While the layout editor is on, freeze the visual on the settled chart (full
+      // draw, facts + crash block visible, no scatter) so callouts can be dragged.
+      if (tuneStore.active) sp = 0.58;
 
       // STATIC full-chart camera — the chart stays in place; only the candles draw
       // in left→right (no pan, no zoom).
@@ -259,34 +287,43 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         for (const gi of gridItems) { const px = projX(gi.idx).x; gi.line.style.left = px + 'px'; gi.lab.style.left = px + 'px'; }
         for (const yt of yTicks) { const py = projX(0, priceToY(yt.v)).y; yt.line.style.top = py + 'px'; yt.lab.style.top = py + 'px'; }
       }
-      for (const fi of factItems) {
+      factItems.forEach((fi, i) => {
         // fade each label up gradually from transparency as the chart draws past it
-        const op = chartOn * smoothstep(clamp01((revealEdge - fi.idx) / 9)) * drawFade;
+        const op = tuneStore.active ? 1 : chartOn * smoothstep(clamp01((revealEdge - fi.idx) / 9)) * drawFade;
         fi.el.style.opacity = op.toFixed(3);
         if (op > 0.005) {
-          const maxL = host.clientWidth - 240;
+          const maxL = host.clientWidth - 320;
+          const [ox, oy] = tuneStore.get(FACT_TUNE_ID(i));
           if (fi.pos === 'bottom') {
             const p = projX(fi.idx, priceToY(candles[fi.idx].l));
-            fi.el.style.left = Math.max(8, Math.min(maxL, p.x)) + 'px';
             fi.el.style.transform = 'none';
-            fi.el.style.top = Math.max(p.y + 14, host.clientHeight * 0.32) + 'px';
+            fi.el.style.left = Math.max(8, Math.min(maxL, p.x)) + ox + 'px';
+            fi.el.style.top = Math.max(p.y + 14, host.clientHeight * 0.32) + oy + 'px';
           } else {
             const p = projX(fi.idx, priceToY(candles[fi.idx].h));
-            fi.el.style.left = Math.max(8, Math.min(maxL, p.x)) + 'px';
             fi.el.style.transform = 'translateY(-100%)';
-            fi.el.style.top = Math.max(fi.el.offsetHeight + 8, p.y - 10) + 'px';
+            fi.el.style.left = Math.max(8, Math.min(maxL, p.x)) + ox + 'px';
+            fi.el.style.top = Math.max(fi.el.offsetHeight + 8, p.y - 10) + oy + 'px';
           }
         }
+      });
+      // Black Monday block (skull + crash headline + the −20.5% figure), anchored
+      // just right of the final crash candle. Fades in once the chart settles, gone
+      // by the scatter.
+      const bmOp = tuneStore.active ? 1 : smoothstep(clamp01((sp - PH.bmIn[0]) / (PH.bmIn[1] - PH.bmIn[0]))) * (1 - scatter);
+      bmEl.style.opacity = bmOp.toFixed(3);
+      if (bmOp > 0.005) {
+        const cx = projX(N - 1).x;
+        const [bx, by] = tuneStore.get(CRASH_TUNE_ID);
+        bmEl.style.left = Math.min(host.clientWidth - 220, cx + 22) + bx + 'px';
+        bmEl.style.top = host.clientHeight * 0.48 + by + 'px';
       }
-      // Black Monday / 1987 label, after the chart settles, gone by the scatter
-      bmEl.style.opacity = (smoothstep(clamp01((sp - PH.bmIn[0]) / (PH.bmIn[1] - PH.bmIn[0]))) * (1 - scatter)).toFixed(3);
 
       // hero: intro-in (time-based, once on mount, on black) × slide-out (scroll).
       // At sp≈0 the slide-out is identity, so the timed intro plays; as the reader
       // scrolls, the slide-out takes over. Order: logo instant → subtitle types
       // (~2s) → wordmark from black + glow pulse → coords fade (with wordmark).
       {
-        const introMs = performance.now() - introT0;
         const slideOff = (off: number) => {
           const s = clamp01((sp - off) / Math.max(0.001, PH.heroSlide - off));
           return s < 0.5 ? s * 0.7 : 0.35 + (s - 0.5) * 0.7 + 1.3 * (s - 0.5) ** 2;
@@ -294,17 +331,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         const fadeOut = (off: number) =>
           1 - smoothstep(clamp01(((sp - off) / Math.max(0.001, PH.heroSlide - off) - 0.7) / 0.3));
         const STAG = 0.035;
-
-        const logoIn = clamp01(introMs / 250);
-        const wmIn = clamp01((introMs - 3600) / 500); // longer pause after the typed subtitle
-        const coIn = clamp01((introMs - 3600) / 300);
-        const glow = clamp01(1 - Math.abs(introMs - 4250) / 230); // glow peaks ~4.25s
-
-        if (!subDone) {
-          // each letter fades up from transparency over ~150ms, typed ~2.8s total
-          for (const c of subChars) c.el.style.opacity = String(clamp01((introMs - c.delay) / 150));
-          if (introMs > 3000) { for (const c of subChars) c.el.style.opacity = '1'; subDone = true; }
-        }
+        // No intro reveal: logo/wordmark/coords/subtitle are fully present from the
+        // first frame; only the scroll-driven slide-out below still animates them.
+        const logoIn = 1, wmIn = 1, coIn = 1, glow = 0;
 
         if (logoRef.current) {
           // logo clears UP almost immediately so it doesn't get in the way

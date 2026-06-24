@@ -5,48 +5,74 @@
 
 .ci-overlay { --ci-grid: 0; --ci-pink: #de2053; --ci-coral: #e0655b; }
 
-/* date gridlines (dashed verticals + month labels) + price gridlines */
+/* date gridlines (dashed verticals + month labels) + price gridlines.
+   Colors match the chart.svg reference exactly: vertical dashes = #E6E6E6
+   (stroke-dasharray 2 4), horizontal price lines = #434343, labels = #FAFAFA. */
 .ci-overlay .ci-gl {
-  position: absolute; top: 0; bottom: 38px; width: 0;
-  border-left: 1px dashed rgba(255, 255, 255, 0.35);
+  position: absolute; top: 0; bottom: 38px; width: 1px;
+  background: repeating-linear-gradient(to bottom, #e6e6e6 0 2px, transparent 2px 6px);
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-hl {
   position: absolute; left: 0; right: 0; height: 1px;
-  background: rgba(255, 255, 255, 0.07);
+  background: #434343;
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-gd {
   position: absolute; bottom: 14px; transform: translateX(-50%); white-space: nowrap;
-  font: 400 12px var(--font-mono); letter-spacing: 0.05em; color: rgba(255, 255, 255, 0.6);
+  font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-yl {
   position: absolute; right: 14px; transform: translateY(-50%); text-align: right; white-space: nowrap;
-  font: 400 12px var(--font-mono); letter-spacing: 0.04em; color: rgba(255, 255, 255, 0.5);
+  font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
+  opacity: var(--ci-grid);
+}
+/* "S&P 500 INDEX" caption, top-right corner (above the top price line) */
+.ci-overlay .ci-index {
+  position: absolute; top: 24px; right: 14px; white-space: nowrap;
+  font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
 
-/* pre-crash facts, anchored to a candle date */
-.ci-overlay .ci-fact {
-  position: absolute; max-width: 212px; opacity: 0;
-  font: 400 clamp(12px, 0.95vw, 15px) / 1.42 var(--font-struve);
-  color: #d8dcd8; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
+/* pre-crash facts: an arrow-in-circle icon above a translucent black plate that
+   carries the bold date heading + body (struve 18, white) — matching Frame 78. */
+.ci-overlay .ci-fact { position: absolute; opacity: 0; width: 300px; max-width: 90vw; }
+/* per-callout width tweaks (so lines wrap where the reference does) */
+.ci-overlay .ci-fact[data-tune="candle.fact0"] { width: 285px; }
+.ci-overlay .ci-fact[data-tune="candle.fact1"] { width: 315px; }
+.ci-overlay .ci-fact[data-tune="candle.fact2"] { width: 315px; }
+.ci-overlay .ci-icon { display: block; width: 40px; height: 40px; margin-bottom: 0; }
+.ci-overlay .ci-icon svg { display: block; width: 100%; height: 100%; }
+/* tight left padding so the text sits ~2px right of the circle's left edge (the
+   icon's circle is inset ~3px in its 40px box), not flush with it. */
+.ci-overlay .ci-plate { background: rgba(0, 0, 0, 0.7); padding: 12px 16px 12px 6px; }
+.ci-overlay .ci-fh {
+  font: 700 18px var(--font-struve); color: #fff; margin-bottom: 8px;
 }
-.ci-overlay .ci-fd {
-  display: block; font: 700 10.5px var(--font-mono); letter-spacing: 0.14em;
-  color: var(--ci-pink); margin-bottom: 5px;
+.ci-overlay .ci-fb {
+  font: 400 18px / 1.55 var(--font-struve); color: #fff;
 }
 
-/* the "Black Monday / 1987" label on the settled chart */
-.ci-overlay .ci-bm {
-  position: absolute; left: 52%; bottom: 6%; opacity: 0;
+/* Black Monday crash block: skull, date + headline, and the giant −20.5% figure. */
+/* whole crash block scaled down (~15% off the reference) — from the top-left so the
+   JS-set anchor stays put and it shrinks toward it. */
+.ci-overlay .ci-bm { position: absolute; opacity: 0; width: max-content; max-width: 92vw; transform: scale(0.83); transform-origin: top left; }
+.ci-overlay .ci-skull {
+  display: block; width: 54px; height: 80px; color: var(--ci-pink); margin-bottom: 18px;
 }
-.ci-overlay .ci-bm-nm {
-  display: block; font: 700 clamp(26px, 2.8vw, 44px) / 1.05 var(--font-struve);
-  color: #fff; margin-bottom: 16px;
+.ci-overlay .ci-skull svg { display: block; width: 100%; height: 100%; }
+.ci-overlay .ci-bm-date {
+  font: 700 18px var(--font-struve); color: #fff; margin-bottom: 6px;
 }
-.ci-overlay .ci-bm-yr {
-  display: block; font: 400 clamp(90px, 13vw, 190px) / 0.84 var(--font-repose);
-  color: var(--ci-coral); letter-spacing: 0.01em;
+.ci-overlay .ci-bm-title {
+  font: 700 24px / 1.33 var(--font-struve); color: #fff; margin-bottom: 6px;
 }
+.ci-overlay .ci-bm-fig {
+  position: relative;
+  /* a touch larger than the surrounding block so the figure dominates */
+  font: 900 clamp(95px, 14vw, 204px) / 0.82 var(--font-druk);
+  color: var(--ci-pink); letter-spacing: 0.03em;
+}
+/* leading minus hung into the left margin so the "20" aligns with the date/title */
+.ci-overlay .ci-bm-sign { position: absolute; left: 0; top: 0; transform: translateX(-100%); }

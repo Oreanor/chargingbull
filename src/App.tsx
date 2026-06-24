@@ -77,6 +77,7 @@ export default function App() {
             track={OPENER_TRACK}
             placement={OPENER_PLACEMENT}
             extras={OPENER_EXTRAS}
+            vignette
             edit
           />
         </div>

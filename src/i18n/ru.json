@@ -11,14 +11,18 @@
       "coordsGeo": "40°42′N 74°01′W"
     },
     "candles": {
-      "blackMondayName": "Black<br>Monday",
-      "blackMondayYear": "1987",
+      "indexLabel": "S&P 500 INDEX",
       "months": ["AUG", "SEP", "OCT"],
       "facts": [
-        { "label": "AUG 25", "text": "Five years of gains have tripled the market — and today it tops out at an all-time high." },
-        { "label": "SEP 4", "text": "The Fed raises rates for the first time in three years — the cheap money fuelling the boom starts to dry up." },
-        { "label": "OCT 16", "text": "Over the weekend Washington threatens to let the dollar slide unless Germany cuts rates — markets brace for a currency war." }
-      ]
+        { "date": "25 августа 1987", "text": "Пять лет роста утроили рынок — сегодня он на историческом максимуме" },
+        { "date": "4 сентября 1987", "text": "ФРС впервые за три года поднимает ставку, и дешёвые деньги, питавшие бум, начинают иссякать" },
+        { "date": "16 октября 1987", "text": "На выходных Вашингтон грозит обрушить доллар, если Германия не снизит ставки; рынки готовятся к валютной войне" }
+      ],
+      "crash": {
+        "date": "19 октября 1987",
+        "title": "Чёрный понедельник<br>обвал рынка",
+        "figure": "–20,5%"
+      }
     },
     "plaques": [
       {

@@ -27,6 +27,13 @@
   src: url('./assets/fonts/DrukCondensed-Super.otf') format('opentype');
   font-weight: 400; font-style: normal; font-display: swap;
 }
+/* Druk XX-Condensed Super — the exact face from the candle-intro reference
+   (Figma "Druk XXCond"), used for the giant −20.5% crash figure. */
+@font-face {
+  font-family: 'Druk XXCond';
+  src: url('./assets/fonts/DrukCondensed-XXSuper-Web.woff2') format('woff2');
+  font-weight: 900; font-style: normal; font-display: swap;
+}
 
 /* --------------------------------------------------- Ayer Poster Cursive --- */
 @font-face {
@@ -122,5 +129,5 @@
   --font-grotesk: 'Space Grotesk', system-ui, sans-serif;       /* eyebrow labels */
   --font-ayer:    'Ayer Poster Cursive', 'Playfair Display', Georgia, serif; /* display cursive */
   --font-repose:  'RR Repose Prop', 'Archivo', 'Struve', sans-serif;         /* giant numerals  */
-  --font-druk:    'Druk Condensed', 'Archivo', system-ui, sans-serif;        /* condensed display */
+  --font-druk:    'Druk XXCond', 'Druk Condensed', 'Archivo', system-ui, sans-serif; /* XX-condensed display (crash figure) */
 }
