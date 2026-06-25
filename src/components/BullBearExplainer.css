@@ -1,0 +1,18 @@
+/* Bull/Bear explainer — two columns: narrow struve aside (left) + wide martina
+   serif body (right) with highlighted "bull/bear market" pills and inline links. */
+
+.xpl-aside a,
+.xpl-main a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+.xpl-pill {
+  font-family: var(--font-struve);
+  font-weight: 600;
+  color: #000;
+  border-radius: 8px;
+  padding: 0.04em 0.4em;
+  white-space: nowrap;
+  /* serif body sits ~24px; the Struve pill reads a touch smaller, like the design */
+  font-size: 0.92em;
+}
+.xpl-pill-bull { background: #61e26b; }
+.xpl-pill-bear { background: #f14268; }

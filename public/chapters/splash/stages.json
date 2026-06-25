@@ -64,16 +64,7 @@
         ]
       },
       "explode": 0,
-      "annotations": [
-        {
-          "kind": "text",
-          "text": "4 tons weight",
-          "cx": 0.22503115467802026,
-          "cy": -0.2896808899067317,
-          "color": "#ffffff",
-          "scale": 0.03
-        }
-      ],
+      "annotations": [],
       "model3d": {
         "asset": "23370aac-6985-4731-a51f-94a5a8796c16",
         "scale": 0.7,
@@ -120,32 +111,7 @@
         ]
       },
       "explode": 1.06,
-      "annotations": [
-        {
-          "kind": "text",
-          "text": "Different pieces →",
-          "cx": -0.3004558602697119,
-          "cy": -0.1189390737365005,
-          "color": "#ffffff",
-          "scale": 0.02
-        },
-        {
-          "kind": "text",
-          "text": "5 mm wide →",
-          "cx": 0.1935350667899258,
-          "cy": -0.16203895518842137,
-          "color": "#ffffff",
-          "scale": 0.02
-        },
-        {
-          "kind": "text",
-          "text": "Empty inside",
-          "cx": -0.06174883426457475,
-          "cy": -0.023622042202660874,
-          "color": "#ffffff",
-          "scale": 0.02
-        }
-      ]
+      "annotations": []
     },
     {
       "name": "Морда и рога",
@@ -177,23 +143,7 @@
         ]
       },
       "explode": 0,
-      "annotations": [
-        {
-          "kind": "image",
-          "src": "/chapters/splash/anno/worn-spots.png",
-          "cx": 0.12179129464285714,
-          "cy": 0.1267776137672811,
-          "scale": 0.43
-        },
-        {
-          "kind": "text",
-          "text": "The most worn-out places",
-          "cx": 0.4546208488173996,
-          "cy": 0.12639866434692604,
-          "color": "#ffffff",
-          "scale": 0.03
-        }
-      ]
+      "annotations": []
     },
     {
       "name": "Вид сзади",
@@ -225,23 +175,7 @@
         ]
       },
       "explode": 0,
-      "annotations": [
-        {
-          "kind": "image",
-          "src": "/chapters/splash/anno/big-balls.svg",
-          "cx": 0.0556370607718894,
-          "cy": 0.12479748703917051,
-          "scale": 0.09972238350502786
-        },
-        {
-          "kind": "text",
-          "text": "Big balls",
-          "cx": 0.1363447719867101,
-          "cy": 0.0783257646452281,
-          "color": "#ffffff",
-          "scale": 0.02
-        }
-      ]
+      "annotations": []
     }
   ]
 }

@@ -3,7 +3,12 @@ import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } f
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
 import { t, localizeAssetUrl } from '../i18n';
+import { tuneStore } from './tuneEditor';
 import './MapChapter.css';
+// Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
+import ROUTE_THE from '../assets/route/the.svg?raw';
+import ROUTE_BULLS from '../assets/route/bulls.svg?raw';
+import ROUTE_ROUTE from '../assets/route/route.svg?raw';
 
 // deck.gl is imported DYNAMICALLY (in the overlay effect) — it touches browser
 // globals at module load and would crash the SSR prerender. Type-only imports
@@ -252,14 +257,12 @@ const isFadeActiveForProgress = (p: number) => p >= 1.5 && p < 2.6;
 
 export default function MapChapter({
   dataUrl = '/chapters/bull/data.json',
-  assetBase = '/chapters/bull/',
   introTitle,
   introBody,
   revealUnderlay = false,
   onDive,
 }: {
   dataUrl?: string;
-  assetBase?: string;
   /** Optional chapter title card shown FROM DARKNESS as stop 0 — types in, then
    *  dissolves into the map (so it never slides up from below). */
   introTitle?: string;
@@ -277,8 +280,12 @@ export default function MapChapter({
   const stickyRef = useRef<HTMLDivElement>(null);
   const mapHostRef = useRef<HTMLDivElement>(null);
   const introRef = useRef<HTMLDivElement>(null);
-  const introTitleRef = useRef<HTMLHeadingElement>(null);
+  const introTitleRef = useRef<HTMLDivElement>(null);
   const introBodyRef = useRef<HTMLParagraphElement>(null);
+  // outlined "The Bull's ROUTE" title pieces — draggable via the ✎ editor.
+  const theRef = useRef<HTMLDivElement>(null);
+  const bullsRef = useRef<HTMLDivElement>(null);
+  const routeRef = useRef<HTMLDivElement>(null);
   const outroRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -689,6 +696,7 @@ export default function MapChapter({
     if (introBodyRef.current) {
       introBodyRef.current.textContent = '';
       [...body].forEach((ch, i) => {
+        if (ch === '\n') { introBodyRef.current!.appendChild(document.createElement('br')); return; }
         const s = document.createElement('span');
         s.textContent = ch;
         s.style.opacity = ch === ' ' ? '1' : '0';
@@ -717,6 +725,31 @@ export default function MapChapter({
     onScroll();
     return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
   }, [introTitle, introBody]);
+
+  // Bake the saved (or live-dragged) layout-editor offsets into each title piece's
+  // transform, every frame — so the ✎ editor can nudge "The Bull's ROUTE" + the
+  // paragraph and the saved positions also show with the editor off.
+  useEffect(() => {
+    const pieces: { ref: React.RefObject<HTMLElement>; id: string }[] = [
+      { ref: theRef, id: 'route.the' },
+      { ref: bullsRef, id: 'route.bulls' },
+      { ref: routeRef, id: 'route.route' },
+      { ref: introBodyRef, id: 'route.body' },
+    ];
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      for (const { ref, id } of pieces) {
+        const el = ref.current;
+        if (!el) continue;
+        const [ox, oy] = tuneStore.get(id);
+        const s = tuneStore.getScale(id);
+        el.style.transform = ox || oy || s !== 1 ? `translate(${ox}vh, ${oy}vh) scale(${s})` : '';
+      }
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   const N = steps.length || STEP_CAMERAS.length;
   return (
@@ -750,18 +783,10 @@ export default function MapChapter({
               }}
             >
               <div className="mc-card pointer-events-auto">
-                {s.image ? (
-                  <div className="mc-card-img">
-                    <img src={s.image.replace('./', assetBase)} alt={s.title} loading="lazy"
-                      onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
-                    {s.imageCaption ? <div className="mc-card-cap">{s.imageCaption}</div> : null}
-                  </div>
-                ) : null}
-                <div className="mc-num"><span className="n">{String(i + 1).padStart(2, '0')}</span><span className="of">{t('map.ofCount')} {N}</span></div>
                 <div className="mc-date">{s.date}</div>
-                <h2 className="mc-title">{s.title}</h2>
                 <div className="mc-loc">{s.location}{s.address ? ` · ${s.address}` : ''}</div>
-                {/* comment carries inline HTML (<b>…</b>) from data.json */}
+                <h2 className="mc-title">{s.title}</h2>
+                {/* comment carries inline HTML (<a>…</a>, <b>…</b>) from data.json */}
                 <p className="mc-comment" dangerouslySetInnerHTML={{ __html: s.comment }} />
               </div>
             </div>
@@ -774,18 +799,43 @@ export default function MapChapter({
             className="absolute inset-0 z-30 bg-black flex items-center justify-center px-6 pointer-events-none"
             style={{ opacity: 1 }}
           >
-            <div className="text-center max-w-[820px]">
-              <h2
+            <div className="max-w-[920px]">
+              {/* outlined "The Bull's ROUTE" title — each piece draggable (store-mode). */}
+              <div
                 ref={introTitleRef}
-                style={{ opacity: 0, fontFamily: 'var(--font-ayer)', fontStyle: 'italic', fontWeight: 900, color: '#c9a961' }}
-                className="leading-[1.0] mb-7 text-[clamp(52px,9vw,120px)]"
+                style={{ opacity: 0, position: 'relative', width: 'min(880px, 92vw)', height: 'min(330px, 35vw)', margin: '0 auto 24px' }}
               >
-                {introTitle}
-              </h2>
+                <div
+                  ref={bullsRef}
+                  data-tune="route.bulls"
+                  data-tune-mode="store"
+                  className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+                  style={{ left: '2%', top: '18%', width: 'min(560px, 52vw)' }}
+                  dangerouslySetInnerHTML={{ __html: ROUTE_BULLS }}
+                />
+                <div
+                  ref={theRef}
+                  data-tune="route.the"
+                  data-tune-mode="store"
+                  className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+                  style={{ left: '24%', top: '0%', width: 'min(96px, 9vw)' }}
+                  dangerouslySetInnerHTML={{ __html: ROUTE_THE }}
+                />
+                <div
+                  ref={routeRef}
+                  data-tune="route.route"
+                  data-tune-mode="store"
+                  className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+                  style={{ left: '52%', top: '16%', width: 'min(428px, 40vw)' }}
+                  dangerouslySetInnerHTML={{ __html: ROUTE_ROUTE }}
+                />
+              </div>
               <p
                 ref={introBodyRef}
-                style={{ fontFamily: 'var(--font-struve)' }}
-                className="mx-auto max-w-[560px] text-[clamp(16px,1.5vw,20px)] leading-[1.55] text-fg/80"
+                data-tune="route.body"
+                data-tune-mode="store"
+                style={{ fontFamily: 'var(--font-struve)', color: '#b3a079' }}
+                className="mx-auto max-w-[480px] text-center text-[clamp(16px,1.5vw,20px)] leading-[1.55]"
               />
             </div>
           </div>

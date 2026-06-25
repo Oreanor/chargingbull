@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { tuneStore } from '../engine/tuneEditor';
 
 /**
  * BreakReveal — a chapter divider that appears FROM DARKNESS in place (not
@@ -16,6 +17,7 @@ export function BreakReveal({
   titleNode,
   body,
   preload,
+  tuneKey,
 }: {
   /** Plain gold cursive title text… */
   title?: string;
@@ -24,6 +26,9 @@ export function BreakReveal({
   body: string;
   /** Optional next-chapter asset warm-up; lock holds until it resolves. */
   preload?: () => Promise<unknown>;
+  /** When set, the title block + body become draggable via the ✎ layout editor
+   *  (`<tuneKey>.title` / `<tuneKey>.body`), with offsets persisted + re-applied. */
+  tuneKey?: string;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
@@ -40,6 +45,7 @@ export function BreakReveal({
     if (bodyRef.current) {
       bodyRef.current.textContent = '';
       [...body].forEach((ch, i) => {
+        if (ch === '\n') { bodyRef.current!.appendChild(document.createElement('br')); return; }
         const s = document.createElement('span');
         s.textContent = ch;
         s.style.opacity = ch === ' ' ? '1' : '0';
@@ -86,11 +92,38 @@ export function BreakReveal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Bake the saved (or live-dragged) layout-editor offsets into the title + body
+  // transforms each frame, so the ✎ editor can nudge them and the saved positions
+  // also show with the editor off. (Opacity is owned by the reveal loop above.)
+  useEffect(() => {
+    if (!tuneKey) return;
+    let raf = 0;
+    const apply = (el: HTMLElement | null, id: string) => {
+      if (!el) return;
+      const [ox, oy] = tuneStore.get(id);
+      const s = tuneStore.getScale(id);
+      el.style.transform = ox || oy || s !== 1 ? `translate(${ox}vh, ${oy}vh) scale(${s})` : '';
+    };
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      apply(titleRef.current, `${tuneKey}.title`);
+      apply(bodyRef.current, `${tuneKey}.body`);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [tuneKey]);
+
   return (
     <section ref={sectionRef} className="relative h-[160vh] w-full bg-black">
       <div className="sticky top-0 h-[100dvh] flex items-center justify-center px-6">
         <div className="text-center max-w-[820px]">
-          <div ref={titleRef} style={{ opacity: 0 }} className="mb-7">
+          <div
+            ref={titleRef}
+            style={{ opacity: 0 }}
+            className="mb-7"
+            data-tune={tuneKey ? `${tuneKey}.title` : undefined}
+            data-tune-mode={tuneKey ? 'store' : undefined}
+          >
             {titleNode ?? (
               <span
                 style={{ fontFamily: 'var(--font-ayer)', fontStyle: 'italic', fontWeight: 900, color: '#c9a961' }}
@@ -103,7 +136,9 @@ export function BreakReveal({
           <p
             ref={bodyRef}
             style={{ fontFamily: 'var(--font-struve)' }}
-            className="mx-auto max-w-[560px] text-[clamp(16px,1.5vw,20px)] leading-[1.55] text-fg/80"
+            className="mx-auto max-w-[420px] text-[clamp(16px,1.5vw,20px)] leading-[1.55] text-fg/80"
+            data-tune={tuneKey ? `${tuneKey}.body` : undefined}
+            data-tune-mode={tuneKey ? 'store' : undefined}
           />
         </div>
       </div>

@@ -26,19 +26,28 @@
     },
     "plaques": [
       {
-        "title": "After Black Monday",
-        "body": "Black Monday 1987 wiped billions off the stock market, and a couple of years later, a bronze bull stood on Bowling Green in NYC, poised for eternal growth. Arturo Di Modica turned his personal fear of crises into a sculpture of the Charging Bull, which convinces New York every day: downturns are temporary, but stubbornness is not."
+        "title": "After the crash",
+        "body": "Black Monday wiped billions off the stock market in 1987. Two years later, Arturo Di Modica brought a bronze bull to Wall Street. It was guerrilla art in its purest form: no commission, no permission, only the sculptor’s response to the crash. The city woke up to 3.2 tonnes of market confidence outside the New York Stock Exchange."
       },
       {
-        "title": "Bull's proportions",
-        "body": "Side-on, the proportions read true. 3.4 metres at the shoulder. 4.9 metres nose to tail. Heavier than a Manhattan delivery truck, low enough that tourists climb on its back for the photo. Di Modica wanted the silhouette of an animal mid-charge — not a monument — and the choice of pose forced everything else: a heavy front quarter, a planted hind, the centre of gravity dropped forward."
+        "title": "Meet the bull",
+        "body": "From the side, the bull is built for impact. The head is lowered, the shoulders carry most of the weight, the hind legs look ready to launch the whole body forward. It feels less like a monument than a street-level version of New York’s self-image."
+      },
+      {},
+      {
+        "title": "Selfie magnet",
+        "body": "The bull is now one of New York’s most photographed sculptures. There is usually a <a href=\"https://www.atlasobscura.com/articles/tourists-love-to-rub-the-bronze-balls-of-wall-streets-charging-bull-statue-why\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color:inherit;text-decoration:underline;pointer-events:auto\">crowd around it</a>: hands on the muzzle, fingers on the horns, another tourist waiting for the same picture. The nose and horn tips are lighter than the rest of the body. Years of touch have worn away the darker patina."
+      },
+      {
+        "title": "Touch for luck",
+        "body": "The rear view is less majestic, but just as popular. Visitors duck under the belly to <a href=\"https://gothamist.com/arts-entertainment/why-do-so-many-people-want-to-touch-the-wall-street-bulls-testicles\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color:inherit;text-decoration:underline;pointer-events:auto\">rub the testicles</a> for luck, sit there for photos, and hold the hind legs as they get up. By touching the same spots again and again, people keep changing the bull’s appearance, becoming accidental co-creators of one of the world’s most recognisable public artworks."
       }
     ]
   },
   "map": {
     "intro": {
       "title": "The Way of the Bull",
-      "body": "How three tonnes of bronze got from a SoHo studio to the entrance of the New York Stock Exchange in the back of a flatbed truck — and from there, two blocks south, to a slab of Manhattan it has never left since."
+      "body": "How do you move three tonnes of bronze through Manhattan at night? In Di Modica’s case, with\na flatbed truck, a few friends and no permission"
     },
     "ofCount": "of",
     "errorPrefix": "map:"
@@ -47,12 +56,13 @@
     "altBears": "Bears",
     "altVs": "vs",
     "altBulls": "Bulls",
-    "body": "A bronze statue can hold a pose forever. Markets cannot. They move in two distinct moods—named, since the 18th century, after the two ways an animal attacks."
+    "body": "A bronze bull can hold one pose forever.\nMarkets are less disciplined. Since the 18th century, traders have described them with two animals: the bull and the bear"
   },
   "explainer": {
-    "lead": "A <strong class=\"text-emerald-300\">bull market</strong> is when prices climb — broadly, persistently, for months or years at a stretch. A <strong class=\"text-rose-300\">bear market</strong> is when they fall by 20% or more from a recent peak and stay there. The names come from how each animal strikes: a bull tosses its horns <em class=\"italic text-accent font-normal\">upward</em>; a bear swipes its paw <em class=\"italic text-accent font-normal\">down</em>. Eighteenth-century London coffee-houses borrowed the image, and the labels stuck.",
-    "p2": "The difference isn't only direction. A bull market runs on confidence — easy credit, rising earnings, the comfortable belief that next quarter will look like this one, only larger. A bear market runs on the opposite: a sudden, contagious doubt that yesterday's prices were ever real. Bulls climb a staircase; bears fall down an elevator shaft. Since World War II, the average S&amp;P 500 bull has lasted about <strong class=\"font-semibold text-fg\">five years</strong> and gained <strong class=\"font-semibold text-fg\">~180%</strong>; the average bear has lasted about <strong class=\"font-semibold text-fg\">13 months</strong> and lost <strong class=\"font-semibold text-fg\">~35%</strong>. Both sides of that asymmetry are what every long-term chart is really drawing.",
-    "p3": "Let's look at what those drops actually felt like. Five of the biggest and best-known crises of the past seventy years, charted against the same axis: how much the S&amp;P 500 lost, how fast it fell, how long it stayed down before climbing back."
+    "aside": "Where did Wall Street get its animals? As The New York Times <a href=\"https://www.nytimes.com/1997/11/30/nyregion/fyi-328278.html\" target=\"_blank\" rel=\"noopener noreferrer\">noted</a>, bulls and bears were already market slang by 1817. “Bear” came from traders who sold shares before they owned them, like selling a skin before catching the bear. “Bull” appeared around the same time, though its origin is less certain.",
+    "p1": "A <span class=\"xpl-pill xpl-pill-bull\">bull market</span> is when prices rise broadly and continue to rise, often for months or years. A <span class=\"xpl-pill xpl-pill-bear\">bear market</span> is when they fall by 20% or more from a recent peak. Today, these names allude to the way each animal attacks. A bull throws its horns upward. A bear swipes down.",
+    "p2": "Direction is only part of it. A bull market runs on confidence: easy credit, rising earnings, and the belief that the next quarter will be larger than the last. A bear market runs on doubt. Yesterday’s prices suddenly look too high. Analysts <a href=\"https://www.reuters.com/business/wall-streets-bull-market-nears-three-years-old-history-shows-it-may-still-have-2025-10-09/\" target=\"_blank\" rel=\"noopener noreferrer\">counted</a> 14 bull markets since 1932. On average, they lasted about five years and gained more than 170%. There have also been 14 bear markets since 1945. Those <a href=\"https://www.reuters.com/business/whispers-sp-500-bear-market-grow-louder-us-stock-decline-continues-2022-05-09/\" target=\"_blank\" rel=\"noopener noreferrer\">were shorter</a> and sharper: an average fall of 36% over 289 days.",
+    "p3": "Now look at the drops. Five of the biggest and best-known crises of the past 70 years, shown on the same axis: how much the S&P 500 lost, how fast it fell, and how long it took to climb back."
   },
   "charts": {
     "topbarSmall": "Wall Street · 1973–2026",

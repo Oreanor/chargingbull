@@ -1,5 +1,5 @@
 import type { MDXComponents } from 'mdx/types';
-import { ModelChapter, ChartsChapter, CandleIntro, StageOverlay, MapChapter, MapBullHandoff } from '../engine';
+import { ModelChapter, ChartsChapter, CandleIntro, StageOverlay, TonnesFrame, PartsFrame, SelfieFrame, RearFrame, MapChapter, MapBullHandoff } from '../engine';
 import DatumSplat from '../components/DatumSplat';
 import { Prose, Break, Outro } from '../components/Prose';
 import { BreakReveal } from '../components/BreakReveal';
@@ -9,6 +9,10 @@ export const mdxComponents: MDXComponents = {
   ChartsChapter,
   CandleIntro,
   StageOverlay,
+  TonnesFrame,
+  PartsFrame,
+  SelfieFrame,
+  RearFrame,
   MapChapter,
   MapBullHandoff,
   DatumSplat,

@@ -12,7 +12,7 @@
       "lat": 40.7222,
       "image": "./images/studio.jpg",
       "imageCaption": "Di Modica's SoHo studio, late 1980s",
-      "comment": "The Charging Bull was a response to a market trauma: Black Monday, 19 October 1987 — the Dow Jones plunged 22.6% in a single day. Arturo Di Modica, a Sicilian sculptor who'd moved to New York in 1970, didn't comment on the crash — he answered it. In a cramped, semi-legal loft on Crosby Street he spent almost two years wrestling clay and plaster, sculpting a full-size model and making sectional moulds. The moulds went across the river to be cast in bronze — the studio itself never melted a kilogram of metal."
+      "comment": "Di Modica <a href=\"https://arturodimodica.com/works/charging-bull/\" target=\"_blank\" rel=\"noopener noreferrer\">built</a> the bull in a cramped, semi-legal loft on Crosby Street. For almost two years, the sculpture was formed in clay, plaster and wax. The bronze was cast across the river at Bedi-Makky Art Foundry in Brooklyn, the family-run shop that <a href=\"https://www.bklynlibrary.org/blog/2012/02/24/greenpoint-iwo-jima\" target=\"_blank\" rel=\"noopener noreferrer\">had cast</a> the Iwo Jima Memorial decades earlier."
     },
     {
       "id": 2,
@@ -32,13 +32,26 @@
       "title": "Night raid on Wall Street",
       "location": "Broad Street, by 11 Wall Street",
       "address": "New York Stock Exchange",
-      "lng": -74.010950,
+      "lng": -74.01095,
       "lat": 40.706754,
-      "approachVia": [[-73.9907, 40.7026], [-74.00788, 40.71100], [-74.00910, 40.70720]],
+      "approachVia": [
+        [
+          -73.9907,
+          40.7026
+        ],
+        [
+          -74.00788,
+          40.711
+        ],
+        [
+          -74.0091,
+          40.7072
+        ]
+      ],
       "routeProfile": "walking",
       "image": "./images/install.jpg",
       "imageCaption": "Broad Street at dawn, 15 December 1989",
-      "comment": "Around 1:30 AM, the flatbed truck — bull and forklift on board — crossed the <b>Manhattan Bridge</b> out of Greenpoint and rolled into the Financial District. Di Modica and a handful of friends wedged the bull beneath the giant Christmas tree on Broad Street, right at the New York Stock Exchange. An unsanctioned «gift to the city». By morning brokers, tourists and journalists had surrounded the bronze beast, and Di Modica was on the sidewalk handing out leaflets."
+      "comment": "At about 1.30 am, Di Modica and a few friends <a href=\"https://italiantribune.com/the-true-story-of-charging-bull/\" target=\"_blank\" rel=\"noopener noreferrer\">drove</a> the bull into the Financial District. He <a href=\"https://www.phillips.com/article/37187333/arturo-di-modica-charging-bull\" target=\"_blank\" rel=\"noopener noreferrer\">had spent</a> the previous nights studying the security routine and knew the guard would be gone for 4.5 minutes. They left the bull under the Christmas tree on Broad Street, outside the NYSE. No commission. No permit. By morning, brokers, tourists and journalists had gathered around it, while Di Modica handed out leaflets nearby."
     },
     {
       "id": 4,
@@ -50,7 +63,7 @@
       "lat": 40.7282,
       "image": "./images/impound.jpg",
       "imageCaption": "NY Post front page, December 16, 1989",
-      "comment": "By the end of the day, NYSE chairman John J. Phelan Jr. had ordered the bull removed. The NYPD hauled it to an impound lot in Queens. The next morning's front pages — most famously the New York Post's «Bah, Humbug!» — flipped the script: the corporate take-down became a folk-hero story. The bull's fate turned into a citywide scandal."
+      "comment": "The bull lasted less than a day outside the exchange. By evening, the NYSE chairman <a href=\"https://www.nytimes.com/1989/12/16/nyregion/soho-gift-to-wall-st-a-3-1-2-ton-bronze-bull.html\" target=\"_blank\" rel=\"noopener noreferrer\">had ordered</a> it removed, and the NYPD had hauled it to an impound lot in Queens. Then the newspapers joined in. The New York Post <a href=\"https://nypost.com/2017/12/09/prototype-of-wall-street-bull-statue-sells-for-37k-at-auction/\" target=\"_blank\" rel=\"noopener noreferrer\">ran</a> “Bah, Humbug!” on its front page. A removal order became a citywide argument."
     },
     {
       "id": 5,
@@ -58,11 +71,11 @@
       "title": "A permanent home at Bowling Green",
       "location": "Bowling Green Park",
       "address": "Broadway at Bowling Green",
-      "lng": -74.013440,
+      "lng": -74.01344,
       "lat": 40.705568,
       "image": "./images/bowling-green.jpg",
       "imageCaption": "Tourists at the bull, Bowling Green",
-      "comment": "Public outcry forced the city's hand. The NYC Parks Department brokered a compromise: the bull would return downtown — but slightly south of the exchange, on the cobblestone median at Bowling Green, the city's oldest public park. The permit was «temporary». It still is. «My friends thought I'd lost my mind,» Di Modica said later. «Why on earth would they deport me? For wanting to do something good for people?»"
+      "comment": "Public outcry forced a compromise. The NYC Parks Department <a href=\"https://www.nytimes.com/1989/12/20/nyregion/wall-st-s-bronze-bull-moves-2-blocks-south.html\" target=\"_blank\" rel=\"noopener noreferrer\">allowed</a> the bull to return downtown, but not to the exchange. It went slightly south, to the small paved island at Bowling Green, beside the city’s oldest public park. The permit was temporary. It <a href=\"https://www.nytimes.com/1989/12/20/nyregion/wall-st-s-bronze-bull-moves-2-blocks-south.html\" target=\"_blank\" rel=\"noopener noreferrer\">still is</a>."
     }
   ],
   "landmarks": [
@@ -72,7 +85,10 @@
       "sublabel": "Di Modica's",
       "lng": -73.9985,
       "lat": 40.7222,
-      "visibleOnSteps": [0, 1]
+      "visibleOnSteps": [
+        0,
+        1
+      ]
     },
     {
       "id": "foundry",
@@ -80,7 +96,11 @@
       "sublabel": "Bedi-Makky",
       "lng": -73.9576,
       "lat": 40.7373,
-      "visibleOnSteps": [0, 1, 2]
+      "visibleOnSteps": [
+        0,
+        1,
+        2
+      ]
     },
     {
       "id": "nyse",
@@ -88,7 +108,10 @@
       "sublabel": "stock exchange",
       "lng": -74.011079,
       "lat": 40.707198,
-      "visibleOnSteps": [2, 4]
+      "visibleOnSteps": [
+        2,
+        4
+      ]
     },
     {
       "id": "impound",
@@ -96,7 +119,9 @@
       "sublabel": "NYPD, Queens",
       "lng": -73.7949,
       "lat": 40.7282,
-      "visibleOnSteps": [3]
+      "visibleOnSteps": [
+        3
+      ]
     },
     {
       "id": "park",
@@ -104,7 +129,9 @@
       "sublabel": "park",
       "lng": -74.0134,
       "lat": 40.7056,
-      "visibleOnSteps": [4]
+      "visibleOnSteps": [
+        4
+      ]
     }
   ]
 }

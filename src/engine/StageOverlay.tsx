@@ -42,19 +42,29 @@ export default function StageOverlay({
   stagesUrl,
   range = [0.5, 1],
   plaques,
+  plaqueAt,
+  hidePlaques,
 }: {
   stagesUrl: string;
   range?: [number, number];
   /** Per-stage plaque text override (title = green eyebrow, body = paragraph).
    *  When set for stage i, replaces the name/text from stages.json. */
   plaques?: (Plaque | null | undefined)[];
+  /** Per-stage absolute scroll position (chapter progress 0..1) at which the
+   *  plaque CARD rests, overriding the even spacing across `range`. Lets a card
+   *  be retimed independently of its in-scene annotations (which stay pinned to
+   *  the stage's camera stop). Index i = stage i; null/undefined = even spacing. */
+  plaqueAt?: (number | null | undefined)[];
+  /** Stage indices whose plaque card is suppressed entirely (e.g. a stage that's
+   *  carried by its own overlay component instead of the standard card). */
+  hidePlaques?: number[];
 }) {
   const progress = useChapterProgress();
   const rootRef = useRef<HTMLDivElement>(null);
   // serialise config so the effect re-runs (re-fetches stages.json + rebuilds the DOM)
   // only on a real content change — not on every parent re-render where `range`/`plaques`
   // get fresh array identities.
-  const cfgKey = JSON.stringify({ stagesUrl, range, plaques });
+  const cfgKey = JSON.stringify({ stagesUrl, range, plaques, plaqueAt, hidePlaques });
 
   useEffect(() => {
     const root = rootRef.current;
@@ -83,6 +93,7 @@ export default function StageOverlay({
         // plaque per stage: CSS card with an optional kicker + green title + body
         // (plaques override stages.json name/text where provided).
         const texts = stages.map((s, i) => {
+          if (hidePlaques?.includes(i)) return null; // stage carried by its own overlay
           const p = plaques?.[i];
           const title = p?.title ?? s.name ?? '';
           const body = p?.body ?? s.text ?? '';
@@ -118,35 +129,41 @@ export default function StageOverlay({
           const fh = root.clientHeight;
           for (let i = 0; i < n; i++) {
             const at = atOf(i);
-            const sd = p - at; // signed: <0 below its stop, >0 past it
-            const d = Math.abs(sd);
-            // The plaque does NOT crossfade. It rides UP through the frame: drives in
-            // from below as you approach its stop, HOLDS at rest (bottom-left) for
-            // about one screen of scroll, then slides on UP and off the top. Off both
-            // ends it parks off-screen at opacity 0 (the cut is hidden out of frame).
-            const HOLD_HALF = gap * 0.1; // ~one screen of dwell at rest (±half)
-            const ENTER = gap * 0.26;    // scroll distance of the drive-in from below
-            const EXIT = gap * 0.26;     // scroll distance of the exit up and away
-            const enterDist = fh * 0.55; // starts this far below its rest position
-            const exitDist = fh * 1.15;  // travels this far up (clears the top edge)
-            let ty: number;
-            let op = 1;
-            if (sd < -HOLD_HALF - ENTER || sd > HOLD_HALF + EXIT) {
-              op = 0; // off-screen, parked
-              ty = sd < 0 ? enterDist : -exitDist;
-            } else if (sd < -HOLD_HALF) {
-              const t = (sd + HOLD_HALF + ENTER) / ENTER; // 0→1 over the drive-in
-              const e = 1 - (1 - t) * (1 - t); // ease-out: decelerate into rest
-              ty = enterDist * (1 - e);
-            } else if (sd <= HOLD_HALF) {
-              ty = 0; // held at rest
-            } else {
-              const t = (sd - HOLD_HALF) / EXIT; // 0→1 over the exit
-              ty = -exitDist * (t * t); // ease-in: accelerate up and away
+            const tEl = texts[i];
+            if (tEl) {
+              // The plaque card may be retimed independently (e.g. to clear before a
+              // prop drives into frame); its annotations stay pinned to the stage's
+              // own camera stop (`at`).
+              const cardAt = plaqueAt?.[i] ?? at;
+              const sd = p - cardAt; // signed: <0 below its rest, >0 past it
+              // The plaque does NOT crossfade. It rides UP through the frame: drives in
+              // from below as you approach its stop, HOLDS at rest (bottom-left) for
+              // about one screen of scroll, then slides on UP and off the top. Off both
+              // ends it parks off-screen at opacity 0 (the cut is hidden out of frame).
+              const HOLD_HALF = gap * 0.1; // ~one screen of dwell at rest (±half)
+              const ENTER = gap * 0.26;    // scroll distance of the drive-in from below
+              const EXIT = gap * 0.26;     // scroll distance of the exit up and away
+              const enterDist = fh * 0.55; // starts this far below its rest position
+              const exitDist = fh * 1.15;  // travels this far up (clears the top edge)
+              let ty: number;
+              let op = 1;
+              if (sd < -HOLD_HALF - ENTER || sd > HOLD_HALF + EXIT) {
+                op = 0; // off-screen, parked
+                ty = sd < 0 ? enterDist : -exitDist;
+              } else if (sd < -HOLD_HALF) {
+                const t = (sd + HOLD_HALF + ENTER) / ENTER; // 0→1 over the drive-in
+                const e = 1 - (1 - t) * (1 - t); // ease-out: decelerate into rest
+                ty = enterDist * (1 - e);
+              } else if (sd <= HOLD_HALF) {
+                ty = 0; // held at rest
+              } else {
+                const t = (sd - HOLD_HALF) / EXIT; // 0→1 over the exit
+                ty = -exitDist * (t * t); // ease-in: accelerate up and away
+              }
+              tEl.style.opacity = op.toFixed(3);
+              tEl.style.transform = `translateY(${ty.toFixed(1)}px)`;
             }
-            texts[i].style.opacity = op.toFixed(3);
-            texts[i].style.transform = `translateY(${ty.toFixed(1)}px)`;
-            const dwell = d < gap * 0.42;
+            const dwell = Math.abs(p - at) < gap * 0.42;
             for (const node of annos[i]) {
               const x = fw / 2 + (node.cx ?? 0) * fh;
               const y = fh / 2 + (node.cy ?? 0) * fh;

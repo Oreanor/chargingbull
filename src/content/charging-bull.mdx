@@ -1,5 +1,7 @@
 import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TRACK } from './openerBull';
 import { t } from '../i18n';
+import { BearsBullsTitle } from '../components/BearsBullsTitle';
+import { BullBearExplainer } from '../components/BullBearExplainer';
 
 {/* ─────────────────────────────────────────────────────────────────────────
     Charging Bull — assembled longread.
@@ -32,7 +34,13 @@ import { t } from '../i18n';
     stagesUrl="/chapters/splash/stages.json"
     range={[0.52, 1]}
     plaques={t('opener.plaques')}
+    plaqueAt={[undefined, 0.58]}
+    hidePlaques={[2]}
   />
+  <TonnesFrame />
+  <PartsFrame />
+  <SelfieFrame />
+  <RearFrame />
 </ModelChapter>
 
 {/* ===================== I · The Way of the Bull → bull scene =============
@@ -54,26 +62,14 @@ import { t } from '../i18n';
 {/* ===================== II · Bulls, Bears & Crises ====================== */}
 
 <BreakReveal
-  titleNode={
-    <div className="flex items-end justify-center gap-[0.04em]">
-      <img src="/chapters/bears-bulls/BEARS.svg" alt={t('bearsBulls.altBears')} className="h-[clamp(46px,9.5vw,128px)] w-auto" />
-      <img src="/chapters/bears-bulls/vs.svg" alt={t('bearsBulls.altVs')} className="h-[clamp(24px,5vw,66px)] w-auto mb-[0.28em] mx-[0.1em]" />
-      <img src="/chapters/bears-bulls/Bulls.svg" alt={t('bearsBulls.altBulls')} className="h-[clamp(52px,11vw,148px)] w-auto" />
-    </div>
-  }
+  titleNode={<BearsBullsTitle />}
   body={t('bearsBulls.body')}
+  tuneKey="bearsbulls"
 />
 
 {/* ===================== EXPLAINER — bull / bear market ================== */}
 
-<Prose>
-  <div
-    className="text-[clamp(17px,1.5vw,22px)] leading-[1.55] text-fg first:[&>b]:font-semibold"
-    dangerouslySetInnerHTML={{ __html: t('explainer.lead') }}
-  />
-  <div dangerouslySetInnerHTML={{ __html: t('explainer.p2') }} />
-  <div dangerouslySetInnerHTML={{ __html: t('explainer.p3') }} />
-</Prose>
+<BullBearExplainer />
 
 {/* ===================== CHAPTER II — S&P 500 + bear markets =============
     De-iframed: native canvas chart (chartsEngine) driven by the smoothed scroll,

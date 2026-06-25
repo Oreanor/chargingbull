@@ -23,14 +23,10 @@ if (root.children.length > 0) {
   createRoot(root).render(app);
 }
 
-// In-page layout editor (the top-right ✎ toggle) is DISABLED — the offsets it
-// produced are already baked into src/engine/tune-layout.json and still applied at
-// runtime via tuneStore. To tune again, uncomment the block below.
-//
-// TODO(refactor): delete the layout editor entirely — src/engine/tuneEditor.ts, the
-// `data-tune` attributes (CandleIntro), and the tuneStore reads — folding the final
-// offsets straight into the layout. Kept for now, just not mounted.
-//
-// if (import.meta.env.DEV) {
-//   void import('./engine/tuneEditor').then((m) => m.initTuneEditor());
-// }
+// In-page layout editor (the top-right ✎ toggle): dev-only. Re-enabled to drag
+// the TonnesFrame graphics into place — toggle ✎, drag the pieces, hit Save (writes
+// offsets to src/engine/tune-layout.json). Store-mode offsets are read back by the
+// owning components every frame, so saved nudges show in the live longread too.
+if (import.meta.env.DEV) {
+  void import('./engine/tuneEditor').then((m) => m.initTuneEditor());
+}

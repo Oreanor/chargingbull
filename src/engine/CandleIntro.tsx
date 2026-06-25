@@ -238,10 +238,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       raf = requestAnimationFrame(tick);
       const [s0, s1] = spanRef.current;
       const raw = clamp01(progress.get());
-      let sp = clamp01(s1 > s0 ? (raw - s0) / (s1 - s0) : raw);
-      // While the layout editor is on, freeze the visual on the settled chart (full
-      // draw, facts + crash block visible, no scatter) so callouts can be dragged.
-      if (tuneStore.active) sp = 0.58;
+      const sp = clamp01(s1 > s0 ? (raw - s0) / (s1 - s0) : raw);
+      // Note: the layout editor no longer freezes/forces this scene — callouts are
+      // only shown (and draggable) when they're actually on screen at the current
+      // scroll, so toggling edit mode never pops in off-screen elements.
 
       // STATIC full-chart camera — the chart stays in place; only the candles draw
       // in left→right (no pan, no zoom).
@@ -287,36 +287,74 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         for (const gi of gridItems) { const px = projX(gi.idx).x; gi.line.style.left = px + 'px'; gi.lab.style.left = px + 'px'; }
         for (const yt of yTicks) { const py = projX(0, priceToY(yt.v)).y; yt.line.style.top = py + 'px'; yt.lab.style.top = py + 'px'; }
       }
+      // As the candles scatter, the four callout plates (3 facts + Black Monday)
+      // fly off radially from a point ~10% up-and-left of screen center, growing to
+      // 120% and dissolving — instead of just fading in place. flyAmt is the candle
+      // scatter eased IN (scatter²) so the plates accelerate as they hurtle off;
+      // plateFade dissolves them over the same window.
+      const W = host.clientWidth, H = host.clientHeight;
+      const flyOriginX = W * 0.4, flyOriginY = H * 0.4; // 10% up + left of center
+      const flyAmt = scatter * scatter; // ease-in: start slow, accelerate outward
+      const plateFade = 1 - smoothstep(scatter);
+      const flyTransform = (px: number, py: number, base: string, speed = 1, spin = 0) => {
+        if (flyAmt <= 0) return base || 'none';
+        const dx = (px - flyOriginX) * 2.2 * flyAmt * speed;
+        const dy = (py - flyOriginY) * 2.2 * flyAmt * speed;
+        const s = 1 + 0.2 * flyAmt;
+        // tilt as they fly — direction/amount assigned per plate (some clockwise,
+        // some counter-clockwise), eased in with the flight.
+        const rot = spin * flyAmt;
+        return `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) rotate(${rot.toFixed(2)}deg) scale(${s.toFixed(3)}) ${base}`;
+      };
+      // Per-plate scatter-speed variation so the fly-off isn't uniform — a couple of
+      // plates (fact 1 + the crash block) hurtle ~15-21% faster.
+      const FACT_FLY_SPEED = [0.91, 1.21, 1.05];
+      const CRASH_FLY_SPEED = 1.21;
+      // Per-plate spin (deg): mixed clockwise / counter-clockwise, varied magnitude.
+      const FACT_FLY_SPIN = [16, -19, 13];
+      const CRASH_FLY_SPIN = -15;
       factItems.forEach((fi, i) => {
-        // fade each label up gradually from transparency as the chart draws past it
-        const op = tuneStore.active ? 1 : chartOn * smoothstep(clamp01((revealEdge - fi.idx) / 9)) * drawFade;
+        // fade each label up gradually as the chart draws past it; on scatter it
+        // flies off (transform) and dissolves (plateFade).
+        const op = chartOn * smoothstep(clamp01((revealEdge - fi.idx) / 9)) * plateFade;
         fi.el.style.opacity = op.toFixed(3);
         if (op > 0.005) {
           const maxL = host.clientWidth - 320;
-          const [ox, oy] = tuneStore.get(FACT_TUNE_ID(i));
+          const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
+          const [oxv, oyv] = tuneStore.get(FACT_TUNE_ID(i));
+          const ox = oxv * vhPx, oy = oyv * vhPx;
+          let leftPx: number, topPx: number, base: string;
           if (fi.pos === 'bottom') {
             const p = projX(fi.idx, priceToY(candles[fi.idx].l));
-            fi.el.style.transform = 'none';
-            fi.el.style.left = Math.max(8, Math.min(maxL, p.x)) + ox + 'px';
-            fi.el.style.top = Math.max(p.y + 14, host.clientHeight * 0.32) + oy + 'px';
+            base = '';
+            leftPx = Math.max(8, Math.min(maxL, p.x)) + ox;
+            topPx = Math.max(p.y + 14, host.clientHeight * 0.32) + oy;
           } else {
             const p = projX(fi.idx, priceToY(candles[fi.idx].h));
-            fi.el.style.transform = 'translateY(-100%)';
-            fi.el.style.left = Math.max(8, Math.min(maxL, p.x)) + ox + 'px';
-            fi.el.style.top = Math.max(fi.el.offsetHeight + 8, p.y - 10) + oy + 'px';
+            base = 'translateY(-100%)';
+            leftPx = Math.max(8, Math.min(maxL, p.x)) + ox;
+            topPx = Math.max(fi.el.offsetHeight + 8, p.y - 10) + oy;
           }
+          fi.el.style.left = leftPx + 'px';
+          fi.el.style.top = topPx + 'px';
+          fi.el.style.transform = flyTransform(leftPx, topPx, base, FACT_FLY_SPEED[i] ?? 1, FACT_FLY_SPIN[i] ?? 0);
         }
       });
       // Black Monday block (skull + crash headline + the −20.5% figure), anchored
-      // just right of the final crash candle. Fades in once the chart settles, gone
-      // by the scatter.
-      const bmOp = tuneStore.active ? 1 : smoothstep(clamp01((sp - PH.bmIn[0]) / (PH.bmIn[1] - PH.bmIn[0]))) * (1 - scatter);
+      // just right of the final crash candle. Fades in once the chart settles, then
+      // flies off + dissolves with the other plates as the candles scatter.
+      const bmOp = smoothstep(clamp01((sp - PH.bmIn[0]) / (PH.bmIn[1] - PH.bmIn[0]))) * plateFade;
       bmEl.style.opacity = bmOp.toFixed(3);
       if (bmOp > 0.005) {
         const cx = projX(N - 1).x;
-        const [bx, by] = tuneStore.get(CRASH_TUNE_ID);
-        bmEl.style.left = Math.min(host.clientWidth - 220, cx + 22) + bx + 'px';
-        bmEl.style.top = host.clientHeight * 0.48 + by + 'px';
+        const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
+        const [bxv, byv] = tuneStore.get(CRASH_TUNE_ID);
+        const bx = bxv * vhPx, by = byv * vhPx;
+        const leftPx = Math.min(host.clientWidth - 220, cx + 22) + bx;
+        const topPx = host.clientHeight * 0.48 + by;
+        bmEl.style.left = leftPx + 'px';
+        bmEl.style.top = topPx + 'px';
+        bmEl.style.transform = flyTransform(leftPx, topPx, '', CRASH_FLY_SPEED, CRASH_FLY_SPIN);
       }
 
       // hero: intro-in (time-based, once on mount, on black) × slide-out (scroll).
@@ -405,7 +443,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           </div>
         </div>
         {/* wordmark (biggest, leaves first) + subtitle (leaves second) */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+        {/* nudged down 100px from dead-center per design */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center translate-y-[100px]">
           <img
             ref={wordmarkRef}
             src="/brand/wall-st-rodeo.svg"
