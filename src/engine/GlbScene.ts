@@ -93,6 +93,12 @@ export class GlbScene {
   private mainModel: THREE.Object3D | null = null;
   private readonly modelHome = new THREE.Vector3();
   private pushAmount = 0;
+  /** Editor hook: fired on OrbitControls 'start'/'end' (user grab/release). */
+  private interactCb: ((phase: 'start' | 'end') => void) | null = null;
+
+  setInteractCallback(cb: ((phase: 'start' | 'end') => void) | null): void {
+    this.interactCb = cb;
+  }
 
   constructor(options: GlbSceneOptions) {
     this.options = options;
@@ -159,6 +165,10 @@ export class GlbScene {
     controls.enableZoom = true; // editor needs wheel-zoom to set distance
     controls.enableRotate = this.options.rotate ?? true; // off for cinematic chapters
     this.controls = controls;
+    // Tell the editor when the user grabs/releases (orbit/zoom), so it can bake the
+    // hand-tuned pose into the selected keyframe on release.
+    controls.addEventListener('start', () => this.interactCb?.('start'));
+    controls.addEventListener('end', () => this.interactCb?.('end'));
 
     const draco = new DRACOLoader();
     draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
@@ -257,6 +267,15 @@ export class GlbScene {
     loop();
   }
 
+  /** Editor: enable/disable mouse rotate+zoom. Off = the camera is locked (so a
+   *  stray drag won't move the bull, and the wheel falls through to scroll the page
+   *  = scrub the timeline); on while editing a selected keyframe. */
+  setEditControls(on: boolean): void {
+    if (!this.controls) return;
+    this.controls.enableRotate = on;
+    this.controls.enableZoom = on;
+  }
+
   /** Drive the camera from a spherical pose (target + az/polar/dist + fov). */
   setCameraSpherical(p: CameraSpherical): void {
     const camera = this.camera;
@@ -298,6 +317,32 @@ export class GlbScene {
     };
   }
 
+  /** Pan the framing in the SCREEN plane: shift camera + orbit target together
+   *  along the camera's right/up axes, so the subject slides in frame without any
+   *  rotation. dx/dy are step units (+x = subject right, +y = subject up); the step
+   *  is scaled by the current distance so it feels the same at any zoom. */
+  panScreen(dx: number, dy: number): void {
+    const camera = this.camera;
+    const controls = this.controls;
+    if (!camera || !controls) return;
+    // Step is a fraction of the VISIBLE frame height at the current distance/fov, so
+    // a press shifts the subject a clearly-visible amount at any zoom (a distance-
+    // only scale was ~0.2% of frame — imperceptible).
+    const dist = camera.position.distanceTo(controls.target) || 1;
+    const frameH = 2 * dist * Math.tan((camera.fov * Math.PI) / 360);
+    const step = frameH * 0.0075; // ~0.75% of the frame per press (×4 with Shift)
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+    // Moving camera+target by +right shifts the subject LEFT, so negate to make
+    // +dx = subject right (and +dy = subject up).
+    const pan = new THREE.Vector3()
+      .addScaledVector(right, -dx * step)
+      .addScaledVector(up, -dy * step);
+    camera.position.add(pan);
+    controls.target.add(pan);
+    controls.update();
+  }
+
   /** Push each section outward from the model centroid (0 = assembled). Ported
    *  from the splash chapter so a hollow cast reads as hollow. */
   setExplode(amount: number): void {
@@ -311,6 +356,40 @@ export class GlbScene {
     for (const [mesh, home] of this.meshHomes) {
       mesh.position.copy(home.origin).addScaledVector(home.dir, ex * 0.6);
     }
+  }
+
+  // ───── editor: live "drive" the taxi (extra) into place, seeing the bull ─────
+  /** Show/hide extra i at its home, for hand-placement. */
+  showExtraForEdit(i: number, on: boolean): void {
+    const o = this.extraObjects[i];
+    if (!o) return;
+    o.visible = on;
+    const h = this.extraHomes[i];
+    if (on && h) o.position.copy(h);
+  }
+  /** Turn extra i about its own vertical axis (+ = counter-clockwise from above). */
+  turnExtra(i: number, dRad: number): void {
+    const o = this.extraObjects[i];
+    if (!o) return;
+    o.rotation.y += dRad;
+    this.extraHomes[i] = o.position.clone();
+  }
+  /** Drive extra i forward/back along its own nose (+dist = forward). The Checker
+   *  GLB's length runs along its local X, so the nose maps to (cos, -sin) in world. */
+  driveExtra(i: number, dist: number): void {
+    const o = this.extraObjects[i];
+    if (!o) return;
+    const ry = o.rotation.y;
+    o.position.x += Math.cos(ry) * dist;
+    o.position.z -= Math.sin(ry) * dist;
+    this.extraHomes[i] = o.position.clone();
+  }
+  /** Read back extra i's authored transform (for export to OPENER_EXTRAS). */
+  getExtraSpec(i: number): { position: [number, number, number]; rotationY: number; scale: number } | null {
+    const o = this.extraObjects[i];
+    if (!o) return null;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    return { position: [r2(o.position.x), r2(o.position.y), r2(o.position.z)], rotationY: r2(o.rotation.y), scale: r2(o.scale.x) };
   }
 
   /** Lunge the whole model toward the camera by `amount` (0 = rest). */
@@ -342,6 +421,18 @@ export class GlbScene {
     const o = this.extraObjects[i];
     const h = this.extraHomes[i];
     if (o && h) o.position.set(h.x + x, h.y + y, h.z + z);
+  }
+
+  /** Fade a secondary model (1 = opaque). */
+  setExtraOpacity(i: number, opacity: number): void {
+    const o = this.extraObjects[i];
+    if (!o) return;
+    o.traverse((c) => {
+      const m = c as THREE.Mesh;
+      if (!m.isMesh || !m.material) return;
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of mats) { mat.transparent = opacity < 1; mat.opacity = opacity; }
+    });
   }
 
   /** Load the secondary models, apply their transforms, add them hidden. */

@@ -32,14 +32,15 @@ export const CHART_STEPS: ChartStep[] = t<ChartStep[]>('charts.steps');
 /** Small canvas labels (axis annotations + the $350k investment overlay). */
 const LBL = t<Record<string, string>>('charts.labels');
 
-const GRID = '#1f1f28';
-const AXIS = 'rgba(245,243,238,0.55)';
-const CRISIS = '#ff6b5c';
+// Themed per draw (bear = pink bg / bull = dark bg) — see applyTheme below.
+let GRID = '#1f1f28';
+let AXIS = 'rgba(245,243,238,0.55)';
+let CRISIS = '#ff6b5c';
 const MUTED = '#5a5a62';
 const FONT = '14px Inter, system-ui, sans-serif';
 const FONT_BOLD = 'bold 14px Inter, system-ui, sans-serif';
 const FONT_BIG = 'bold 15px Inter, system-ui, sans-serif';
-const BG = '#0a0a10';
+let BG = '#000000';
 
 type YM = [number, number];
 interface Crisis { peak: YM; trough: YM; troughLbl: string; label: string }
@@ -69,6 +70,18 @@ const lerpColor = (a: string, b: string, t: number) => {
   return `rgb(${Math.round(lerp(ra[0], rb[0], t))},${Math.round(lerp(ra[1], rb[1], t))},${Math.round(lerp(ra[2], rb[2], t))})`;
 };
 const fmtMln = (v: number) => '$' + (v / 1e6).toFixed(2) + 'M';
+
+// Phase palettes — the chart background goes PINK for the bear-market overview and
+// DARK for the bull-market / "$350K invested" views. theme: 0 = bear (pink), 1 = bull (dark).
+const THEME_BEAR = { BG: '#f14268', GRID: '#cf4f68', AXIS: '#3a0d18', CRISIS: '#2a0a12' };
+const THEME_BULL = { BG: '#000000', GRID: '#1f1f28', AXIS: '#8a8884', CRISIS: '#ff6b5c' };
+function applyTheme(theme: number) {
+  const k = theme < 0 ? 0 : theme > 1 ? 1 : theme;
+  BG = lerpColor(THEME_BEAR.BG, THEME_BULL.BG, k);
+  GRID = lerpColor(THEME_BEAR.GRID, THEME_BULL.GRID, k);
+  AXIS = lerpColor(THEME_BEAR.AXIS, THEME_BULL.AXIS, k);
+  CRISIS = lerpColor(THEME_BEAR.CRISIS, THEME_BULL.CRISIS, k);
+}
 
 const INVEST = 350000;
 const PURCHASE_M: YM = [1987, 10];
@@ -201,6 +214,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const cfgA = viewConfig(fromKey);
     const cfgB = viewConfig(toKey);
     const t = animT;
+    // Phase theme: bear (pink bg) for the crisis overview, dark for bull/invest views.
+    const themeOf = (c: Cfg) => Math.max((c.bullAlpha as number) || 0, (c.investAlpha as number) || 0);
+    applyTheme(lerp(themeOf(cfgA), themeOf(cfgB), t));
     if (cfgA.kind === 'state2' && cfgB.kind === 'state2') {
       drawState2(t === 1 ? cfgB : lerpState2Cfg(cfgA, cfgB, t));
       return;
@@ -421,11 +437,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.stroke();
     };
 
+    const GROWTH = '#61e26b'; // bull/invest highlight — GREEN, not the bear pink/crisis red
     const investAlpha = (cfg.investAlpha as number) || 0;
     if (investAlpha > 0.01) {
       drawSegment(iStart, Math.min(iPurchase, iEnd), MUTED, 1.2);
       ctx.save(); ctx.globalAlpha = investAlpha;
-      drawSegment(Math.max(iPurchase, iStart), Math.min(iCompare, iEnd), CRISIS, 2.5);
+      drawSegment(Math.max(iPurchase, iStart), Math.min(iCompare, iEnd), GROWTH, 2.5);
       ctx.restore();
       if (investAlpha < 1) {
         ctx.save(); ctx.globalAlpha = 1 - investAlpha;
@@ -470,14 +487,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.save(); ctx.globalAlpha = investAlpha;
       const xP = sx(xs[iPurchase]), yP = sy(Y[iPurchase]);
       const xC = sx(xs[iCompare]), yC = sy(Y[iCompare]);
-      ctx.strokeStyle = CRISIS; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = GROWTH; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(xP, y0); ctx.lineTo(xP, y1); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = CRISIS;
+      ctx.fillStyle = GROWTH;
       ctx.beginPath(); ctx.arc(xP, yP, 5, 0, 2 * Math.PI); ctx.fill();
       ctx.beginPath(); ctx.arc(xC, yC, 5, 0, 2 * Math.PI); ctx.fill();
       ctx.font = FONT_BOLD;
-      ctx.fillStyle = CRISIS;
+      ctx.fillStyle = GROWTH;
       ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
       ctx.fillText(LBL.investArrow, xP + 8, yP - 10);
       ctx.font = FONT_BIG;

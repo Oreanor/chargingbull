@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { DatumScene, type RenderStats, type DeviceTier, type CameraSpherical } from '../engine/DatumScene';
+
+export type DatumSplatHandle = {
+  /** Offset the camera azimuth + polar (deg) and scale the distance (distMul, 1 =
+   *  rest) from the loaded resting pose. Used to script the map→splat reveal.
+   *  No-op until the base pose loads. */
+  setCameraOffset: (azDeg: number, polarDeg: number, distMul?: number) => void;
+};
 
 type CameraInit = {
   azimuthDeg?: number;
@@ -17,22 +24,7 @@ type CameraInit = {
  *
  * Pass `stats` to overlay a live FPS / splat-count / memory panel.
  */
-export default function DatumSplat({
-  label,
-  sceneId,
-  revision,
-  studioApiUrl,
-  cameraOverride,
-  cameraStateOverride,
-  autoFrame,
-  controlsMode,
-  allowWheelZoom = false,
-  stats = false,
-  background = [0, 0, 0, 1],
-  camera = { azimuthDeg: 0, polarDeg: 75, distance: 5, target: [0, 0, 0], fov: 60 },
-  maxPixelRatio,
-  deviceTier,
-}: {
+type DatumSplatProps = {
   label: string;
   /** Datum Studio scene id — loads the published scene from the API by id. */
   sceneId: string;
@@ -57,8 +49,42 @@ export default function DatumSplat({
   maxPixelRatio?: number;
   /** Форс тира качества для слабых GPU ('low'). */
   deviceTier?: DeviceTier;
-}) {
+};
+
+const DatumSplat = forwardRef<DatumSplatHandle, DatumSplatProps>(function DatumSplat({
+  label,
+  sceneId,
+  revision,
+  studioApiUrl,
+  cameraOverride,
+  cameraStateOverride,
+  autoFrame,
+  controlsMode,
+  allowWheelZoom = false,
+  stats = false,
+  background = [0, 0, 0, 1],
+  camera = { azimuthDeg: 0, polarDeg: 75, distance: 5, target: [0, 0, 0], fov: 60 },
+  maxPixelRatio,
+  deviceTier,
+}: DatumSplatProps, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<DatumScene | null>(null);
+  const baseSphRef = useRef<CameraSpherical | null>(null);
+  // Imperative handle: the map→splat reveal scripts the camera (az/polar offsets from
+  // the loaded resting pose); once the reveal is done, orbit controls take over.
+  useImperativeHandle(ref, () => ({
+    setCameraOffset: (azDeg: number, polarDeg: number, distMul = 1) => {
+      const sc = sceneRef.current;
+      const base = baseSphRef.current;
+      if (!sc || !base) return;
+      sc.setCameraSpherical({
+        ...base,
+        azimuthDeg: base.azimuthDeg + azDeg,
+        polarDeg: base.polarDeg + polarDeg,
+        distance: base.distance * distMul,
+      });
+    },
+  }), []);
   const [pct, setPct] = useState(0);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,9 +118,11 @@ export default function DatumSplat({
         if (done) {
           setPct(100);
           setReady(true);
-          // auto-print the loaded (rendered-space) pose so it can be tuned/baked
+          // auto-print the loaded (rendered-space) pose so it can be tuned/baked;
+          // also capture it as the reveal's resting pose (offsets are relative to it).
           setTimeout(() => {
             const c = scene.getCameraSpherical();
+            baseSphRef.current = c;
             if (c) console.log('[DatumSplat] loaded camera =', JSON.stringify({
               azimuthDeg: +c.azimuthDeg.toFixed(1), polarDeg: +c.polarDeg.toFixed(1),
               distance: +c.distance.toFixed(2), target: c.target.map((n) => +n.toFixed(2)), fov: c.fov,
@@ -107,6 +135,7 @@ export default function DatumSplat({
       // событие — копируем, иначе React видит ту же ссылку и не перерисовывает.
       onStats: stats ? (s) => setPerf({ ...s }) : undefined,
     });
+    sceneRef.current = scene;
     void scene.init();
 
     // Orbit-контролы вешают на канвас wheel-обработчик с preventDefault (зум),
@@ -170,6 +199,8 @@ export default function DatumSplat({
       ro.disconnect();
       visIO.disconnect();
       scene.dispose();
+      sceneRef.current = null;
+      baseSphRef.current = null;
     };
     // cfgKey serialises every config value the effect reads — it's the intentional
     // dep, so the engine re-inits on a real config change, not on each render.
@@ -177,7 +208,7 @@ export default function DatumSplat({
   }, [label, stats, cfgKey]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#08080c]">
+    <div className="relative w-full h-full overflow-hidden bg-black">
       {/* h-full, НЕ absolute inset-0: SDK вешает на контейнер класс .dsdk-engine
           с `position: relative`, что убивает inset-0 и схлопывает высоту в 0.
           height:100% переживает форсированный position. */}
@@ -199,4 +230,6 @@ export default function DatumSplat({
       ) : null}
     </div>
   );
-}
+});
+
+export default DatumSplat;

@@ -53,10 +53,9 @@ export default function TonnesFrame() {
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const p = progress.get();
-      // Short window so the frame doesn't linger: rise 0.585→0.625, brief hold,
-      // then the whole thing (all the green labels at once) dissolves 0.655→0.69.
-      const rise = smoothstep(clamp01((p - 0.585) / 0.04));
-      const fall = 1 - smoothstep(clamp01((p - 0.655) / 0.035));
+      // 3.2 TONNES frame runs f9 → f10: rise 0.667→0.697, hold, dissolve 0.715→0.75.
+      const rise = smoothstep(clamp01((p - 0.667) / 0.03));
+      const fall = 1 - smoothstep(clamp01((p - 0.715) / 0.035));
       const op = rise * fall;
       root.style.opacity = op.toFixed(3);
       root.style.visibility = op < 0.004 ? 'hidden' : 'visible';
@@ -132,7 +131,7 @@ export default function TonnesFrame() {
         className="absolute text-center"
         style={{
           ...anchor,
-          width: '108vh',
+          width: '100vh', // line 1 ends at «…When the sculpture appeared»
           color: '#FDBA31',
           fontFamily: 'var(--font-struve)',
           fontSize: '2.8vh',

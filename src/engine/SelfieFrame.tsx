@@ -40,9 +40,9 @@ export default function SelfieFrame() {
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const p = progress.get();
-      // visible around the head-on stop: rise 0.83→0.865, hold, dissolve 0.915→0.95.
-      const rise = smoothstep(clamp01((p - 0.83) / 0.035));
-      const fall = 1 - smoothstep(clamp01((p - 0.915) / 0.035));
+      // three dots: show only from f11.5 (0.875), hold to f12 (0.917), then dissolve.
+      const rise = smoothstep(clamp01((p - 0.875) / 0.03));
+      const fall = 1 - smoothstep(clamp01((p - 0.917) / 0.03));
       const op = rise * fall;
       root.style.opacity = op.toFixed(3);
       root.style.visibility = op < 0.004 ? 'hidden' : 'visible';

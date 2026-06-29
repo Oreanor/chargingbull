@@ -13,6 +13,8 @@ import {
   type CamKey,
 } from './cameraTrack';
 import { stagesToTrack, type StagesFile } from './stagesToTrack';
+import { bullEditStore } from './editStore';
+import { tuneStore } from './tuneEditor';
 
 /** What ModelChapter needs from a renderer. Both DatumScene (splats) and
  *  GlbScene (three.js meshes) satisfy it, so the editor/runtime are renderer-
@@ -26,10 +28,27 @@ export interface ModelSceneHandle {
   setExplode?(amount: number): void;
   /** Push the whole model toward the camera (a forward "kick"/lunge). 0 = rest. */
   setModelPush?(amount: number): void;
+  /** Editor-only: pan the framing in screen space (move camera + target together),
+   *  so the subject shifts in frame. dx/dy are step units (+x = subject right, +y =
+   *  subject up); distance-scaled internally. Used by the editor's arrow-key nudge. */
+  panScreen?(dx: number, dy: number): void;
+  /** Editor-only: notified when the USER starts/ends an orbit/zoom drag (OrbitControls
+   *  'start'/'end'). Lets the editor bake a hand-tuned pose into the selected keyframe
+   *  on release. Pass null to clear. */
+  setInteractCallback?(cb: ((phase: 'start' | 'end') => void) | null): void;
+  /** Editor-only: lock/unlock mouse rotate+zoom (off while no keyframe is selected). */
+  setEditControls?(on: boolean): void;
+  /** Editor-only: live-drive a secondary model (taxi) into place. */
+  showExtraForEdit?(i: number, on: boolean): void;
+  turnExtra?(i: number, dRad: number): void;
+  driveExtra?(i: number, dist: number): void;
+  getExtraSpec?(i: number): { position: [number, number, number]; rotationY: number; scale: number } | null;
   /** Show/hide a secondary model by index (GlbScene extras). */
   setExtraVisible?(i: number, visible: boolean): void;
   /** Offset a secondary model from its home position (drive-in entrance). */
   setExtraOffset?(i: number, x: number, y: number, z: number): void;
+  /** Fade a secondary model's opacity (1 = opaque). */
+  setExtraOpacity?(i: number, opacity: number): void;
   dispose(): void;
 }
 
@@ -43,6 +62,13 @@ export interface ChapterExtra extends ExtraModelSpec {
   enterFrom?: [number, number, number];
   /** Fraction of the visible window the drive-in takes. Default 0.4. */
   enterFrac?: number;
+  /** Drive-out: a world offset the model eases TO at the end of its window (then it
+   *  hides). Omit for a static leave. */
+  exitTo?: [number, number, number];
+  /** Fraction of the visible window the drive-out takes. Default 0.3. */
+  exitFrac?: number;
+  /** Fade opacity in over the drive-in and out over the drive-out. */
+  fade?: boolean;
 }
 
 const isMeshModel = (src: string) => /\.(glb|gltf)$/i.test(src);
@@ -107,10 +133,29 @@ export default function ModelChapter({
   /** Overlay (e.g. <Steps>) rendered above the model. */
   children?: ReactNode;
 }) {
+  // Dev-only in-place edit toggle (DevToolbar): subscribe so a flip re-renders
+  // this chapter into the keyframe editor without a URL change / page reload.
+  const [bullEdit, setBullEdit] = useState(false);
+  useEffect(() => bullEditStore.subscribe(() => setBullEdit(bullEditStore.active)), []);
+
   const editMode =
-    edit || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('edit'));
+    edit ||
+    (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('edit')) ||
+    bullEdit;
 
   const { ref, mounted } = useInViewMount<HTMLElement>({ mountMargin: 1, unmountMargin: 1.5 });
+  // Jump the page scroll to a chapter progress (0..1) — lets the editor's scrub
+  // handle drag the real scrollbar (so overlays/plaques, which ride the scroll,
+  // follow the green line on release).
+  const scrollToProgress = (p: number) => {
+    const el = ref.current;
+    if (!el) return;
+    let topY = 0;
+    let n: HTMLElement | null = el;
+    while (n) { topY += n.offsetTop; n = n.offsetParent as HTMLElement | null; }
+    const range = Math.max(1, el.offsetHeight - window.innerHeight);
+    window.scrollTo({ top: topY + p * range });
+  };
   const fadeRef = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<ModelSceneHandle | null>(null);
   // The opener's title intro plays for ~INTRO_MS on black while the bull loads;
@@ -171,9 +216,9 @@ export default function ModelChapter({
           <TrackDriver scene={scene} track={track} extras={extras} progress={playhead} fadeRef={fadeRef} />
         ) : null}
         {editMode ? (
-          <KeyframeEditor scene={scene} src={src} frames={frames} track={track} stagesUrl={stagesUrl} fadeRef={fadeRef} />
+          <KeyframeEditor scene={scene} src={src} frames={frames} track={track} stagesUrl={stagesUrl} fadeRef={fadeRef} playhead={playhead} extras={extras} scrollToProgress={scrollToProgress} />
         ) : null}
-        {loader && active ? (
+        {loader && active && !editMode ? (
           <>
             {/* dark only over the bull (under the hero) — bull appears from black */}
             <div className={`mc-bullveil ${bullRevealed ? 'mc-revealed' : ''}`} aria-hidden />
@@ -271,7 +316,7 @@ function ModelScene({
   }, [src, bgKey, vignette, placementKey, extrasKey, rotate, pan, autoFrame, blockWheel]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#08080c]">
+    <div className="relative w-full h-full overflow-hidden bg-black">
       <div ref={containerRef} className="w-full h-full" />
       {status !== 'ready' ? (
         <div className="absolute bottom-6 left-6 text-[10px] uppercase tracking-[3px] text-fg/40 pointer-events-none">
@@ -302,18 +347,31 @@ function TrackDriver({
 }) {
   useEffect(() => {
     const keys = normalizeTrack(track);
+    const ss = (x: number) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
     const applyExtras = (t: number) => {
       if (!extras) return;
       extras.forEach((e, i) => {
-        const visible = t >= e.at[0] && t <= e.at[1];
+        const [a0, a1] = e.at;
+        const visible = t >= a0 && t <= a1;
         scene.setExtraVisible?.(i, visible);
-        if (visible && e.enterFrom) {
-          const win = e.at[1] - e.at[0];
-          const frac = e.enterFrac ?? 0.4;
-          const et = win > 0 ? Math.min(1, Math.max(0, (t - e.at[0]) / (frac * win))) : 1;
-          const k = (1 - et) ** 3; // full offset at entry → 0 at rest (fast, decelerating)
-          scene.setExtraOffset?.(i, e.enterFrom[0] * k, e.enterFrom[1] * k, e.enterFrom[2] * k);
+        if (!visible) return;
+        const span = a1 - a0 || 1;
+        const enterDur = (e.enterFrac ?? (e.enterFrom ? 0.4 : 0)) * span;
+        const exitDur = (e.exitFrac ?? (e.exitTo ? 0.3 : 0)) * span;
+        let ox = 0, oy = 0, oz = 0, op = 1;
+        if (e.enterFrom && enterDur > 0 && t < a0 + enterDur) {
+          const et = (t - a0) / enterDur;     // 0→1 over the drive-in
+          const k = (1 - et) ** 3;            // full offset at entry → 0 at rest (decel)
+          ox = e.enterFrom[0] * k; oy = e.enterFrom[1] * k; oz = e.enterFrom[2] * k;
+          if (e.fade) op = ss(et);            // fade in
+        } else if (e.exitTo && exitDur > 0 && t > a1 - exitDur) {
+          const xt = (t - (a1 - exitDur)) / exitDur; // 0→1 over the drive-out
+          const k = xt * xt;                  // 0 at rest → full offset (accelerate away)
+          ox = e.exitTo[0] * k; oy = e.exitTo[1] * k; oz = e.exitTo[2] * k;
+          if (e.fade) op = 1 - ss(xt);        // dissolve out
         }
+        scene.setExtraOffset?.(i, ox, oy, oz);
+        scene.setExtraOpacity?.(i, op);
       });
     };
     // Initial pose (force, even on a plateau) so the camera starts on the track.
@@ -353,6 +411,9 @@ function KeyframeEditor({
   track,
   stagesUrl,
   fadeRef,
+  playhead,
+  extras,
+  scrollToProgress,
 }: {
   scene: ModelSceneHandle | null;
   src: string;
@@ -360,6 +421,13 @@ function KeyframeEditor({
   track: CameraTrack;
   stagesUrl?: string;
   fadeRef: React.RefObject<HTMLDivElement | null>;
+  /** Live scroll progress (0..1) of the chapter. Drives the green scrub line so it
+   *  tracks the page as you scroll the longread in the in-place editor. */
+  playhead: MotionValue<number>;
+  /** Secondary models (taxi) — can be live-driven into place with the ←→↑↓ control. */
+  extras?: ChapterExtra[];
+  /** Jump the page scrollbar to a chapter progress (0..1) — on scrub release/click. */
+  scrollToProgress: (p: number) => void;
 }) {
   const [keys, setKeys] = useState<CamKey[]>(() => normalizeTrack(track));
   const [leadIn, setLeadIn] = useState(track.leadIn ?? 0);
@@ -390,8 +458,19 @@ function KeyframeEditor({
   const [mode, setMode] = useState<'free' | 'scrub'>('scrub');
   const [sel, setSel] = useState<number | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  // Copy/paste a bull POSE (az/polar/dist/target/fov + explode/opacity/push) between
+  // keyframes — so two keyframes can be made identical without re-aiming by hand.
+  const [poseClip, setPoseClip] = useState<Partial<CamKey> | null>(null);
+  // Live "drive the taxi" mode: ←→ turn, ↑↓ forward/back. `taxiTick` re-renders the
+  // readout after each key press (the transform lives on the scene object).
+  const hasTaxi = !!extras?.length;
+  const [taxiCtrl, setTaxiCtrl] = useState(false);
+  const [taxiTick, setTaxiTick] = useState(0);
   const tlRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<'scrub' | number | null>(null);
+  const lastScrubRef = useRef(0); // latest scrub during a drag/click → page jump on release
+  const scrollRef = useRef(scrollToProgress);
+  scrollRef.current = scrollToProgress;
 
   const liveTrack: CameraTrack = { keys, leadIn, leadOut };
 
@@ -408,6 +487,35 @@ function KeyframeEditor({
     if (fadeRef.current) fadeRef.current.style.opacity = String(Math.max(0.35, pose.opacity));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene, mode, scrub, keys, leadIn, leadOut, fadeRef]);
+
+  // Follow the page: as the reader scrolls the longread, move the green scrub line
+  // (and preview that frame) so it's clear WHERE on the timeline you are. Dragging
+  // the handle doesn't move scroll, so there's no feedback loop. Suspended while a
+  // keyframe is SELECTED (so arrows pose that exact frame without the page yanking
+  // the scrub off it) and in 'free' posing mode. In the standalone `?edit` route the
+  // section can't scroll (playhead never changes).
+  useEffect(() => {
+    if (mode === 'free' || sel !== null) return;
+    const follow = (v: number) => setScrub(v < 0 ? 0 : v > 1 ? 1 : v);
+    follow(playhead.get()); // sync now in case the editor opened mid-scroll
+    const unsub = playhead.on('change', follow);
+    return () => unsub();
+  }, [playhead, mode, sel]);
+
+  // A real page scroll means "I'm navigating again" → drop the keyframe selection so
+  // scroll-follow re-engages. Arrow keys preventDefault (no scroll), so editing a
+  // selected keyframe never trips this; only genuine scrolling does. The standalone
+  // editor can't scroll, so a selection there sticks until you pick another.
+  useEffect(() => {
+    if (sel === null) return;
+    // Ignore scroll for a moment after selecting, so a trackpad's inertial tail
+    // right after the click doesn't immediately drop the selection.
+    let armed = false;
+    const t = setTimeout(() => { armed = true; }, 350);
+    const onScroll = () => { if (armed) setSel(null); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { clearTimeout(t); window.removeEventListener('scroll', onScroll); };
+  }, [sel]);
 
   // Pointer drag for the scrub handle and keyframe pills, with frame snapping.
   useEffect(() => {
@@ -430,13 +538,16 @@ function KeyframeEditor({
       if (d === 'scrub') {
         setMode('scrub');
         setScrub(t);
+        lastScrubRef.current = t;
       } else {
         setKeys((ks) => ks.map((k, i) => (i === d ? { ...k, at: t } : k)));
       }
     };
     const onUp = () => {
+      const wasScrub = dragRef.current === 'scrub';
       if (typeof dragRef.current === 'number') setKeys((ks) => [...ks].sort((a, b) => a.at - b.at));
       dragRef.current = null;
+      if (wasScrub) scrollRef.current(lastScrubRef.current); // jump the page to the scrub
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -469,6 +580,48 @@ function KeyframeEditor({
     setMode('scrub');
   };
 
+  // Copy the CURRENTLY-PREVIEWED bull pose (the live camera framing + the selected
+  // keyframe's explode/opacity/push) into the clipboard.
+  const copyPose = () => {
+    const pose = scene?.getCameraSpherical();
+    if (!pose) return;
+    const clip: Partial<CamKey> = {
+      az: r1(pose.azimuthDeg),
+      polar: r1(pose.polarDeg),
+      dist: r2(pose.distance),
+      fov: r1(pose.fov),
+      target: [r2(pose.target[0]), r2(pose.target[1]), r2(pose.target[2])],
+    };
+    if (sel != null) {
+      const k = keys[sel];
+      if (k?.explode != null) clip.explode = k.explode;
+      if (k?.opacity != null) clip.opacity = k.opacity;
+      if (k?.push != null) clip.push = k.push;
+    }
+    setPoseClip(clip);
+  };
+
+  // Paste the copied pose onto the selected keyframe (keeps its `at`/`hold`), or snap
+  // a new keyframe with it at the current scrub if nothing is selected.
+  const pastePose = () => {
+    if (!poseClip) return;
+    if (sel != null) {
+      setKeys((ks) => ks.map((k, i) => (i === sel ? { ...k, ...poseClip } : k)));
+      setMode('scrub');
+      const at = keys[sel]?.at;
+      if (at != null) setScrub(at);
+    } else {
+      setKeys((ks) => {
+        const near = ks.findIndex((k) => Math.abs(k.at - scrub) < SNAP / 2);
+        const merged = near >= 0
+          ? ks.map((k, i) => (i === near ? { ...k, ...poseClip } : k))
+          : [...ks, { at: scrub, az: 0, polar: 75, dist: 5, hold: 0, ...poseClip } as CamKey];
+        return merged.sort((a, b) => a.at - b.at);
+      });
+      setMode('scrub');
+    }
+  };
+
   // Select a keyframe AND snap the scrub preview to it, so its camera + explode
   // are what's shown — otherwise editing a key's slider changes nothing visible
   // while the green scrub line sits on a different frame.
@@ -490,12 +643,124 @@ function KeyframeEditor({
     setSel(null);
   };
 
+  // Arrow keys nudge the subject in the SCREEN plane (pan) — position the bull in
+  // frame without orbiting. With a keyframe selected the move bakes into it live (so
+  // it persists + previews); otherwise it free-pans the camera (snap to keep it).
+  // Shift = coarse step (×4). Inputs/textarea keep their normal arrow behaviour.
+  useEffect(() => {
+    if (!scene?.panScreen) return;
+    const STEP: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1],
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const d = STEP[e.key];
+      if (!d) return;
+      // While the plaque layout editor is on, arrows belong to the selected plaque —
+      // don't also pan the bull (that switched it to free-pan and lost the pose).
+      if (tuneStore.active) return;
+      if (taxiCtrl) return; // taxi-control mode → arrows drive the taxi instead
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      const k = e.shiftKey ? 4 : 1;
+      scene.panScreen!(d[0] * k, d[1] * k);
+      const pose = scene.getCameraSpherical?.();
+      if (pose && sel != null) {
+        // Bake the FULL live pose into the selected keyframe — not just target. Pan
+        // only moves the target, but the live az/polar/dist can differ slightly from
+        // the keyframe's stored values (orbit damping, rounding); writing all of them
+        // makes the keyframe EXACTLY the current camera, so the scrub re-apply is a
+        // no-op instead of snapping the bull back. `at` stays, so it pins in place.
+        const patch: Partial<CamKey> = {
+          az: r1(pose.azimuthDeg),
+          polar: r1(pose.polarDeg),
+          dist: r2(pose.distance),
+          target: [r2(pose.target[0]), r2(pose.target[1]), r2(pose.target[2])],
+        };
+        setKeys((ks) => ks.map((kk, i) => (i === sel ? { ...kk, ...patch } : kk)));
+      } else {
+        setMode('free'); // free-pan; "снять кейфрейм" to persist
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [scene, sel, keys, taxiCtrl]);
+
+  // Mouse orbit/zoom on a SELECTED keyframe edits it directly: grabbing drops to
+  // 'free' so the drag isn't overwritten by the scrub re-apply, and releasing bakes
+  // the new pose into that keyframe. So "select a keyframe → just move it" works
+  // (no need for «крутить ракурс» + «снять кейфрейм»).
+  useEffect(() => {
+    if (!scene?.setInteractCallback) return;
+    scene.setInteractCallback((phase) => {
+      if (sel == null) return; // no selection → normal free/snap workflow
+      if (phase === 'start') {
+        setMode('free');
+      } else {
+        const pose = scene.getCameraSpherical?.();
+        if (pose) {
+          const patch: Partial<CamKey> = {
+            az: r1(pose.azimuthDeg),
+            polar: r1(pose.polarDeg),
+            dist: r2(pose.distance),
+            target: [r2(pose.target[0]), r2(pose.target[1]), r2(pose.target[2])],
+          };
+          setKeys((ks) => ks.map((k, i) => (i === sel ? { ...k, ...patch } : k)));
+        }
+        setMode('scrub');
+        const at = keys[sel]?.at;
+        if (at != null) setScrub(at);
+      }
+    });
+    return () => scene.setInteractCallback?.(null);
+  }, [scene, sel, keys]);
+
+  // Lock mouse rotate+zoom unless a keyframe is selected (or driving the taxi). With
+  // no selection the camera is fixed and the wheel falls through to scroll the page =
+  // scrub the timeline; selecting a keyframe unlocks orbit/zoom to edit it.
+  useEffect(() => {
+    // Unlock orbit/zoom when a keyframe is selected, when free-posing a NEW keyframe
+    // («крутить ракурс»), or when driving the taxi. Otherwise (scrub + no selection)
+    // the camera is locked so the wheel falls through to scroll = scrub the timeline.
+    scene?.setEditControls?.(sel != null || taxiCtrl || mode === 'free');
+  }, [scene, sel, taxiCtrl, mode]);
+
+  // Taxi-control mode: show the taxi at its home, and let ←→↑↓ drive it.
+  useEffect(() => {
+    if (!scene?.showExtraForEdit || !hasTaxi) return;
+    scene.showExtraForEdit(0, taxiCtrl);
+    return () => scene.showExtraForEdit?.(0, false);
+  }, [scene, taxiCtrl, hasTaxi]);
+
+  useEffect(() => {
+    if (!taxiCtrl || !scene) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const turn = (e.shiftKey ? 3 : 1) * 0.035; // rad/press
+      const move = (e.shiftKey ? 4 : 1) * 0.04;   // world units/press
+      switch (e.key) {
+        case 'ArrowLeft': scene.turnExtra?.(0, -turn); break;  // clockwise
+        case 'ArrowRight': scene.turnExtra?.(0, turn); break;  // counter-clockwise
+        case 'ArrowUp': scene.driveExtra?.(0, move); break;    // forward
+        case 'ArrowDown': scene.driveExtra?.(0, -move); break; // back
+        default: return;
+      }
+      e.preventDefault();
+      setTaxiTick((v) => v + 1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [scene, taxiCtrl]);
+
   const selKey = sel != null ? keys[sel] : null;
+  const taxiSpec = taxiCtrl ? scene?.getExtraSpec?.(0) : null;
+  void taxiTick; // taxiSpec is re-read whenever this changes
 
   return (
     <div className="absolute inset-0 z-20 pointer-events-none font-mono text-[11px] text-fg">
-      {/* top toolbar */}
-      <div className="absolute top-3 left-3 right-3 flex items-center gap-2 pointer-events-auto">
+      {/* top toolbar — pr clears the tuneEditor ✎/Save buttons pinned top-right */}
+      <div className="absolute top-3 left-3 right-3 pr-[120px] flex items-center gap-2 pointer-events-auto">
         <span className="px-2 py-1 rounded bg-black/60 uppercase tracking-[2px] text-fg/60">edit · {src.split('/').pop()}</span>
         <button
           onClick={() => setMode('free')}
@@ -511,6 +776,30 @@ function KeyframeEditor({
         >
           снять кейфрейм @ {Math.round(scrub * 100)}%
         </button>
+        <button
+          onClick={copyPose}
+          title="Скопировать текущую позу быка (ракурс/дистанция/таргет/fov + explode) в буфер."
+          className="px-2 py-1 rounded bg-black/60"
+        >
+          копировать позу
+        </button>
+        <button
+          onClick={pastePose}
+          disabled={!poseClip}
+          title="Вставить скопированную позу в выбранный кейфрейм (его момент сохраняется), либо снять новый кейфрейм с ней на текущей прокрутке."
+          className={`px-2 py-1 rounded ${poseClip ? 'bg-emerald-600 text-white' : 'bg-black/40 text-fg/30'}`}
+        >
+          вставить позу
+        </button>
+        {hasTaxi ? (
+          <button
+            onClick={() => setTaxiCtrl((v) => !v)}
+            title="Руль машинки: ←→ поворот (по/против часовой), ↑↓ ход вперёд/назад. Координаты — справа, скопируй в OPENER_EXTRAS."
+            className={`px-2 py-1 rounded ${taxiCtrl ? 'bg-cyan-500 text-black font-semibold' : 'bg-black/60'}`}
+          >
+            🚕 руль
+          </button>
+        ) : null}
         <div className="ml-auto flex items-center gap-2">
           <label
             title="Плавное появление модели ДО первого кейфрейма (доля прокрутки). 0 = видна сразу."
@@ -541,8 +830,8 @@ function KeyframeEditor({
       {/* mode hint — what's happening right now */}
       <div className="absolute top-12 left-3 px-2 py-1 rounded bg-black/55 text-fg/55 pointer-events-none">
         {mode === 'free'
-          ? '🖱 режим ракурса: крути/зумь мышью, затем «снять кейфрейм»'
-          : '▸ превью: тащи зелёную линию на таймлайне — видишь, что увидит читатель на этой прокрутке'}
+          ? '🖱 режим ракурса: крути/зумь мышью · ←↑↓→ двигают быка в кадре (Shift — крупно) · затем «снять кейфрейм»'
+          : '▸ превью: тащи зелёную линию · выбери кейфрейм (кружок) и правь его прямо — мышью (крути/зумь) или ←↑↓→'}
       </div>
 
       {/* help panel */}
@@ -557,8 +846,30 @@ function KeyframeEditor({
         </div>
       ) : null}
 
+      {/* taxi-control readout */}
+      {taxiCtrl ? (
+        <div className="absolute top-20 right-3 w-64 bg-black/80 rounded p-3 pointer-events-auto space-y-2">
+          <div className="text-cyan-300">🚕 руль машинки</div>
+          <p className="text-fg/55 leading-relaxed">
+            <b className="text-fg/80">←→</b> поворот (по/против час.), <b className="text-fg/80">↑↓</b> ход вперёд/назад. Shift — крупнее.
+          </p>
+          {taxiSpec ? (
+            <>
+              <div className="text-fg/70">position: [{taxiSpec.position.join(', ')}]</div>
+              <div className="text-fg/70">rotation: [0, {taxiSpec.rotationY}, 0]</div>
+              <button
+                onClick={() => navigator.clipboard?.writeText(`position: [${taxiSpec.position.join(', ')}],\nrotation: [0, ${taxiSpec.rotationY}, 0],`)}
+                className="px-2 py-1 rounded bg-cyan-500 text-black font-semibold"
+              >
+                copy position + rotation
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* selected-keyframe inspector */}
-      {selKey ? (
+      {!taxiCtrl && selKey ? (
         <div className="absolute top-20 right-3 w-64 bg-black/75 rounded p-3 pointer-events-auto space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-fg/60">кейфрейм #{sel} · {Math.round(selKey.at * 100)}% прокрутки</span>
@@ -625,11 +936,14 @@ function KeyframeEditor({
           onPointerDown={(e) => {
             if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.track) {
               dragRef.current = 'scrub';
+              setSel(null); // clicking the track (not a keyframe) drops the selection
               const rect = tlRef.current!.getBoundingClientRect();
               let t = (e.clientX - rect.left) / rect.width;
               for (let i = 0; i <= frames; i++) if (Math.abs(t - i / frames) < SNAP) t = i / frames;
+              t = Math.max(0, Math.min(1, t));
               setMode('scrub');
-              setScrub(Math.max(0, Math.min(1, t)));
+              setScrub(t);
+              lastScrubRef.current = t;
             }
           }}
           data-track="1"
@@ -654,10 +968,16 @@ function KeyframeEditor({
                   selectKey(i);
                 }}
                 onClick={(e) => { e.stopPropagation(); selectKey(i); }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  dragRef.current = null;
+                  setKeys((ks) => ks.filter((_, j) => j !== i));
+                  setSel(null);
+                }}
                 className={`absolute top-1/2 -translate-y-1/2 h-6 -translate-x-1/2 rounded grid place-items-center cursor-grab
                   ${sel === i ? 'ring-2 ring-white' : ''} ${hold > 0 ? 'bg-amber-400/80' : 'bg-gold'}`}
                 style={{ left: `${k.at * 100}%`, width: hold > 0 ? `${hold * 2 * 100}%` : '14px', minWidth: '14px' }}
-                title={`кейфрейм #${i} · ${Math.round(k.at * 100)}% · тащи чтобы двигать, клик чтобы выбрать`}
+                title={`кейфрейм #${i} · ${Math.round(k.at * 100)}% · тащи · клик = выбрать · дабл-клик = удалить`}
               >
                 <span className="text-[9px] text-black font-bold pointer-events-none">{i}</span>
               </div>
@@ -670,8 +990,8 @@ function KeyframeEditor({
           <div
             className="absolute top-0 -translate-x-1/2 w-5 h-5 rounded-full bg-emerald-400 border-2 border-black cursor-ew-resize pointer-events-auto shadow"
             style={{ left: `${scrub * 100}%` }}
-            onPointerDown={(e) => { e.stopPropagation(); dragRef.current = 'scrub'; setMode('scrub'); }}
-            title="Тащи — перемотка превью"
+            onPointerDown={(e) => { e.stopPropagation(); dragRef.current = 'scrub'; lastScrubRef.current = scrub; setMode('scrub'); }}
+            title="Тащи — перемотка превью; на отпускании страница прыгнет к этой точке"
           />
         </div>
         <ExportBar src={src} frames={frames} track={liveTrack} />
@@ -687,6 +1007,8 @@ function buildMdx(src: string, frames: number, track: CameraTrack): string {
     const parts = [`at: ${r2(k.at)}`, `az: ${k.az}`, `polar: ${k.polar}`, `dist: ${k.dist}`];
     if ((k.hold ?? 0) > 0) parts.push(`hold: ${r3(k.hold!)}`);
     if ((k.explode ?? 0) > 0) parts.push(`explode: ${r2(k.explode!)}`);
+    if ((k.push ?? 0) > 0) parts.push(`push: ${r2(k.push!)}`);
+    if (k.ease && k.ease !== 'inout') parts.push(`ease: '${k.ease}'`);
     if (k.opacity != null && k.opacity < 1) parts.push(`opacity: ${r2(k.opacity)}`);
     if (k.fov != null) parts.push(`fov: ${k.fov}`);
     if (k.target) parts.push(`target: [${k.target.join(', ')}]`);

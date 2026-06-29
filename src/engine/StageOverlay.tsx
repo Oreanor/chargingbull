@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react';
 import './StageOverlay.css';
 import { useChapterProgress } from './chapterScroll';
 import { localizeAssetUrl } from '../i18n';
+import { tuneStore } from './tuneEditor';
+
+/** Layout-editor id for stage plaque card i (draggable/resizable via the ✎ tool). */
+const PLAQUE_TUNE_ID = (i: number) => `opener.plaque${i}`;
 
 /**
  * StageOverlay — the bull's per-stage narrative: an eyebrow + paragraph (bottom
@@ -43,6 +47,7 @@ export default function StageOverlay({
   range = [0.5, 1],
   plaques,
   plaqueAt,
+  plaqueReach,
   hidePlaques,
 }: {
   stagesUrl: string;
@@ -55,6 +60,10 @@ export default function StageOverlay({
    *  be retimed independently of its in-scene annotations (which stay pinned to
    *  the stage's camera stop). Index i = stage i; null/undefined = even spacing. */
   plaqueAt?: (number | null | undefined)[];
+  /** Per-stage entrance/exit half-window (scroll units) overriding the default
+   *  even-gap REACH. Smaller = the card slides in faster / later. Lets the LAST
+   *  card (rest pinned at 1.0) still appear later without running off the end. */
+  plaqueReach?: (number | null | undefined)[];
   /** Stage indices whose plaque card is suppressed entirely (e.g. a stage that's
    *  carried by its own overlay component instead of the standard card). */
   hidePlaques?: number[];
@@ -64,7 +73,7 @@ export default function StageOverlay({
   // serialise config so the effect re-runs (re-fetches stages.json + rebuilds the DOM)
   // only on a real content change — not on every parent re-render where `range`/`plaques`
   // get fresh array identities.
-  const cfgKey = JSON.stringify({ stagesUrl, range, plaques, plaqueAt, hidePlaques });
+  const cfgKey = JSON.stringify({ stagesUrl, range, plaques, plaqueAt, plaqueReach, hidePlaques });
 
   useEffect(() => {
     const root = rootRef.current;
@@ -72,6 +81,8 @@ export default function StageOverlay({
     let cancelled = false;
     let unsub = () => {};
     let onResize = () => {};
+    let offActive = () => {};
+    let tuneRaf = 0;
 
     // Prefer the active locale's stages variant (stages.<locale>.json); fall back
     // to the base file when no translation has been dropped in yet.
@@ -102,6 +113,8 @@ export default function StageOverlay({
             : '';
           const el = document.createElement('div');
           el.className = 'so-text';
+          el.dataset.tune = PLAQUE_TUNE_ID(i); // draggable/resizable via the ✎ editor
+          el.dataset.tuneMode = 'store';        // JS-positioned → offset read in apply()
           el.innerHTML = `${kicker}<span class="so-eyebrow">${title}</span>${body}`;
           root.appendChild(el);
           return el;
@@ -136,32 +149,30 @@ export default function StageOverlay({
               // own camera stop (`at`).
               const cardAt = plaqueAt?.[i] ?? at;
               const sd = p - cardAt; // signed: <0 below its rest, >0 past it
-              // The plaque does NOT crossfade. It rides UP through the frame: drives in
-              // from below as you approach its stop, HOLDS at rest (bottom-left) for
-              // about one screen of scroll, then slides on UP and off the top. Off both
-              // ends it parks off-screen at opacity 0 (the cut is hidden out of frame).
-              const HOLD_HALF = gap * 0.1; // ~one screen of dwell at rest (±half)
-              const ENTER = gap * 0.26;    // scroll distance of the drive-in from below
-              const EXIT = gap * 0.26;     // scroll distance of the exit up and away
-              const enterDist = fh * 0.55; // starts this far below its rest position
-              const exitDist = fh * 1.15;  // travels this far up (clears the top edge)
-              let ty: number;
-              let op = 1;
-              if (sd < -HOLD_HALF - ENTER || sd > HOLD_HALF + EXIT) {
-                op = 0; // off-screen, parked
-                ty = sd < 0 ? enterDist : -exitDist;
-              } else if (sd < -HOLD_HALF) {
-                const t = (sd + HOLD_HALF + ENTER) / ENTER; // 0→1 over the drive-in
-                const e = 1 - (1 - t) * (1 - t); // ease-out: decelerate into rest
-                ty = enterDist * (1 - e);
-              } else if (sd <= HOLD_HALF) {
-                ty = 0; // held at rest
-              } else {
-                const t = (sd - HOLD_HALF) / EXIT; // 0→1 over the exit
-                ty = -exitDist * (t * t); // ease-in: accelerate up and away
-              }
+              // Uniform pass-through: the card rides UP at CONSTANT speed — in from
+              // below, straight through its rest point (sd=0, centred) and off the top.
+              // No ease-in/out, no dwell — ty is linear in scroll. Opacity is full
+              // across the readable zone and only fades right at the off-screen edges.
+              const REACH = plaqueReach?.[i] ?? gap * 0.5; // scroll half-window on-screen (per-plaque override)
+              const FADE = 0.15;         // fade in/out over this fraction of each side
+              const tt = sd / REACH;     // -1 (below) → 0 (centre) → +1 (above)
+              const ty = -tt * (fh * 1.0); // linear → constant velocity, no acceleration
+              let op = 0;
+              const a = Math.abs(tt);
+              if (a < 1) op = a > 1 - FADE ? (1 - a) / FADE : 1;
+              // Bake the layout-editor nudge (offset stored in vh, like the bull)
+              // and resize on top of the scroll-driven travel, so a dragged/resized
+              // plaque keeps moving with the scene.
+              const vhPx = window.innerHeight / 100;
+              const [oxv, oyv] = tuneStore.get(PLAQUE_TUNE_ID(i));
+              const sc = tuneStore.getScale(PLAQUE_TUNE_ID(i));
+              // Below the desktop breakpoint the saved up-scale (~1.4×) would push the
+              // plaque off the right edge — drop it so the card fits the viewport width.
+              const scEff = window.innerWidth <= 1023 ? 1 : sc;
               tEl.style.opacity = op.toFixed(3);
-              tEl.style.transform = `translateY(${ty.toFixed(1)}px)`;
+              tEl.style.transform =
+                `translate(${(oxv * vhPx).toFixed(1)}px, ${(ty + oyv * vhPx).toFixed(1)}px)` +
+                (scEff !== 1 ? ` scale(${scEff})` : '');
             }
             const dwell = Math.abs(p - at) < gap * 0.42;
             for (const node of annos[i]) {
@@ -184,12 +195,25 @@ export default function StageOverlay({
         unsub = progress.on('change', apply);
         onResize = () => apply(progress.get());
         window.addEventListener('resize', onResize);
+
+        // While the layout editor is on, re-bake every frame so dragging/resizing a
+        // plaque shows live (a drag doesn't move scroll, so `apply` wouldn't fire).
+        const tuneLoop = () => {
+          if (!tuneStore.active) { tuneRaf = 0; return; }
+          apply(progress.get());
+          tuneRaf = requestAnimationFrame(tuneLoop);
+        };
+        const startTune = () => { if (!tuneRaf && tuneStore.active) tuneRaf = requestAnimationFrame(tuneLoop); };
+        offActive = tuneStore.onActiveChange((on) => { if (on) startTune(); });
+        startTune();
       })
       .catch((e) => console.warn('StageOverlay: stages load failed', e));
 
     return () => {
       cancelled = true;
       unsub();
+      offActive();
+      if (tuneRaf) cancelAnimationFrame(tuneRaf);
       window.removeEventListener('resize', onResize);
       root.innerHTML = '';
     };

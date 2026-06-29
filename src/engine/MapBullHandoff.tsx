@@ -1,6 +1,6 @@
 import { useCallback, useRef, type ComponentProps } from 'react';
 import MapChapter from './MapChapter';
-import DatumSplat from '../components/DatumSplat';
+import DatumSplat, { type DatumSplatHandle } from '../components/DatumSplat';
 import { useInViewMount } from './useInViewMount';
 
 /**
@@ -23,11 +23,11 @@ import { useInViewMount } from './useInViewMount';
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3); // decelerate (for the bull)
 const easeInCubic = (t: number) => t * t * t;                // accelerate (for the iris)
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
-// The bull flies in over the back of the dive: opacity 0→1, scale 15%→100% and a
+// The bull flies in over the back of the dive: opacity 0→1, scale 8%→100% and a
 // circular iris that grows from a small disc and opens past the screen corners.
 const REVEAL_FROM = 0.4;
 const REVEAL_SPAN = 0.4; // dive fraction the reveal plays over (smaller = bull arrives faster)
-const START_SCALE = 0.15;
+const START_SCALE = 1; // size/zoom-out is now driven by the camera dolly (distMul), not CSS scale
 // Iris in two phases: (1) a round disc grows from a small dot to radius = half the
 // viewport HEIGHT (diameter = height, so it never gets wider-than-tall while round);
 // (2) it then opens past the corners, so the rectangle "spreads out". The radius is
@@ -57,6 +57,7 @@ export default function MapBullHandoff({
   const overlayRef = useRef<HTMLDivElement>(null);
   const clipRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef<HTMLDivElement>(null);
+  const bullRef = useRef<DatumSplatHandle>(null);
 
   // Mount the 54 MB bull splat only as this section approaches — NOT during the
   // opener. Otherwise its WebGL engine renders 60fps behind the opener (off-screen)
@@ -90,9 +91,19 @@ export default function MapBullHandoff({
     if (scaleRef.current) {
       scaleRef.current.style.transform = `scale(${(START_SCALE + (1 - START_SCALE) * e).toFixed(4)})`;
     }
-    // only catch pointer (drag-orbit) once the bull is essentially revealed, so the
-    // map stays interactive during the journey.
-    if (overlayRef.current) overlayRef.current.style.pointerEvents = raw > 0.5 ? 'auto' : 'none';
+    // Scripted 2-keyframe handoff: the bull starts turned 90° CW with the camera
+    // RAISED above it, and both settle to the resting pose as it scales up. Driven by
+    // the reveal, NOT freely orbited — we stop scripting once revealed (below).
+    if (raw < 1) {
+      const k = 1 - e; // 1 at reveal start → 0 at rest
+      // turn −180°, camera raised (polar −25°), and pulled back to ×3 distance
+      // (≈3× smaller) — all dollying/settling to the resting pose.
+      bullRef.current?.setCameraOffset(-180 * k, -25 * k, 1 + 2 * k);
+    }
+    // Orbit (free drag-rotate) only AFTER the scripted transition finishes — during
+    // the handoff the camera is on rails, so the page stays scrollable and the script
+    // isn't fought; once fully revealed, hand control to the model.
+    if (overlayRef.current) overlayRef.current.style.pointerEvents = raw >= 1 ? 'auto' : 'none';
   }, []);
 
   return (
@@ -102,7 +113,7 @@ export default function MapBullHandoff({
       <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none">
         <div ref={clipRef} className="h-full w-full" style={{ opacity: 0 }}>
           <div ref={scaleRef} className="h-full w-full will-change-transform" style={{ transform: `scale(${START_SCALE})` }}>
-            {armed ? <DatumSplat {...splatProps} /> : null}
+            {armed ? <DatumSplat ref={bullRef} {...splatProps} /> : null}
           </div>
         </div>
       </div>

@@ -16,3 +16,21 @@
 }
 .xpl-pill-bull { background: #61e26b; }
 .xpl-pill-bear { background: #f14268; }
+
+/* Mobile (stacked): the first column (aside) is a smaller note, pushed to the RIGHT
+   (wide left margin, 20px right); the second column (main) takes the full width with
+   a 20px margin each side and its normal font. */
+@media (max-width: 1023px) {
+  .xpl-aside {
+    margin: 0 20px 0 auto;
+    max-width: min(68%, 270px);
+    font-size: 12.5px;
+    line-height: 1.5;
+    text-align: right;
+  }
+  .xpl-main {
+    max-width: 100%;
+    margin-left: 20px;
+    margin-right: 20px;
+  }
+}

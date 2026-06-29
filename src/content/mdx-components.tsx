@@ -3,6 +3,13 @@ import { ModelChapter, ChartsChapter, CandleIntro, StageOverlay, TonnesFrame, Pa
 import DatumSplat from '../components/DatumSplat';
 import { Prose, Break, Outro } from '../components/Prose';
 import { BreakReveal } from '../components/BreakReveal';
+import { AnatomyCrisis } from '../components/AnatomyCrisis';
+import { CrisisDynamics } from '../components/CrisisDynamics';
+import { FutureSlide } from '../components/FutureSlide';
+import { SiteFooter } from '../components/SiteFooter';
+import { CalculatorSlide } from '../components/CalculatorSlide';
+import { Colophon } from '../components/Colophon';
+import { SummaryBlock } from '../components/SummaryBlock';
 
 export const mdxComponents: MDXComponents = {
   ModelChapter,
@@ -19,6 +26,13 @@ export const mdxComponents: MDXComponents = {
   Prose,
   Break,
   BreakReveal,
+  AnatomyCrisis,
+  CrisisDynamics,
+  FutureSlide,
+  CalculatorSlide,
+  Colophon,
+  SummaryBlock,
+  SiteFooter,
   Outro,
   h1: (props) => (
     <h1

@@ -100,6 +100,12 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, pulse: number, step
     const head = trail[trail.length - 1];
     let heading = 0;
     if (trail.length >= 2) { const p1 = trail[trail.length - 2]; heading = (Math.atan2(head[0] - p1[0], head[1] - p1[1]) * 180) / Math.PI; }
+    // The bull walks FACING ALONG the path; only at the very END of the journey does
+    // it smoothly turn ~135° to face back the other way (tight window at the stop).
+    const lastStop = steps.length - 1;
+    const u = Math.max(0, Math.min(1, (progress - (lastStop - 0.22)) / 0.22));
+    const turnBack = u * u * (3 - 2 * u); // smoothstep — eased turn
+    heading += turnBack * 135;
     for (let k = 0; k < 2; k++) {
       const phase = (pulse + k * 0.5) % 1;
       layers.push(new ScatterplotLayer({ id: `ring-${k}`, data: [{ position: head }], getPosition: (d) => d.position, getRadius: 8 + phase * 28, radiusUnits: 'pixels', stroked: true, filled: false, getLineColor: [201, 169, 97, (1 - phase) * 220], getLineWidth: 1.5, lineWidthUnits: 'pixels', parameters: NO_DEPTH, updateTriggers: { getRadius: phase, getLineColor: phase } }));
@@ -153,7 +159,7 @@ const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 
 // handing off to the Datum bull scene that emerges from that darkness.
 const DIVE_FRAC = 0.18;
 const DIVE_ZOOM = 3.4;    // extra mapbox zoom levels added across the dive (~2× closer)
-const DIVE_BEARING = 30; // rotate the map (flat clock-face) counter-clockwise ~30° as we dive in
+const DIVE_BEARING = 145; // rotate the map counter-clockwise ~145° as we dive in (bull turns to face us)
 const DIVE_PITCH = 38;    // tilt up toward the horizon (so the view matches the bull scene)
 
 // Intro punch: when the map first reveals (title dissolve), it flies in from this
@@ -366,26 +372,26 @@ export default function MapChapter({
 
     map.on('load', () => {
       map.setFog({
-        color: 'rgb(15, 13, 25)', 'high-color': 'rgb(22, 18, 40)',
-        'horizon-blend': 0.06, 'space-color': 'rgb(5, 4, 10)', 'star-intensity': 0.18,
+        color: 'rgb(10, 14, 24)', 'high-color': 'rgb(18, 24, 42)',
+        'horizon-blend': 0.06, 'space-color': 'rgb(5, 8, 14)', 'star-intensity': 0.18,
       });
       try {
         map.setLights([
-          { id: 'ambient', type: 'ambient', properties: { color: '#9080a0', intensity: 0.55 } },
-          { id: 'directional', type: 'directional', properties: { color: '#e8c87c', intensity: 0.95, direction: [220, 35] } },
+          { id: 'ambient', type: 'ambient', properties: { color: '#a8b0bd', intensity: 0.6 } },
+          { id: 'directional', type: 'directional', properties: { color: '#eef2f8', intensity: 0.9, direction: [220, 35] } },
         ]);
       } catch { /* style may not accept lights */ }
-      // 3D building extrusions tinted to the warm-amber palette
+      // 3D building extrusions tinted to a cool grey→white palette (navy map)
       try {
         if (!map.getLayer('building-3d')) {
           const labelLayer = map.getStyle()?.layers?.find((l) => l.type === 'symbol' && /label|place/.test(l.id))?.id;
           map.addLayer({
             id: 'building-3d', source: 'composite', 'source-layer': 'building',
-            type: 'fill-extrusion', minzoom: 13,
+            type: 'fill-extrusion', minzoom: 12,
             filter: ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']],
             paint: {
               'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height'],
-                0, '#2c2632', 60, '#4a3e3a', 160, '#705541', 400, '#a07a4a'],
+                0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3'],
               'fill-extrusion-height': ['get', 'height'],
               'fill-extrusion-base': ['get', 'min_height'],
               'fill-extrusion-opacity': 0.92,
@@ -393,6 +399,24 @@ export default function MapChapter({
           }, labelLayer);
         }
       } catch (e) { console.warn('building-3d layer failed', e); }
+
+      // Tint the whole BASE (not just buildings) to the navy palette — dark-v11 ships
+      // grey land/water/roads, so recolour background + fills + road lines to blue so
+      // the map reads bluish, not grey. Labels/symbols are left alone.
+      try {
+        for (const l of map.getStyle()?.layers ?? []) {
+          const id = l.id;
+          if (l.type === 'background') {
+            map.setPaintProperty(id, 'background-color', '#0a0e18');
+          } else if (l.type === 'fill') {
+            const water = /water|ocean|sea|river|bay|marine/i.test(id);
+            map.setPaintProperty(id, 'fill-color', water ? '#070c15' : '#0d1220');
+          } else if (l.type === 'line') {
+            const road = /road|street|bridge|tunnel|motorway|primary|secondary|tertiary|trunk|rail|transit|path|pedestrian/i.test(id);
+            if (road) map.setPaintProperty(id, 'line-color', '#2b3444');
+          }
+        }
+      } catch (e) { console.warn('base recolour failed', e); }
       setMapReady(true);
 
       // now the painter exists → safe to resize on container changes / scroll-in
@@ -479,7 +503,7 @@ export default function MapChapter({
     const buildingColor: ExpressionSpecification = [
       'case', ['boolean', ['feature-state', 'nyse'], false], '#d4a52a',
       ['interpolate', ['linear'], ['get', 'height'],
-        0, '#2c2632', 60, '#4a3e3a', 160, '#705541', 400, '#a07a4a'],
+        0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3'],
     ];
     try { map.setPaintProperty('building-3d', 'fill-extrusion-color', buildingColor); } catch { /* style not ready */ }
 
@@ -493,7 +517,7 @@ export default function MapChapter({
           type: 'fill-extrusion', minzoom: 13,
           filter: ['in', ['id'], ['literal', []]],
           paint: {
-            'fill-extrusion-color': '#6c5a48',
+            'fill-extrusion-color': '#5f6878',
             'fill-extrusion-height': ['get', 'height'],
             'fill-extrusion-base': ['get', 'min_height'],
             'fill-extrusion-opacity': 0.28,
@@ -630,15 +654,20 @@ export default function MapChapter({
       // ends up in the screen centre (where the revealed splat scene is centred).
       const last = steps[steps.length - 1];
       const bull: [number, number] = last ? [last.lng, last.lat] : cam.center;
-      const center: [number, number] = [lerp(cam.center[0], bull[0], dive), lerp(cam.center[1], bull[1], dive)];
+      // All dive movements start together. Pan to the bull is slightly front-loaded
+      // (centred by ~45% of the dive) so the spin's axis sits on the bull; the
+      // rotation itself runs smoothly across the WHOLE dive (no delayed start).
+      const panE = smoothstep(clamp(dive / 0.45, 0, 1));
+      const rotE = dive;
+      const center: [number, number] = [lerp(cam.center[0], bull[0], panE), lerp(cam.center[1], bull[1], panE)];
       const isNarrow = window.innerWidth < 720;
-      const padLeft = lerp(isNarrow ? 30 : 480, isNarrow ? 30 : 60, dive);
+      const padLeft = lerp(isNarrow ? 30 : 480, isNarrow ? 30 : 60, panE);
       map.setPadding({ top: isNarrow ? 60 : 80, right: isNarrow ? 30 : 60, bottom: isNarrow ? 40 : 80, left: padLeft });
       map.jumpTo({
         center,
         zoom: cam.zoom + DIVE_ZOOM * dive + introZoom,
         pitch: Math.min(85, cam.pitch + DIVE_PITCH * dive),
-        bearing: cam.bearing + DIVE_BEARING * dive,
+        bearing: cam.bearing + DIVE_BEARING * rotE,
       });
     };
     // coalesce both sources into at most one apply per frame (else map.jumpTo fires
@@ -668,15 +697,28 @@ export default function MapChapter({
         const melt = smoothstep(clamp((diveOf(sj) - 0.5) / 0.5, 0, 1));
         outroRef.current.style.opacity = melt.toFixed(3);
       }
-      // EVENT cards: a card is shown while the bull is within ~a third of a stop of
-      // its stop; the card's CSS transition fades it up + grows 90%→100% in place on
-      // enter and back out on leave — never scrubbed by scroll. Card i = stop i+1.
-      const notDiving = diveOf(sj) === 0;
+      // Cards ride bottom→top at CONSTANT velocity through their stop, pinned to the
+      // bottom corner — like the opener StageOverlay plaques (no fade-from-transparent,
+      // no scale; opacity is full and only fades right at the off-screen edges). Card
+      // i = stop i+1; the damped playhead dwells on stops, so the card sits at rest
+      // (ty=0) while the bull is parked and sweeps up/off as the journey moves on.
+      const fh = window.innerHeight;
+      const REACH = 0.5;   // journey-progress half-window the card travels on-screen
+      const FADE = 0.15;   // fade only over the outer (off-screen) edges
+      const lastCardIdx = steps.length - 1; // card i ↔ stop i+1, so the last card is i = N−1
+      const dive = diveOf(sj);
       cardRefs.current.forEach((el, i) => {
         if (!el) return;
-        const shown = notDiving && Math.abs(prog - (i + 1)) < 0.18;
-        el.style.opacity = shown ? '1' : '0';
-        el.style.transform = `translateY(-50%) scale(${shown ? 1 : 0.9})`;
+        // The FINAL card («A permanent home at Bowling Green») doesn't just sit there —
+        // it rides UP and off the top, leaving PROMPTLY (gone by ~45% of the dive) so it
+        // doesn't hang on screen while the map zooms in.
+        const diveLift = i === lastCardIdx ? Math.min(1, dive / 0.45) : 0;
+        const tt = (prog - (i + 1)) / REACH + diveLift; // -1 below → 0 rest → +1 above
+        const a = Math.abs(tt);
+        const op = a < 1 ? (a > 1 - FADE ? (1 - a) / FADE : 1) : 0;
+        el.style.opacity = op.toFixed(3);
+        el.style.visibility = op < 0.004 ? 'hidden' : 'visible';
+        el.style.transform = `translateY(${(-tt * fh).toFixed(1)}px)`;
       });
     };
     apply();
@@ -684,46 +726,21 @@ export default function MapChapter({
     return () => { unsub(); };
   }, [playhead, steps, revealUnderlay]);
 
-  // title-card typed reveal (on pin). Scroll is never blocked on the map loading —
-  // it streams in behind the title and just appears; the reader can scroll on.
+  // Title + body just APPEAR — the per-character typing effect was removed. Populate
+  // the paragraph with line breaks and show both; the intro slide itself dissolves
+  // into the map.
   useEffect(() => {
-    const section = sectionRef.current;
-    if (!section || !introTitle) return;
-    const body = introBody ?? '';
-    const chars: { el: HTMLSpanElement; delay: number }[] = [];
-    const BODY_START = 800;
-    const perChar = 1000 / 55;
+    if (!introTitle) return;
     if (introBodyRef.current) {
-      introBodyRef.current.textContent = '';
-      [...body].forEach((ch, i) => {
-        if (ch === '\n') { introBodyRef.current!.appendChild(document.createElement('br')); return; }
-        const s = document.createElement('span');
-        s.textContent = ch;
-        s.style.opacity = ch === ' ' ? '1' : '0';
-        introBodyRef.current!.appendChild(s);
-        chars.push({ el: s, delay: BODY_START + i * perChar });
+      const frag = document.createDocumentFragment();
+      (introBody ?? '').split('\n').forEach((line, idx) => {
+        if (idx > 0) frag.appendChild(document.createElement('br'));
+        frag.appendChild(document.createTextNode(line));
       });
+      introBodyRef.current.replaceChildren(frag);
+      introBodyRef.current.style.opacity = '1';
     }
-    const REVEAL_END = BODY_START + body.length * perChar + 300;
-    let triggered = false, t0 = 0, raf = 0;
-    const c01 = (t: number) => clamp(t, 0, 1);
-    const loop = () => {
-      const t = performance.now() - t0;
-      if (introTitleRef.current) introTitleRef.current.style.opacity = c01(t / 600).toFixed(3);
-      for (const c of chars) c.el.style.opacity = c01((t - c.delay) / 150).toFixed(3);
-      if (t < REVEAL_END) raf = requestAnimationFrame(loop);
-    };
-    const onScroll = () => {
-      if (triggered) return;
-      const r = section.getBoundingClientRect();
-      if (r.top <= 2 && r.bottom > window.innerHeight * 0.5) {
-        triggered = true; t0 = performance.now();
-        raf = requestAnimationFrame(loop);
-      }
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
+    if (introTitleRef.current) introTitleRef.current.style.opacity = '1';
   }, [introTitle, introBody]);
 
   // Bake the saved (or live-dragged) layout-editor offsets into each title piece's
@@ -755,7 +772,7 @@ export default function MapChapter({
   return (
     <section
       ref={sectionRef}
-      className="mc-section relative w-full bg-[#0a0a10]"
+      className="mc-section relative w-full bg-black"
       style={{ height: `${(Math.max(N, 2) * 150) / (1 - DIVE_FRAC)}vh` }}
     >
       <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
@@ -772,14 +789,14 @@ export default function MapChapter({
             <div
               key={s.id}
               ref={(el) => { cardRefs.current[i] = el; }}
-              className="absolute left-0 top-1/2 will-change-[opacity,transform]"
+              className="absolute left-0 right-0 will-change-[opacity,transform]"
               style={{
                 opacity: 0,
-                transform: 'translateY(-50%) scale(0.9)',
-                // EVENT animation: the card fades up from transparent and grows 90%→100%
-                // when the bull dwells on its stop, and back out when it moves on —
-                // driven by these CSS transitions, not scrubbed by scroll.
-                transition: 'opacity 0.45s ease, transform 0.5s cubic-bezier(0.22,1,0.36,1)',
+                bottom: '9%',
+                // The card rides bottom→top at CONSTANT velocity through its stop
+                // (no fade-from-transparent, no scale) and rests pinned to the bottom
+                // corner while the bull dwells — like the opener StageOverlay plaques.
+                // translateY + edge-fade are driven per-frame in the apply() loop below.
               }}
             >
               <div className="mc-card pointer-events-auto">
@@ -796,7 +813,7 @@ export default function MapChapter({
         {introTitle ? (
           <div
             ref={introRef}
-            className="absolute inset-0 z-30 bg-black flex items-center justify-center px-6 pointer-events-none"
+            className="absolute inset-0 z-30 bg-[#070F26] flex items-center justify-center px-6 pointer-events-none"
             style={{ opacity: 1 }}
           >
             <div className="max-w-[920px]">
@@ -834,8 +851,8 @@ export default function MapChapter({
                 ref={introBodyRef}
                 data-tune="route.body"
                 data-tune-mode="store"
-                style={{ fontFamily: 'var(--font-struve)', color: '#b3a079' }}
-                className="mx-auto max-w-[480px] text-center text-[clamp(16px,1.5vw,20px)] leading-[1.55]"
+                style={{ fontFamily: 'var(--font-struve)', color: '#FBC75F' }}
+                className="mx-auto max-w-[480px] text-center text-[clamp(16px,1.5vw,20px)] leading-[1.3]"
               />
             </div>
           </div>

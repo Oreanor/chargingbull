@@ -37,7 +37,12 @@ export default function ChartsChapter({
       .catch((e) => console.warn('[ChartsChapter] data load failed', e));
     const onResize = () => eng.resize();
     window.addEventListener('resize', onResize);
-    return () => { alive = false; window.removeEventListener('resize', onResize); };
+    // Also re-measure when the CANVAS box itself changes (pin, layout shift, mount via
+    // useInViewMount) without a window resize — otherwise the chart stays at whatever
+    // (possibly wrong) size it was first measured at.
+    const ro = new ResizeObserver(() => eng.resize());
+    if (canvasRef.current) ro.observe(canvasRef.current);
+    return () => { alive = false; window.removeEventListener('resize', onResize); ro.disconnect(); };
   }, [mounted, dataUrl]);
 
   // Drive the morph off the smoothed scroll; map 0..1 → step index 0..N-1.
@@ -69,7 +74,7 @@ export default function ChartsChapter({
       <div className="cc-steps absolute inset-0">
         {CHART_STEPS.map((s, i) => (
           <section key={i} className="cc-step">
-            <div className="cc-card">
+            <div className={`cc-card${s.view === '2' || s.view === '3' ? ' cc-card--bull' : ''}`}>
               <h2 className="cc-title">{s.title}</h2>
               <p className="cc-comment" dangerouslySetInnerHTML={{ __html: s.comment }} />
             </div>

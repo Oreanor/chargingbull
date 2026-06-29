@@ -5,17 +5,17 @@
     "hero": {
       "subtitle": [
         "From Black Monday to SpaceX IPO:",
-        "Why are global stock exchanges going wild?"
+        "why are global stock exchanges going wild"
       ],
       "coordsCity": "NEW YORK",
-      "coordsGeo": "40°42′N 74°01′W"
+      "coordsGeo": "40°42.3′N 74°00.8′W"
     },
     "candles": {
       "indexLabel": "S&P 500 INDEX",
       "months": ["AUG", "SEP", "OCT"],
       "facts": [
         { "date": "25 August 1987", "text": "Five years of gains have tripled the market, which now stands at an all-time high" },
-        { "date": "4 September 1987", "text": "The Fed raises rates for the first time in three years, and the cheap money that fuelled the boom starts to dry up" },
+        { "date": "4 September 1987", "text": "The Fed raises rates for the first time in three years, and the cheap money that fuelled the boom starts&nbsp;to&nbsp;dry&nbsp;up" },
         { "date": "16 October 1987", "text": "Over the weekend, Washington threatens to let the dollar slide unless Germany cuts rates; markets brace for a currency war" }
       ],
       "crash": {

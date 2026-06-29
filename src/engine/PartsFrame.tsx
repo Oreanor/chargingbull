@@ -47,9 +47,10 @@ export default function PartsFrame() {
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const p = progress.get();
-      // visible around the explode: rise 0.70→0.735, hold, dissolve 0.805→0.84.
-      const rise = smoothstep(clamp01((p - 0.70) / 0.035));
-      const fall = 1 - smoothstep(clamp01((p - 0.805) / 0.035));
+      // visible around the explode (cam stop @ f10.6 / 0.80): rise 0.80→0.835, hold,
+      // then «5 cm» + the rest START disappearing at f11.1 (0.842 → 0.877).
+      const rise = smoothstep(clamp01((p - 0.80) / 0.035));
+      const fall = 1 - smoothstep(clamp01((p - 0.842) / 0.035));
       const op = rise * fall;
       root.style.opacity = op.toFixed(3);
       root.style.visibility = op < 0.004 ? 'hidden' : 'visible';
@@ -74,7 +75,7 @@ export default function PartsFrame() {
       <div ref={titleRef} data-tune="parts.title" data-tune-mode="store" className="absolute" style={anchor}>
         <div
           className="[&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ width: '26vh' }}
+          style={{ width: '19.5vh' }}
           dangerouslySetInnerHTML={{ __html: N30 }}
         />
         <div

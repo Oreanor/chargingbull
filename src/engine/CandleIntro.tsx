@@ -47,9 +47,9 @@ const FLAT_Z = 0.05;
 // hero copy → chart draws left→right → holds the full chart → candles scatter.
 const PH = {
   heroSlide: 0.2, // wordmark/subtitle/coords clear off
-  chartStart: 0.02, chartEnd: 0.6, // static chart draws in left→right over most of the segment
-  bmIn: [0.52, 0.6] as [number, number],
-  scatterStart: 0.6, scatterDur: 0.24,
+  chartStart: 0.02, chartEnd: 0.43, // chart draws in left→right, finished by 0.43…
+  bmIn: [0.36, 0.44] as [number, number], // …with the −20.5% block landing on the crash candle…
+  scatterStart: 0.6, scatterDur: 0.24,    // …then the FULL chart HOLDS ~one screen (0.44→0.6) before it scatters
 };
 
 // ===== data: real daily OHLC, Aug 3 – Oct 19 1987 (each day has high/low → wicks) =====
@@ -112,6 +112,7 @@ function niceTicks(min: number, max: number): number[] {
 function CandleScene({ progress, span }: { progress: MotionValue<number>; span: [number, number] }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const logoRef = useRef<HTMLImageElement>(null);
   const wordmarkRef = useRef<HTMLImageElement>(null);
   const subtitleRef = useRef<HTMLParagraphElement>(null);
@@ -122,7 +123,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
   useEffect(() => {
     const host = hostRef.current;
     const overlay = overlayRef.current;
-    if (!host || !overlay) return;
+    const gridEl = gridRef.current;
+    if (!host || !overlay || !gridEl) return;
     let disposed = false;
 
     // --- derived chart geometry ---
@@ -145,17 +147,18 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     renderer.domElement.style.display = 'block';
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(PARAMS.fov, 1, 0.1, 20000);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.72));
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.4);
-    keyLight.position.set(0.35, 0.65, 1); scene.add(keyLight);
+    // No lights: candles use a flat (unlit) MeshBasicMaterial so they read as the
+    // exact brand hex.
 
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const groups = candles.map((k, i) => {
       const col = k.up ? UP : DOWN;
       const g = new THREE.Group();
-      const bodyMat = new THREE.MeshLambertMaterial({ color: col, transparent: true });
+      // Flat (unlit) material so the candle reads as the EXACT brand hex — a lit
+      // material (Lambert) shaded the box faces and washed the colour out.
+      const bodyMat = new THREE.MeshBasicMaterial({ color: col, transparent: true });
       const bodyMesh = new THREE.Mesh(boxGeo, bodyMat); g.add(bodyMesh);
-      const wickMat = new THREE.MeshLambertMaterial({ color: col, transparent: true });
+      const wickMat = new THREE.MeshBasicMaterial({ color: col, transparent: true });
       const wickMesh = new THREE.Mesh(boxGeo, wickMat); g.add(wickMesh);
       scene.add(g);
       const hy = priceToY(k.h), ly = priceToY(k.l), oy = priceToY(k.o), cy = priceToY(k.c);
@@ -193,10 +196,12 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       return { x: (_proj.x * 0.5 + 0.5) * host.clientWidth, y: (-_proj.y * 0.5 + 0.5) * host.clientHeight };
     };
     const mk = (cls: string, parent: HTMLElement = overlay) => { const el = document.createElement('div'); el.className = cls; parent.appendChild(el); return el; };
-    const gridItems = GRID.map((g, mi) => ({ idx: candles.findIndex((c) => c.date === g.d), line: mk('ci-gl'), lab: Object.assign(mk('ci-gd'), { textContent: MONTHS[mi] }) }));
-    const yTicks = niceTicks(pMin, pMax).map((v) => ({ v, line: mk('ci-hl'), lab: Object.assign(mk('ci-yl'), { textContent: String(v) }) }));
+    // Grid (dashed verticals, price lines, axis labels, index caption) goes in its
+    // OWN layer BEHIND the candle canvas, so the opaque candles paint over it.
+    const gridItems = GRID.map((g, mi) => ({ idx: candles.findIndex((c) => c.date === g.d), line: mk('ci-gl', gridEl), lab: Object.assign(mk('ci-gd', gridEl), { textContent: MONTHS[mi] }) }));
+    const yTicks = niceTicks(pMin, pMax).map((v) => ({ v, line: mk('ci-hl', gridEl), lab: Object.assign(mk('ci-yl', gridEl), { textContent: String(v) }) }));
     // "S&P 500 INDEX" caption, top-right (shares the grid's fade via --ci-grid).
-    Object.assign(mk('ci-index'), { textContent: INDEX_LABEL });
+    Object.assign(mk('ci-index', gridEl), { textContent: INDEX_LABEL });
     const factItems = FACTS.map((f, i) => {
       const el = mk('ci-fact');
       el.dataset.tune = FACT_TUNE_ID(i);   // draggable via the layout editor
@@ -204,7 +209,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       const icon = f.marker === 'up' ? ICON_UP : ICON_DOWN;
       el.innerHTML =
         `<span class="ci-icon ci-icon-${f.marker}">${icon}</span>` +
-        `<div class="ci-plate"><div class="ci-fh">${f.date}</div><div class="ci-fb">${f.text}</div></div>`;
+        `<div class="ci-plate">` +
+        `<div class="ci-fh" data-i18n="opener.candles.facts.${i}.date">${f.date}</div>` +
+        `<div class="ci-fb" data-i18n="opener.candles.facts.${i}.text">${f.text}</div></div>`;
       return { ...f, idx: candles.findIndex((c) => c.date === f.anchor), el };
     });
     const bmEl = mk('ci-bm');
@@ -216,7 +223,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const figNum = CRASH.figure.slice(dash.length);
     bmEl.innerHTML =
       `<span class="ci-skull">${ICON_SKULL}</span>` +
-      `<div class="ci-bm-date">${CRASH.date}</div>` +
+      `<div class="ci-bm-date" data-i18n="opener.candles.crash.date">${CRASH.date}</div>` +
       `<div class="ci-bm-title">${CRASH.title}</div>` +
       `<div class="ci-bm-fig"><span class="ci-bm-sign">${dash}</span>${figNum}</div>`;
 
@@ -224,12 +231,13 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const SUB = t<string[]>('opener.hero.subtitle');
     if (subtitleRef.current) {
       subtitleRef.current.textContent = '';
-      for (const line of SUB) {
+      SUB.forEach((line, li) => {
         const lineEl = document.createElement('span');
         lineEl.style.display = 'block';
+        lineEl.dataset.i18n = `opener.hero.subtitle.${li}`;
         lineEl.textContent = line;
-        subtitleRef.current.appendChild(lineEl);
-      }
+        subtitleRef.current!.appendChild(lineEl);
+      });
     }
 
     // --- scroll-driven loop ---
@@ -282,7 +290,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // info layer: grid + Y-axis + facts read in along the chart, fade at scatter
       const drawFade = 1 - smoothstep(clamp01((scatter - 0.02) / 0.18));
       const gridOp = chartOn * smoothstep(clamp01((chartT - 0.12) / 0.5)) * drawFade;
-      overlay.style.setProperty('--ci-grid', gridOp.toFixed(3));
+      gridEl.style.setProperty('--ci-grid', gridOp.toFixed(3));
       if (gridOp > 0.005) {
         for (const gi of gridItems) { const px = projX(gi.idx).x; gi.line.style.left = px + 'px'; gi.lab.style.left = px + 'px'; }
         for (const yt of yTicks) { const py = projX(0, priceToY(yt.v)).y; yt.line.style.top = py + 'px'; yt.lab.style.top = py + 'px'; }
@@ -322,6 +330,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           const maxL = host.clientWidth - 320;
           const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
           const [oxv, oyv] = tuneStore.get(FACT_TUNE_ID(i));
+          const sc = tuneStore.getScale(FACT_TUNE_ID(i)); // ✎ resize
           const ox = oxv * vhPx, oy = oyv * vhPx;
           let leftPx: number, topPx: number, base: string;
           if (fi.pos === 'bottom') {
@@ -337,7 +346,11 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           }
           fi.el.style.left = leftPx + 'px';
           fi.el.style.top = topPx + 'px';
-          fi.el.style.transform = flyTransform(leftPx, topPx, base, FACT_FLY_SPEED[i] ?? 1, FACT_FLY_SPIN[i] ?? 0);
+          const flyT = flyTransform(leftPx, topPx, base, FACT_FLY_SPEED[i] ?? 1, FACT_FLY_SPIN[i] ?? 0);
+          const parts: string[] = [];
+          if (sc !== 1) parts.push(`scale(${sc})`);
+          if (flyT !== 'none') parts.push(flyT);
+          fi.el.style.transform = parts.length ? parts.join(' ') : 'none';
         }
       });
       // Black Monday block (skull + crash headline + the −20.5% figure), anchored
@@ -349,12 +362,17 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         const cx = projX(N - 1).x;
         const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
         const [bxv, byv] = tuneStore.get(CRASH_TUNE_ID);
+        const bsc = tuneStore.getScale(CRASH_TUNE_ID); // ✎ resize
         const bx = bxv * vhPx, by = byv * vhPx;
         const leftPx = Math.min(host.clientWidth - 220, cx + 22) + bx;
         const topPx = host.clientHeight * 0.48 + by;
         bmEl.style.left = leftPx + 'px';
         bmEl.style.top = topPx + 'px';
-        bmEl.style.transform = flyTransform(leftPx, topPx, '', CRASH_FLY_SPEED, CRASH_FLY_SPIN);
+        const bFly = flyTransform(leftPx, topPx, '', CRASH_FLY_SPEED, CRASH_FLY_SPIN);
+        const bParts: string[] = [];
+        if (bsc !== 1) bParts.push(`scale(${bsc})`);
+        if (bFly !== 'none') bParts.push(bFly);
+        bmEl.style.transform = bParts.length ? bParts.join(' ') : 'none';
       }
 
       // hero: intro-in (time-based, once on mount, on black) × slide-out (scroll).
@@ -372,26 +390,35 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         // No intro reveal: logo/wordmark/coords/subtitle are fully present from the
         // first frame; only the scroll-driven slide-out below still animates them.
         const logoIn = 1, wmIn = 1, coIn = 1, glow = 0;
+        // Layout-editor nudge (✎): each hero piece reads its tuneStore offset/scale
+        // and bakes it into its OWN per-frame transform (store-mode), so the editor
+        // can move/resize them without fighting this scroll animation.
+        const vhPx = host.clientHeight / 100;
+        const tunePrefix = (id: string) => {
+          const [ox, oy] = tuneStore.get(id);
+          const sc = tuneStore.getScale(id);
+          return `translate(${(ox * vhPx).toFixed(1)}px, ${(oy * vhPx).toFixed(1)}px) ` + (sc !== 1 ? `scale(${sc}) ` : '');
+        };
 
         if (logoRef.current) {
           // logo clears UP almost immediately so it doesn't get in the way
           const logoUp = clamp01(sp / 0.07);
-          logoRef.current.style.transform = `translateY(${(-(logoUp * logoUp) * 200).toFixed(1)}px)`;
+          logoRef.current.style.transform = tunePrefix('opener.logo') + `translateY(${(-(logoUp * logoUp) * 200).toFixed(1)}px)`;
           logoRef.current.style.opacity = (logoIn * (1 - smoothstep(clamp01((logoUp - 0.4) / 0.6)))).toFixed(3);
         }
         if (wordmarkRef.current) {
-          wordmarkRef.current.style.transform = `translateX(${(slideOff(0) * 130).toFixed(2)}vw)`;
+          wordmarkRef.current.style.transform = tunePrefix('opener.wordmark') + `translateX(${(slideOff(0) * 130).toFixed(2)}vw)`;
           wordmarkRef.current.style.opacity = (wmIn * fadeOut(0)).toFixed(3);
           wordmarkRef.current.style.filter = glow > 0.01
             ? `brightness(${(1 + glow * 0.8).toFixed(2)}) drop-shadow(0 0 ${(glow * 13).toFixed(0)}px rgba(255,255,255,${(glow * 0.7).toFixed(2)}))`
             : '';
         }
         if (subtitleRef.current) {
-          subtitleRef.current.style.transform = `translateX(${(slideOff(STAG) * 130).toFixed(2)}vw)`;
+          subtitleRef.current.style.transform = tunePrefix('opener.subtitle') + `translateX(${(slideOff(STAG) * 130).toFixed(2)}vw)`;
           subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3); // chars carry the intro
         }
         if (coordsRef.current) {
-          coordsRef.current.style.transform = `translateX(${(slideOff(2 * STAG) * 130).toFixed(2)}vw)`;
+          coordsRef.current.style.transform = tunePrefix('opener.coords') + `translateX(${(slideOff(2 * STAG) * 130).toFixed(2)}vw)`;
           coordsRef.current.style.opacity = (coIn * fadeOut(2 * STAG)).toFixed(3);
         }
       }
@@ -414,20 +441,26 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       renderer.dispose();
       renderer.domElement.remove();
       overlay.innerHTML = '';
+      gridEl.innerHTML = '';
     };
   }, [progress]);
 
   return (
     <>
-      {/* candle canvas (transparent — composites over whatever is behind) */}
-      <div ref={hostRef} className="absolute inset-0 z-0" />
-      {/* DOM overlay: gridlines, facts, BM label */}
+      {/* grid layer — dashed verticals / price lines / axis labels, BEHIND the
+          candles so the opaque candle bodies paint over it (candles on top of grid). */}
+      <div ref={gridRef} className="ci-overlay absolute inset-0 z-0 pointer-events-none" />
+      {/* candle canvas (transparent — composites over the grid behind it) */}
+      <div ref={hostRef} className="absolute inset-0 z-[5]" />
+      {/* DOM overlay: facts + BM label (above the candles) */}
       <div ref={overlayRef} className="ci-overlay absolute inset-0 z-10 pointer-events-none" />
       {/* Meridian mark (corner) — slides UP and out as the charts draw. */}
       <img
         ref={logoRef}
         src="/brand/meridian-logo.svg"
         alt={t('opener.logoAlt')}
+        data-tune="opener.logo"
+        data-tune-mode="store"
         className="absolute left-[46px] top-[36px] h-[68px] w-auto z-20 pointer-events-none will-change-transform"
       />
       {/* hero — each element slides off independently (staggered in the loop). */}
@@ -436,10 +469,25 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         <div className="absolute top-[40px] left-1/2 -translate-x-1/2">
           <div
             ref={coordsRef}
+            data-tune="opener.coords"
+            data-tune-mode="store"
             className="whitespace-nowrap text-white will-change-transform"
-            style={{ font: '700 15px var(--font-mono)', letterSpacing: '0.12em' }}
+            style={{ font: '400 15px var(--font-mono)', letterSpacing: '0.12em' }}
           >
-            {t('opener.hero.coordsCity')} <span style={{ color: '#DE2053' }}>●</span> {t('opener.hero.coordsGeo')}
+            {t('opener.hero.coordsCity')}{' '}
+            <span
+              style={{
+                display: 'inline-block',
+                width: '11px',
+                height: '11px',
+                borderRadius: '50%',
+                background: '#DE2053',
+                verticalAlign: 'middle',
+                position: 'relative',
+                top: '-2px',
+              }}
+            />
+            {' '}{t('opener.hero.coordsGeo')}
           </div>
         </div>
         {/* wordmark (biggest, leaves first) + subtitle (leaves second) */}
@@ -449,13 +497,17 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
             ref={wordmarkRef}
             src="/brand/wall-st-rodeo.svg"
             alt={t('opener.wordmarkAlt')}
+            data-tune="opener.wordmark"
+            data-tune-mode="store"
             className="w-[clamp(320px,72vw,1000px)] h-auto will-change-transform"
           />
           {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}
           <p
             ref={subtitleRef}
-            className="mt-6 max-w-[760px] text-[clamp(16px,2vw,28px)] text-white/95 will-change-transform leading-[1.35]"
-            style={{ fontFamily: 'var(--font-struve)', fontWeight: 500 }}
+            data-tune="opener.subtitle"
+            data-tune-mode="store"
+            className="mt-6 max-w-[760px] text-[clamp(17.6px,2.2vw,30.8px)] text-white/95 will-change-transform leading-[1.35]"
+            style={{ fontFamily: 'var(--font-struve)', fontWeight: 400 }}
           />
         </div>
       </div>

@@ -30,7 +30,7 @@ export default function App() {
   // without touching the live opener.
   if (params.has('candles')) {
     return (
-      <div className="w-full bg-[#06070a]">
+      <div className="w-full bg-black">
         <CandleIntro frames={Number(params.get('frames')) || 9} />
       </div>
     );
@@ -39,7 +39,7 @@ export default function App() {
   // `?map` previews the native map chapter standalone.
   if (params.has('map')) {
     return (
-      <div className="w-full bg-[#0a0a10]">
+      <div className="w-full bg-black">
         <MapChapter />
       </div>
     );

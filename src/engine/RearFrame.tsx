@@ -31,8 +31,8 @@ export default function RearFrame() {
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const p = progress.get();
-      // appears near the end (rear view) and holds — stage 4 sits at progress 1.
-      const op = smoothstep(clamp01((p - 0.94) / 0.04));
+      // appears from f12.5 (0.958) and holds to the end — stage 4 sits at progress 1.
+      const op = smoothstep(clamp01((p - 0.958) / 0.03));
       root.style.opacity = op.toFixed(3);
       root.style.visibility = op < 0.004 ? 'hidden' : 'visible';
       const el = dotRef.current;

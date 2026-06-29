@@ -1,0 +1,42 @@
+/* S&P 500 investment calculator — ported from wallst-rodeo/calculator.html. */
+.calc-slide {
+  width: 100%; min-height: 100vh; padding: clamp(32px, 6vh, 64px) 20px;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse 130% 120% at 50% 24%, #181b22 0%, #0b0c10 58%, #000 100%) no-repeat #000;
+  color: #ECEFEC; font-family: 'Inter', system-ui, sans-serif;
+}
+.calc-wrap { width: 100%; max-width: min(920px, 92vw); }
+.calc-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
+.calc-eyebrow { font: 700 clamp(11px, 1vw, 13px) 'Space Mono', monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #61E26B; }
+.calc-amt { font: 700 clamp(24px, 3.6vw, 34px)/1.2 'Inter', system-ui, sans-serif; letter-spacing: -0.01em; margin-top: 10px; }
+.calc-amt .cur { color: rgba(236, 239, 236, 0.5); }
+.calc-amt input {
+  width: 4.6em; background: transparent; border: none; border-bottom: 2px solid rgba(255, 255, 255, 0.18);
+  color: #61E26B; font: inherit; letter-spacing: -0.01em; padding: 0 2px 2px; -moz-appearance: textfield;
+}
+.calc-amt input::-webkit-outer-spin-button, .calc-amt input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.calc-amt input:focus { outline: none; border-bottom-color: #61E26B; }
+
+.calc-result { text-align: right; line-height: 1.1; }
+.calc-result .per { font: 700 clamp(11px, 1vw, 13px) 'Space Mono', monospace; letter-spacing: 0.06em; color: rgba(236, 239, 236, 0.5); }
+.calc-result .big { font: 800 clamp(32px, 5.2vw, 48px)/1.05 'Inter', system-ui, sans-serif; letter-spacing: -0.025em; color: #61E26B; margin: 6px 0 5px; }
+.calc-result.neg .big { color: #EF5350; }
+.calc-result .sub { font: 500 clamp(13px, 1.2vw, 15px) 'Inter', system-ui, sans-serif; color: rgba(236, 239, 236, 0.5); }
+.calc-result .sub b { color: #ECEFEC; font-weight: 700; }
+.calc-result .sub .ri { color: #aeb6af; }
+
+.calc-viz { position: relative; margin: 28px 0 8px; touch-action: none; user-select: none; }
+.calc-chart { width: 100%; height: clamp(360px, 56vh, 620px); display: block; }
+.calc-flag { position: absolute; top: 0; bottom: 0; width: 0; }
+.calc-flag .line { position: absolute; top: 0; bottom: 26px; left: -1px; width: 2px; background: #61E26B; }
+.calc-flag .grab { position: absolute; left: -15px; top: 0; bottom: 0; width: 30px; cursor: ew-resize; }
+.calc-flag .yr {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); cursor: ew-resize;
+  font: 700 12px 'Space Mono', monospace; color: #06210b; background: #61E26B;
+  padding: 3px 9px; border-radius: 7px; white-space: nowrap; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
+}
+.calc-flag .yr::before { content: '\21C4  '; opacity: 0.6; }
+
+.calc-hint { font: 500 clamp(12px, 1.1vw, 14px) 'Inter', system-ui, sans-serif; color: rgba(236, 239, 236, 0.5); margin-top: 4px; }
+.calc-note { font: 400 clamp(11.5px, 1.05vw, 13.5px)/1.5 'Inter', system-ui, sans-serif; color: rgba(236, 239, 236, 0.5); margin-top: 20px; }
+@media (max-width: 560px) { .calc-top { align-items: flex-start; } .calc-result { text-align: left; } }

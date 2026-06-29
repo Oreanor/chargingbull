@@ -8,16 +8,23 @@
    #25221E @ 85%, radius 30, padding 41/50/47/50, background-blur 12). */
 .so-text {
   position: absolute; left: 56px; bottom: 9%; opacity: 0;
-  width: min(538px, calc(100vw - 64px));
+  width: min(672px, calc(100vw - 64px)); /* match the map/chart cards */
   background: rgba(37, 34, 30, 0.85);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   border-radius: 30px;
-  padding: 41px 50px 47px 50px;
+  padding: 40px 50px 46px 50px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-  font: 400 clamp(14px, 1.15vw, 16px) / 1.6 var(--font-struve);
+  font: 400 clamp(15px, 1.25vw, 18px) / 1.55 var(--font-struve);
   color: rgba(245, 243, 238, 0.82);
   transform-origin: left bottom;
   will-change: opacity, transform;
+}
+/* «Touch for luck» (last plaque) rises all the way UP and parks at the TOP-left
+   corner instead of the bottom. */
+.so-text[data-tune="opener.plaque4"] {
+  top: 9%;
+  bottom: auto;
+  transform-origin: left top;
 }
 /* optional small kicker (1–2 lines) above the heading */
 .so-text .so-kicker {
@@ -26,13 +33,13 @@
   color: rgba(245, 243, 238, 0.5);
 }
 .so-text .so-eyebrow {
-  display: block; margin-bottom: 18px;
-  font: 600 clamp(20px, 2vw, 26px) / 1.1 var(--font-struve);
-  letter-spacing: -0.01em; text-transform: none;
+  display: block; margin-bottom: 16px;
+  font: 700 clamp(28px, 3.1vw, 40px) / 1.0 var(--font-struve);
+  letter-spacing: 0.01em; text-transform: none;
   color: #61e26b;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   .so-text { padding: 28px 28px 32px; border-radius: 22px; }
 }
 
@@ -48,6 +55,7 @@
 }
 .so-anno.so-img img { display: block; opacity: 0.9; }
 
-@media (max-width: 640px) {
-  .so-text { left: 22px; width: calc(100vw - 44px); }
+@media (max-width: 1023px) {
+  /* slide up CENTERED with a 20px margin each side */
+  .so-text { left: 20px; right: 20px; width: auto; }
 }

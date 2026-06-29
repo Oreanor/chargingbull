@@ -18,20 +18,22 @@
    card, radius 30; white Space-Grotesk date, Space-Mono uppercase location, big
    green Struve title, white struve body with underlined links. No image/number. */
 .mc-card {
-  max-width: min(600px, calc(100vw - 64px)); margin-left: clamp(24px, 5vw, 80px);
-  background: rgba(37, 34, 30, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  /* fixed width (not max-width) so EVERY card is identical; matches the design
+     (672px card) and fits «Di Modica built the bull in a cramped, semi-legal». */
+  width: min(672px, calc(100vw - 64px)); margin-left: clamp(24px, 5vw, 80px);
+  background: rgba(44, 45, 57, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-radius: 30px;
-  padding: 46px 52px 50px 52px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  padding: 44px 52px 50px 52px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
   color: rgba(245, 243, 238, 0.92);
-  font: 400 clamp(15px, 1.25vw, 18px) / 1.55 var(--font-struve);
+  font: 400 clamp(17px, 1.65vw, 24px) / 1.33 var(--font-struve);
 }
 
-.mc-date { font: 500 clamp(18px, 1.6vw, 22px)/1.2 var(--font-grotesk); letter-spacing: -0.02em; color: #fff; margin-bottom: 6px; }
-.mc-loc { font: 400 clamp(12px, 1.05vw, 15px)/1.35 var(--font-mono); text-transform: uppercase; color: rgba(255, 255, 255, 0.92); letter-spacing: 0; margin-bottom: 20px; }
-.mc-title { font: 700 clamp(26px, 2.9vw, 38px)/1.05 var(--font-struve); letter-spacing: 0.01em; color: #61e26b; margin-bottom: 16px; }
+.mc-date { font: 500 clamp(19px, 1.7vw, 24px)/1.2 var(--font-grotesk); letter-spacing: -0.02em; color: #fff; margin-bottom: 6px; }
+.mc-loc { font: 400 clamp(14px, 1.25vw, 18px)/1.35 var(--font-mono); text-transform: uppercase; color: rgba(255, 255, 255, 0.92); letter-spacing: 0; margin-bottom: 20px; }
+.mc-title { font: 700 clamp(28px, 3.1vw, 40px)/1.0 var(--font-struve); letter-spacing: 0.01em; color: #61e26b; margin-bottom: 16px; }
 .mc-comment { font: inherit; color: rgba(245, 243, 238, 0.92); }
 .mc-comment a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
-@media (max-width: 720px) {
-  .mc-card { margin-left: 0; padding: 28px 28px 32px; max-width: 100%; border-radius: 22px; }
+@media (max-width: 1023px) {
+  .mc-card { margin: 0 auto; padding: 28px 28px 32px; width: calc(100vw - 40px); border-radius: 22px; }
 }

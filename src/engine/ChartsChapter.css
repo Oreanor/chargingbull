@@ -1,25 +1,13 @@
 /* ChartsChapter — de-iframed S&P 500 bear-markets chart. Ported from the standalone
    chapter's CSS (public/chapters/charts/index.html), scoped under .cc-* . */
 
-.cc-section { background: #0a0a10; color: #f5f3ee; }
+.cc-section { background: #000; color: #f5f3ee; }
 
 .cc-canvas { width: 100%; height: 100%; display: block; }
 
-/* Dim the left third so the cards on top stay readable. */
-.cc-gradient {
-  position: absolute; inset: 0; pointer-events: none; z-index: 2;
-  background: linear-gradient(to right,
-    rgba(10, 10, 16, 0.78) 0%,
-    rgba(10, 10, 16, 0.40) 30%,
-    rgba(10, 10, 16, 0) 52%);
-}
-@media (max-width: 720px) {
-  .cc-gradient {
-    background: linear-gradient(to bottom,
-      rgba(10, 10, 16, 0) 25%,
-      rgba(10, 10, 16, 0.85) 75%);
-  }
-}
+/* Old left-third dim overlay — removed: it muddied the pink (bear) phase, and the
+   cards now carry their own solid panel so they read without it. */
+.cc-gradient { display: none; }
 
 /* Top bar */
 .cc-topbar {
@@ -27,14 +15,14 @@
   padding: 20px 32px; z-index: 50; pointer-events: none;
 }
 .cc-brand {
-  font-family: 'Cormorant Garamond', var(--font-ayer), serif;
-  font-size: 16px; font-weight: 600; letter-spacing: 0.5px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+  font-family: var(--font-struve); font-weight: 700; color: #fff;
+  font-size: clamp(28px, 3.1vw, 40px); line-height: 1.05; letter-spacing: 0;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
 }
 .cc-brand .cc-small {
-  font-family: var(--font-mono), 'Inter', sans-serif;
-  font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase;
-  color: #c9a961; display: block; margin-bottom: -2px; font-weight: 500;
+  font-family: var(--font-grotesk), 'Inter', sans-serif;
+  font-size: clamp(15px, 1.4vw, 20px); letter-spacing: 0; text-transform: none;
+  color: #fff; display: block; margin-bottom: 6px; font-weight: 500;
 }
 
 /* Chart caption — units & description, bottom-right of the pinned stage. */
@@ -54,27 +42,31 @@
 .cc-step:first-child { padding-top: 100px; }
 
 .cc-card {
-  pointer-events: auto; max-width: 360px;
+  pointer-events: auto;
+  /* same width as the other plaques (map / opener) — design: 672px card */
+  width: min(672px, calc(100vw - 64px));
   margin-left: clamp(24px, 4vw, 56px);
-  background: rgba(10, 10, 16, 0.86);
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-  border: 1px solid rgba(201, 169, 97, 0.18);
-  border-radius: 4px; padding: 26px 30px 28px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
-}
-.cc-card::before {
-  content: ''; display: block; width: 28px; height: 1px;
-  background: #c9a961; margin-bottom: 18px;
+  background: rgba(0, 0, 0, 0.75);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-radius: 30px; padding: 40px 50px 46px 50px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 }
 .cc-title {
-  font-family: 'Cormorant Garamond', var(--font-ayer), serif;
-  font-size: 32px; font-weight: 600; line-height: 1.08; letter-spacing: -0.4px;
-  color: #f5f3ee; margin-bottom: 18px;
+  font-family: var(--font-struve); font-weight: 700;
+  font-size: clamp(28px, 3.1vw, 40px); line-height: 1.04; letter-spacing: 0;
+  color: #f14268; margin-bottom: 16px;
 }
 .cc-comment {
-  font-size: 14px; line-height: 1.65; color: rgba(245, 243, 238, 0.85); font-weight: 300;
+  font-family: var(--font-struve);
+  font-size: clamp(17px, 1.65vw, 24px); line-height: 1.33; color: #fff; font-weight: 400;
 }
-.cc-comment b { color: #e8c87c; font-weight: 600; }
+.cc-comment b { color: #fff; font-weight: 700; }
+
+/* Bull / invest cards («$350k in S&P», «Minus inflation») — GREEN ground, black text. */
+.cc-card--bull { background: #61e26b; }
+.cc-card--bull .cc-title,
+.cc-card--bull .cc-comment,
+.cc-card--bull .cc-comment b { color: #000; }
 
 @media (max-width: 720px) {
   .cc-step { padding: 60px 16px; }

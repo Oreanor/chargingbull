@@ -34,7 +34,8 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
     stagesUrl="/chapters/splash/stages.json"
     range={[0.52, 1]}
     plaques={t('opener.plaques')}
-    plaqueAt={[undefined, 0.58]}
+    plaqueAt={[0.44, 0.54, undefined, 0.902]}
+    plaqueReach={[undefined, undefined, undefined, undefined, 0.03]}
     hidePlaques={[2]}
   />
   <TonnesFrame />
@@ -77,28 +78,23 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
 
 <ChartsChapter />
 
-{/* ===================== PROSE — what makes a crisis a crisis =========== */}
+{/* Full-screen title slide after the charts. */}
+<AnatomyCrisis />
 
-<Prose variant="dark">
-  <h3 className="font-serif font-semibold text-[clamp(24px,3vw,36px)] text-fg mb-2">
-    {t('crisisProse.heading')}
-  </h3>
-  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p1') }} />
-  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p2') }} />
-  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p3') }} />
-  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p4') }} />
-  <div className="border-l-2 border-gold/50 pl-6 my-10 font-serif italic text-[clamp(18px,1.8vw,26px)] leading-[1.4] text-fg/90">
-    {t('crisisProse.quote')}
-    <span className="block mt-3 not-italic font-mono uppercase tracking-[2px] text-[11px] text-fg/55">
-      {t('crisisProse.quoteAuthor')}
-    </span>
-  </div>
-  <div dangerouslySetInnerHTML={{ __html: t('crisisProse.p5') }} />
-</Prose>
+{/* Two-column editorial slide — how crises actually play out + "hold on". */}
+<CrisisDynamics />
 
-{/* ===================== OUTRO ========================================== */}
+{/* Interactive S&P 500 investment calculator (ported from wallst-rodeo). */}
+<CalculatorSlide />
 
-<Outro
-  lines={t('outro.lines')}
-  credit={<span dangerouslySetInnerHTML={{ __html: t('outro.credit') }} />}
-/>
+{/* Closing two-column slide — Di Modica portrait + quote, AI/SpaceX prose. */}
+<FutureSlide />
+
+{/* Pink colophon — published date · copy URL · reading list. */}
+<Colophon />
+
+{/* Full-width summary / credits band. */}
+<SummaryBlock />
+
+{/* Standard Méridien studio footer. */}
+<SiteFooter />

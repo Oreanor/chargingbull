@@ -10,8 +10,6 @@ import { tuneStore } from '../engine/tuneEditor';
  * the lull; the lock releases once both the reveal AND the preload are done.
  */
 
-const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
-
 export function BreakReveal({
   title,
   titleNode,
@@ -38,57 +36,32 @@ export function BreakReveal({
     const section = sectionRef.current;
     if (!section) return;
 
-    // build body char spans (hidden), typed in the loop
-    const chars: { el: HTMLSpanElement; delay: number }[] = [];
-    const BODY_START = 900;
-    const perChar = 1000 / 55; // ~a line (≈55 chars) per second
+    // Text just APPEARS (typing effect removed): populate the body with line breaks
+    // and show title + body. The next chapter's assets are still warmed up via
+    // `preload` when this section pins (never blocks scroll).
     if (bodyRef.current) {
-      bodyRef.current.textContent = '';
-      [...body].forEach((ch, i) => {
-        if (ch === '\n') { bodyRef.current!.appendChild(document.createElement('br')); return; }
-        const s = document.createElement('span');
-        s.textContent = ch;
-        s.style.opacity = ch === ' ' ? '1' : '0';
-        bodyRef.current!.appendChild(s);
-        chars.push({ el: s, delay: BODY_START + i * perChar });
+      const frag = document.createDocumentFragment();
+      body.split('\n').forEach((line, idx) => {
+        if (idx > 0) frag.appendChild(document.createElement('br'));
+        frag.appendChild(document.createTextNode(line));
       });
+      bodyRef.current.replaceChildren(frag);
+      bodyRef.current.style.opacity = '1';
     }
-    const REVEAL_END = BODY_START + body.length * perChar + 300;
+    if (titleRef.current) titleRef.current.style.opacity = '1';
 
-    let triggered = false;
-    let t0 = 0;
-    let raf = 0;
-
-    const loop = () => {
-      const t = performance.now() - t0;
-      if (titleRef.current) titleRef.current.style.opacity = clamp01(t / 600).toFixed(3);
-      for (const c of chars) c.el.style.opacity = clamp01((t - c.delay) / 150).toFixed(3);
-      if (t < REVEAL_END) raf = requestAnimationFrame(loop);
-    };
-
-    const trigger = () => {
-      if (triggered) return;
-      triggered = true;
-      t0 = performance.now();
-      // warm up the next chapter's assets during the reveal lull — but never block
-      // scroll on it: the reader can scroll on through while it streams in back.
-      if (preload) preload().catch(() => {});
-      raf = requestAnimationFrame(loop);
-    };
-
-    // trigger when the section pins to the top of the viewport
+    let fired = false;
     const onScroll = () => {
-      if (triggered) return;
+      if (fired) return;
       const r = section.getBoundingClientRect();
-      if (r.top <= 2 && r.bottom > window.innerHeight * 0.5) trigger();
+      if (r.top <= 2 && r.bottom > window.innerHeight * 0.5) {
+        fired = true;
+        if (preload) preload().catch(() => {});
+      }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
-
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      cancelAnimationFrame(raf);
-    };
+    return () => window.removeEventListener('scroll', onScroll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -136,7 +109,7 @@ export function BreakReveal({
           <p
             ref={bodyRef}
             style={{ fontFamily: 'var(--font-struve)' }}
-            className="mx-auto max-w-[420px] text-[clamp(16px,1.5vw,20px)] leading-[1.55] text-fg/80"
+            className="mx-auto max-w-[480px] text-[clamp(16px,1.5vw,20px)] leading-[1.3] text-fg/80"
             data-tune={tuneKey ? `${tuneKey}.body` : undefined}
             data-tune-mode={tuneKey ? 'store' : undefined}
           />

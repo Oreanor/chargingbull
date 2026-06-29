@@ -16,9 +16,9 @@ import { tuneStore } from '../engine/tuneEditor';
 // the SVGs' native ratio (339 : 120 : 368) to match the Figma export; fine-tune
 // each piece's scale live via the ✎ editor.
 const PIECES = [
-  { id: 'bearsbulls.bears', src: '/chapters/bears-bulls/BEARS.svg', altKey: 'bearsBulls.altBears', imgCls: 'h-[clamp(74px,15.6vw,210px)] w-auto block', wrapCls: '' },
-  { id: 'bearsbulls.vs', src: '/chapters/bears-bulls/vs.svg', altKey: 'bearsBulls.altVs', imgCls: 'h-[clamp(26px,5.5vw,74px)] w-auto block', wrapCls: 'mb-[0.28em] mx-[0.1em]' },
-  { id: 'bearsbulls.bulls', src: '/chapters/bears-bulls/Bulls.svg', altKey: 'bearsBulls.altBulls', imgCls: 'h-[clamp(80px,16.9vw,228px)] w-auto block', wrapCls: '' },
+  { id: 'bearsbulls.bears', src: '/chapters/bears-bulls/BEARS.svg', altKey: 'bearsBulls.altBears', imgCls: 'h-[clamp(74px,15.6vw,210px)] max-sm:h-[12vw] w-auto block', wrapCls: '' },
+  { id: 'bearsbulls.vs', src: '/chapters/bears-bulls/vs.svg', altKey: 'bearsBulls.altVs', imgCls: 'h-[clamp(26px,5.5vw,74px)] max-sm:h-[4.3vw] w-auto block', wrapCls: 'mb-[0.28em] mx-[0.1em]' },
+  { id: 'bearsbulls.bulls', src: '/chapters/bears-bulls/Bulls.svg', altKey: 'bearsBulls.altBulls', imgCls: 'h-[clamp(80px,16.9vw,228px)] max-sm:h-[12.8vw] w-auto block', wrapCls: '' },
 ] as const;
 
 export function BearsBullsTitle() {
