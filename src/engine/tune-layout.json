@@ -180,5 +180,18 @@
   "auto:#root > main > section:nth-of-type(8) > div > aside > div": [
     1.98,
     6.59
+  ],
+  "auto:#root > main > section:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(3)": [
+    -10.52,
+    5.56,
+    0.967
+  ],
+  "auto:#root > main > section:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2)": [
+    -10.82,
+    5.25
+  ],
+  "auto:#root > main > section:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1)": [
+    -11.02,
+    5.25
   ]
 }

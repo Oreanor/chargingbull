@@ -67,13 +67,17 @@
   "charts": {
     "topbarSmall": "Wall Street · 1973–2026",
     "topbarTitle": "Bear Markets",
+    "topbarTitleBull": "Bull Markets",
     "labels": {
       "peak": "peak",
       "months": "mo.",
-      "investArrow": "$350k → ",
-      "buyDate": "Oct 1987",
-      "compareDate": "Feb 2021"
+      "investArrow": "$350K → ",
+      "buyDate": "October 1987",
+      "compareDate": "February 2021",
+      "indexLabel": "S&P 500 INDEX"
     },
+    "blackMonday": { "date": "19 October 1987", "title": "Black Monday", "figure": "−20%" },
+    "footer": "© Méridien 2026 — <a href=\"https://creativecommons.org/licenses/by-nc/4.0/deed.en\">CC BY 4.0</a>. Data: Robert J. Shiller, U.S. Stock Markets 1871–Present and CAPE Ratio (Yale University) — monthly S&P 500 price, dividends, earnings, and CPI; daily S&P 500 close prices from Yahoo Finance.",
     "crises": [
       { "troughLbl": "Sep 1974", "label": "1973–74" },
       { "troughLbl": "Nov 1987", "label": "1987" },
@@ -82,18 +86,21 @@
       { "troughLbl": "Mar 2020", "label": "2020" }
     ],
     "captions": {
-      "0a": "01 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "0b": "02 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "0c": "03 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "0d": "04 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "0e": "05 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "1": "06 — Each crisis normalized to its own peak = 100%. Monthly, real",
-      "1a": "07 — S&P 500 nominal price. Monthly. Source: Robert Shiller",
-      "1b": "08 — S&P 500 nominal price, zoom 1986–1991. Monthly",
-      "2": "09 — S&P 500 nominal price + a hypothetical $350k buy-and-hold from Oct 1987",
-      "3": "10 — S&P 500 real price (CPI-adjusted) + the same $350k position"
+      "bm": "01 — S&P 500 daily close, Black Monday (Aug–Oct 1987)",
+      "0a": "02 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0b": "03 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0c": "04 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0d": "05 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0e": "06 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "1": "07 — Each crisis normalized to its own peak = 100%. Monthly, real",
+      "1a": "08 — S&P 500 nominal price. Monthly. Source: Robert Shiller",
+      "1b": "09 — S&P 500 nominal price, zoom 1986–1991. Monthly",
+      "2": "10 — S&P 500 nominal price + a hypothetical $350k buy-and-hold from Oct 1987",
+      "3": "11 — S&P 500 real price (CPI-adjusted) + the same $350k position"
     },
     "steps": [
+      { "view": "bm", "date": "August — October 1987", "title": "Black Monday",
+        "comment": "Daily S&P 500 close into the 1987 crash." },
       { "view": "0a", "date": "October 19, 1987", "title": "Black Monday",
         "comment": "In a single day S&P 500 plunged <b>−20%</b> — still the largest one-day crash in Wall Street history. About $500 billion of market cap evaporated in hours. Margin calls hit brokers in waves, NYSE trading barely crawled, the Hong Kong exchange shut for the rest of that week. By early December the peak-to-trough drawdown reached <b>−33%</b>." },
       { "view": "0b", "date": "February — March 2020", "title": "COVID",
