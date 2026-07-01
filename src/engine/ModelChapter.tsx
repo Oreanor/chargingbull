@@ -363,7 +363,7 @@ function TrackDriver({
           const et = (t - a0) / enterDur;     // 0→1 over the drive-in
           const k = (1 - et) ** 3;            // full offset at entry → 0 at rest (decel)
           ox = e.enterFrom[0] * k; oy = e.enterFrom[1] * k; oz = e.enterFrom[2] * k;
-          if (e.fade) op = ss(et);            // fade in
+          if (e.fade) op = ss(et * 2);        // fade in — fully opaque by HALF the drive-in
         } else if (e.exitTo && exitDur > 0 && t > a1 - exitDur) {
           const xt = (t - (a1 - exitDur)) / exitDur; // 0→1 over the drive-out
           const k = xt * xt;                  // 0 at rest → full offset (accelerate away)

@@ -64,7 +64,10 @@ export function BullBearExplainer() {
   }, []);
 
   return (
-    <section ref={sectionRef} className="relative h-[210vh] bg-black">
+    // z-10: BELOW the charts that follow (z-20). When this pink fills the screen the
+    // charts' own pink backdrop fades in OVER it, so the sticky's unpin/slide-away happens
+    // hidden behind the charts — you never see this pink drive off.
+    <section ref={sectionRef} className="relative z-10 h-[210vh] bg-black">
       <div ref={stickyRef} className="sticky top-0 h-[100dvh] w-full overflow-hidden">
         <div ref={panelRef} className="absolute inset-0 bg-[#f14268]" style={{ borderRadius: 30 }} />
         <div ref={contentRef} className="absolute inset-0 flex items-center">

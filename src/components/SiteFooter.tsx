@@ -1,4 +1,3 @@
-import LOGO from '../assets/footer/logo-meridien.svg?raw';
 import LINKEDIN from '../assets/footer/linkedin.svg?raw';
 import X_ICON from '../assets/footer/x.svg?raw';
 
@@ -12,13 +11,20 @@ export function SiteFooter() {
   const top = () => window.scrollTo({ top: 0, behavior: 'smooth' });
   return (
     <footer
-      className="w-full bg-black text-[#767676] px-6 md:px-[64px] py-16 md:py-24"
+      className="relative w-full min-h-[100dvh] flex flex-col justify-center bg-black text-[#767676] pl-[46px] pr-6 md:pr-[64px] py-16 md:py-24"
       style={{ fontFamily: 'var(--font-struve)' }}
     >
-      <div className="max-w-[1480px] mx-auto grid grid-cols-1 lg:grid-cols-[1.6fr_1.7fr_0.7fr] gap-x-[clamp(40px,5vw,80px)] gap-y-12 text-[clamp(14px,1.05vw,18px)] leading-[1.6]">
-        {/* Column 1 — logo · copyright · studio blurb */}
+      {/* Méridien mark — same geometry/size/corner as the opener's initial slide, but in
+          the footer's own green (the opener's is pink #DE2053; this one is #61E26B). */}
+      <img
+        src="/brand/meridian-logo-green.svg"
+        alt="Méridien"
+        className="absolute left-[46px] top-[36px] h-[68px] w-auto"
+      />
+      {/* left-aligned (no mx-auto) so column 1 lines up on the SAME vertical as the logo */}
+      <div className="max-w-[1480px] grid grid-cols-1 lg:grid-cols-[1.6fr_1.7fr_0.7fr] gap-x-[clamp(40px,5vw,80px)] gap-y-12 text-[clamp(14px,1.05vw,18px)] leading-[1.6]">
+        {/* Column 1 — copyright · studio blurb (logo now lives in the corner) */}
         <div className="flex flex-col gap-y-12">
-          <div className="[&>svg]:h-[68px] [&>svg]:w-auto [&>svg]:block" dangerouslySetInnerHTML={{ __html: LOGO }} />
           <div className="text-[#A5A5A5]">&copy; 2026 M&eacute;ridien Knowledge Design</div>
           <div className="text-[#E6E6E6]">
             M&eacute;ridien is an interdisciplinary studio for knowledge design. We connect dots

@@ -9,6 +9,8 @@ import './MapChapter.css';
 import ROUTE_THE from '../assets/route/the.svg?raw';
 import ROUTE_BULLS from '../assets/route/bulls.svg?raw';
 import ROUTE_ROUTE from '../assets/route/route.svg?raw';
+// Single clean chapter logo used on MOBILE in place of the 3-piece composition above.
+import THE_BULLS_ROUTE from '../assets/logos/the-bulls-route.svg?url';
 
 // deck.gl is imported DYNAMICALLY (in the overlay effect) — it touches browser
 // globals at module load and would crash the SSR prerender. Type-only imports
@@ -78,8 +80,8 @@ function computeTrailCoords(progress: number, steps: { lng: number; lat: number 
   return pts;
 }
 
-/** deck.gl layers: stop dots · trail · bull head (pulsing rings + 3D model). */
-function buildMarkerLayers(DL: DeckLayers, progress: number, pulse: number, steps: { lng: number; lat: number }[], routes: LngLat[][]): Layer[] {
+/** deck.gl layers: stop dots · trail · bull head (3D model). */
+function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: number; lat: number }[], routes: LngLat[][]): Layer[] {
   const { ScatterplotLayer, PathLayer, ScenegraphLayer } = DL;
   const layers: Layer[] = [];
   const activeStop = Math.round(progress);
@@ -93,8 +95,7 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, pulse: number, step
   }));
   const trail = computeTrailCoords(progress, steps, routes);
   if (trail.length >= 2) {
-    layers.push(new PathLayer({ id: 'trail-glow', data: [{ path: trail }], getPath: (d) => d.path, getColor: [201, 169, 97, 90], getWidth: 12, widthUnits: 'pixels', capRounded: true, jointRounded: true, billboard: true, parameters: NO_DEPTH }));
-    layers.push(new PathLayer({ id: 'trail', data: [{ path: trail }], getPath: (d) => d.path, getColor: [255, 235, 180, 240], getWidth: 3, widthUnits: 'pixels', capRounded: true, jointRounded: true, billboard: true, parameters: NO_DEPTH }));
+    layers.push(new PathLayer({ id: 'trail', data: [{ path: trail }], getPath: (d) => d.path, getColor: [251, 199, 95, 204], getWidth: 3, widthUnits: 'pixels', capRounded: true, jointRounded: true, billboard: true, parameters: NO_DEPTH }));
   }
   if (trail.length >= 1) {
     const head = trail[trail.length - 1];
@@ -106,14 +107,10 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, pulse: number, step
     const u = Math.max(0, Math.min(1, (progress - (lastStop - 0.22)) / 0.22));
     const turnBack = u * u * (3 - 2 * u); // smoothstep — eased turn
     heading += turnBack * 135;
-    for (let k = 0; k < 2; k++) {
-      const phase = (pulse + k * 0.5) % 1;
-      layers.push(new ScatterplotLayer({ id: `ring-${k}`, data: [{ position: head }], getPosition: (d) => d.position, getRadius: 8 + phase * 28, radiusUnits: 'pixels', stroked: true, filled: false, getLineColor: [201, 169, 97, (1 - phase) * 220], getLineWidth: 1.5, lineWidthUnits: 'pixels', parameters: NO_DEPTH, updateTriggers: { getRadius: phase, getLineColor: phase } }));
-    }
     layers.push(new ScenegraphLayer({
       id: 'bull-3d', data: [{ position: head, heading }], scenegraph: BULL_3D_MODEL_URL,
       getPosition: (d) => d.position, getOrientation: (d) => [0, -d.heading + 180, 90], getScale: [1.3, 1.3, 1.3],
-      getColor: [201, 169, 97, 255], sizeScale: 1, sizeMinPixels: 40, sizeMaxPixels: 105, _lighting: 'flat',
+      getColor: [251, 199, 95, 255], sizeScale: 1, sizeMinPixels: 40, sizeMaxPixels: 105, _lighting: 'flat',
       parameters: NO_DEPTH, updateTriggers: { getPosition: head, getOrientation: heading },
     }));
   }
@@ -242,6 +239,39 @@ function geomCentroid(geometry: GeoJSON.Geometry): LngLat | null {
   let sx = 0, sy = 0;
   for (const [x, y] of ring) { sx += x; sy += y; }
   return [sx / ring.length, sy / ring.length];
+}
+
+/** Recolour the base to navy, hide the style's own building layers (they z-fight our
+ *  building-3d), and cap street/district/POI labels at zoom 12. Idempotent, so it can
+ *  re-run on the live map (e.g. HMR) — not just once at load. */
+function customizeBaseStyle(map: MapboxMap): void {
+  try {
+    const sl = map.getStyle()?.layers ?? [];
+    // eslint-disable-next-line no-console
+    console.log('[MAP-DIAG v4] build-ish: ' +
+      sl.filter((l) => /build/i.test(l.id)).map((l) => `${l.id}(${l.type},${l.layout?.visibility ?? 'vis'})`).join(' | ') +
+      ' || fill-extrusion: ' + sl.filter((l) => l.type === 'fill-extrusion').map((l) => l.id).join(', '));
+    for (const l of map.getStyle()?.layers ?? []) {
+      const id = l.id;
+      if (/build/i.test(id) && id !== 'building-3d' && id !== 'building-3d-fade') {
+        try { map.setLayoutProperty(id, 'visibility', 'none'); } catch { /* ok */ }
+        continue;
+      }
+      if (l.type === 'background') {
+        map.setPaintProperty(id, 'background-color', '#0a0e18');
+      } else if (l.type === 'fill') {
+        const water = /water|ocean|sea|river|bay|marine/i.test(id);
+        map.setPaintProperty(id, 'fill-color', water ? '#070c15' : '#0d1220');
+      } else if (l.type === 'line') {
+        const road = /road|street|bridge|tunnel|motorway|primary|secondary|tertiary|trunk|rail|transit|path|pedestrian/i.test(id);
+        if (road) map.setPaintProperty(id, 'line-color', '#2b3444');
+      } else if (l.type === 'symbol') {
+        if (/road|street|settlement|neighb|place|locality|district|subdivision|poi/i.test(id)) {
+          map.setLayerZoomRange(id, l.minzoom ?? 0, 12);
+        }
+      }
+    }
+  } catch (e) { console.warn('base recolour failed', e); }
 }
 
 /** Standard ray-casting point-in-polygon; poly is an array of [lng,lat]. */
@@ -394,29 +424,16 @@ export default function MapChapter({
                 0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3'],
               'fill-extrusion-height': ['get', 'height'],
               'fill-extrusion-base': ['get', 'min_height'],
-              'fill-extrusion-opacity': 0.92,
+              // Fully opaque: a translucent extrusion (0.92) uses Mapbox's transparent
+              // path, which doesn't depth-write reliably → overlapping faces flicker.
+              'fill-extrusion-opacity': 1,
             },
           }, labelLayer);
         }
       } catch (e) { console.warn('building-3d layer failed', e); }
 
-      // Tint the whole BASE (not just buildings) to the navy palette — dark-v11 ships
-      // grey land/water/roads, so recolour background + fills + road lines to blue so
-      // the map reads bluish, not grey. Labels/symbols are left alone.
-      try {
-        for (const l of map.getStyle()?.layers ?? []) {
-          const id = l.id;
-          if (l.type === 'background') {
-            map.setPaintProperty(id, 'background-color', '#0a0e18');
-          } else if (l.type === 'fill') {
-            const water = /water|ocean|sea|river|bay|marine/i.test(id);
-            map.setPaintProperty(id, 'fill-color', water ? '#070c15' : '#0d1220');
-          } else if (l.type === 'line') {
-            const road = /road|street|bridge|tunnel|motorway|primary|secondary|tertiary|trunk|rail|transit|path|pedestrian/i.test(id);
-            if (road) map.setPaintProperty(id, 'line-color', '#2b3444');
-          }
-        }
-      } catch (e) { console.warn('base recolour failed', e); }
+      // Navy base + hide the style's own buildings + cap street/district/POI labels.
+      customizeBaseStyle(map);
       setMapReady(true);
 
       // now the painter exists → safe to resize on container changes / scroll-in
@@ -471,12 +488,12 @@ export default function MapChapter({
       };
       const routes = await fetchAllRoutes(steps);
       if (cancelled || !mapRef.current) return;
-      overlay = new DL.MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(DL, 0, 0, steps, routes) });
+      overlay = new DL.MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(DL, 0, steps, routes) });
       map.addControl(overlay);
-      const loop = (ts: number) => {
+      const loop = () => {
         if (visible) {
           const prog = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
-          overlay!.setProps({ layers: buildMarkerLayers(DL, prog, (ts / 2200) % 1, steps, routes) });
+          overlay!.setProps({ layers: buildMarkerLayers(DL, prog, steps, routes) });
         }
         raf = requestAnimationFrame(loop);
       };
@@ -498,6 +515,13 @@ export default function MapChapter({
     const map = mapRef.current;
     if (!map || !mapReady || !map.getLayer('building-3d')) return;
 
+    // Clear any stale nyse/faded feature-state from a previous run/HMR so we don't keep
+    // a wrongly-tagged fragment (e.g. a yellow growth on a neighbouring building).
+    try { map.removeFeatureState({ source: 'composite', sourceLayer: 'building' }); } catch { /* ok */ }
+    // Re-apply the base styling too (hidden buildings / labels / navy) so edits land on
+    // the already-created map without needing a full reload.
+    customizeBaseStyle(map);
+
     // Highlight the NYSE footprint in bronze on the main layer (faded buildings
     // are excluded from it, so the exchange stays solid and lit).
     const buildingColor: ExpressionSpecification = [
@@ -506,6 +530,9 @@ export default function MapChapter({
         0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3'],
     ];
     try { map.setPaintProperty('building-3d', 'fill-extrusion-color', buildingColor); } catch { /* style not ready */ }
+    // Force opaque even if the layer already existed (HMR / persisted map): a translucent
+    // extrusion uses Mapbox's transparent path and flickers.
+    try { map.setPaintProperty('building-3d', 'fill-extrusion-opacity', 1); } catch { /* style not ready */ }
 
     // Translucent sister layer — real layer-level opacity gives Mapbox the cue to
     // render fill-extrusion see-through (structures behind genuinely show).
@@ -531,10 +558,18 @@ export default function MapChapter({
     // location-progress (Studio=0…Bowling=4): stop 0 is the title, so subtract 1.
     let cachedProgress = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
 
+    // Only re-apply the layer filters when the fade state or the tagged-id set actually
+    // changes — NOT every scroll frame. Calling setFilter each frame forces Mapbox to
+    // re-tessellate the building layer, which reads as polygon flicker.
+    let lastFilterKey = '';
     const updateFilters = () => {
+      const active = isFadeActiveForProgress(cachedProgress);
       const ids = [...fadedIds];
+      const key = active ? `on:${ids.join(',')}` : 'off';
+      if (key === lastFilterKey) return;
+      lastFilterKey = key;
       try {
-        if (isFadeActiveForProgress(cachedProgress)) {
+        if (active) {
           map.setFilter('building-3d', ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true'], ['!', ['in', ['id'], ['literal', ids]]]] as FilterSpecification);
           map.setFilter('building-3d-fade', ['in', ['id'], ['literal', ids]] as FilterSpecification);
         } else {
@@ -556,17 +591,34 @@ export default function MapChapter({
       const sw = map.project([minLng, minLat]); const ne = map.project([maxLng, maxLat]);
       const x0 = Math.min(sw.x, ne.x), x1 = Math.max(sw.x, ne.x);
       const y0 = Math.min(sw.y, ne.y), y1 = Math.max(sw.y, ne.y);
-      return map.queryRenderedFeatures([[x0, y0], [x1, y1]], { layers: ['building-3d'] });
+      // Extend the query box UPWARD (smaller y) so tall buildings' tops — which project
+      // well above their ground footprint under pitch — are included. The precise
+      // point-in-polygon test below still gates what actually gets tagged.
+      return map.queryRenderedFeatures([[x0 - 20, y0 - 140], [x1 + 20, y1 + 20]], { layers: ['building-3d'] });
     };
 
     const tagNYSE = () => {
       if (!map.getLayer('building-3d')) return;
+      const before = nyseIds.size;
       for (const f of queryPoly(NYSE_FOOTPRINT)) {
         if (f.id == null || nyseIds.has(f.id)) continue;
-        const c = geomCentroid(f.geometry); if (!c || !pointInPolygon(c, NYSE_FOOTPRINT)) continue;
+        // The exchange facade is ~90 m; neighbouring towers are much taller (14 Wall
+        // St ~164 m, 40 Wall St ~283 m). Skip anything over 120 m so a tall neighbour
+        // clipping the footprint doesn't get bronzed.
+        if ((Number(f.properties?.height) || 0) > 120) continue;
+        // tag if the fragment's centroid OR any of its vertices is inside the PRECISE
+        // footprint — covers tile-split halves and the roof/top-floor fragments (whose
+        // ground footprint is still inside the building), without catching neighbours.
+        // Strict: only fragments whose CENTRE is inside the footprint. NYSE fragments
+        // (incl. the top cube, now reachable via the upward-padded query) sit mostly
+        // inside → centroid in; a neighbour merely clipping the edge stays out.
+        const c = geomCentroid(f.geometry);
+        if (!c || !pointInPolygon(c, NYSE_FOOTPRINT)) continue;
         map.setFeatureState({ source: 'composite', sourceLayer: 'building', id: f.id }, { nyse: true });
         nyseIds.add(f.id);
       }
+      // eslint-disable-next-line no-console
+      if (nyseIds.size !== before) console.log('[MAP-DIAG v3] NYSE tagged:', nyseIds.size, [...nyseIds]);
     };
     const tagFaded = () => {
       if (!map.getLayer('building-3d')) return;
@@ -776,7 +828,13 @@ export default function MapChapter({
       style={{ height: `${(Math.max(N, 2) * 150) / (1 - DIVE_FRAC)}vh` }}
     >
       <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
-        <div ref={mapHostRef} className="h-full w-full" />
+        {/* Hidden until the style is recoloured + labels hidden + buildings added
+            (mapReady), so the default grey-with-labels style never flashes on load. */}
+        <div
+          ref={mapHostRef}
+          className="h-full w-full"
+          style={{ opacity: mapReady ? 1 : 0, transition: 'opacity 0.35s ease' }}
+        />
         <div className="mc-vignette absolute inset-0 pointer-events-none z-[1]" />
         {/* outro veil — dissolves the map to black across the final dive (only when
             standalone; in underlay mode the whole stage fades to transparent instead) */}
@@ -817,9 +875,16 @@ export default function MapChapter({
             style={{ opacity: 1 }}
           >
             <div className="max-w-[920px]">
+              {/* mobile: one big logo, ~30px side padding (desktop uses the 3-piece below) */}
+              <img
+                src={THE_BULLS_ROUTE}
+                alt="The Bull's Route"
+                className="hidden max-sm:block mx-auto mb-6 w-[calc(100vw-60px)] h-auto"
+              />
               {/* outlined "The Bull's ROUTE" title — each piece draggable (store-mode). */}
               <div
                 ref={introTitleRef}
+                className="max-sm:hidden"
                 style={{ opacity: 0, position: 'relative', width: 'min(880px, 92vw)', height: 'min(330px, 35vw)', margin: '0 auto 24px' }}
               >
                 <div

@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { t } from '../i18n';
 import { tuneStore } from '../engine/tuneEditor';
+// Single clean chapter logo used on MOBILE in place of the 3-piece BEARS/vs/Bulls
+// composition (which is tuned for wide screens and gets cramped on a phone).
+import BEARS_VS_BULLS from '../assets/logos/bears-vs-bulls.svg?url';
 
 /**
  * BearsBullsTitle — the "BEARS vs Bulls" wordmark (three outlined SVGs) for the
@@ -41,18 +44,27 @@ export function BearsBullsTitle() {
   }, []);
 
   return (
-    <div className="flex items-end justify-center gap-[0.04em]">
-      {PIECES.map((p, i) => (
-        <div
-          key={p.id}
-          ref={(el) => { refs.current[i] = el; }}
-          data-tune={p.id}
-          data-tune-mode="store"
-          className={`relative inline-block ${p.wrapCls}`}
-        >
-          <img src={p.src} alt={t(p.altKey)} className={p.imgCls} />
-        </div>
-      ))}
-    </div>
+    <>
+      {/* desktop: the tunable 3-piece wordmark */}
+      <div className="flex items-end justify-center gap-[0.04em] max-sm:hidden">
+        {PIECES.map((p, i) => (
+          <div
+            key={p.id}
+            ref={(el) => { refs.current[i] = el; }}
+            data-tune={p.id}
+            data-tune-mode="store"
+            className={`relative inline-block ${p.wrapCls}`}
+          >
+            <img src={p.src} alt={t(p.altKey)} className={p.imgCls} />
+          </div>
+        ))}
+      </div>
+      {/* mobile: one big logo, ~30px side padding */}
+      <img
+        src={BEARS_VS_BULLS}
+        alt={t('bearsBulls.altBulls')}
+        className="hidden max-sm:block mx-auto w-[calc(100vw-60px)] h-auto"
+      />
+    </>
   );
 }

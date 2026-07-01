@@ -207,8 +207,9 @@ export interface ChartsEngine {
   ready(): boolean;
 }
 
-/** Fraction of each step's travel spent dwelling (held) on the view, per end. */
-const DWELL_HOLD_FRAC = 0.32;
+/** Fraction of each step's travel spent dwelling (held) on the view, per end. Higher =
+ *  the chart stands still longer after it finishes drawing before morphing on. */
+const DWELL_HOLD_FRAC = 0.4;
 
 export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   const xs: number[] = [], yNom: number[] = [], yReal: number[] = [];
@@ -217,6 +218,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   let fromKey = CHART_STEPS[0].view, toKey = CHART_STEPS[0].view, animT = 1;
   let lastBull = 0; // 0..1 bull-phase factor for the React topbar, set each draw
   let lastCandle = 0; // 0..1 — 1 on the Black Monday candle frame (drives the HTML plate)
+  let entryFade = 1;  // 0..1 — the very first frame's content fades IN over the pink ground
   let bmPaths: { p: Path2D; up: boolean }[] | null = null; // cached candle Path2Ds
   let bullPath: Path2D | null = null; // cached Charging Bull figurine
 
@@ -829,7 +831,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
 
     // ---- price grid (5 lines, fades out) + "S&P 500 INDEX" + 225 baseline ----
     if (cAlpha > 0.01) {
-      ctx.globalAlpha = cAlpha;
+      ctx.globalAlpha = cAlpha * entryFade;
       ctx.font = FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       for (const tk of BM_GEOM.ticks) {
         const y = mapY(tk.y);
@@ -847,7 +849,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
 
     // ---- percent grid (4 lines, fades in); the 0% line is solid white ----
     if (dAlpha > 0.01) {
-      ctx.globalAlpha = dAlpha;
+      ctx.globalAlpha = dAlpha * entryFade;
       ctx.font = FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       for (const tk of BM_DD.ticks) {
         const y = mapY(tk.y);
@@ -861,18 +863,20 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     }
 
     // ---- month axis (JUN–OCT) + dots — CONSTANT through the crossfade ----
+    ctx.globalAlpha = entryFade;
     ctx.fillStyle = AXIS; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (const mo of BM_GEOM.months) {
       const mx = mapX(mo.x + 14);
       ctx.beginPath(); ctx.arc(mx, mapY(BM_GEOM.dotY), 3, 0, 2 * Math.PI); ctx.fill();
       ctx.fillText(mo.l, mx, mapY(BM_GEOM.monthY));
     }
+    ctx.globalAlpha = 1;
 
     // ---- candles (dissolve out) ----
     if (cAlpha > 0.01) {
       if (!bmPaths) bmPaths = BM_CANDLES.map((c) => ({ p: new Path2D(c.d), up: c.up }));
       ctx.save();
-      ctx.globalAlpha = cAlpha;
+      ctx.globalAlpha = cAlpha * entryFade;
       ctx.translate(x0, y0); ctx.scale((x1 - x0) / B.w, (y1 - y0) / B.h); ctx.translate(-B.x, -B.y);
       for (const c of bmPaths) { ctx.fillStyle = c.up ? '#f5f3ee' : '#15131a'; ctx.fill(c.p); }
       ctx.restore();
@@ -881,7 +885,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // ---- drawdown line + hatched area + endpoint + trough label (fade in) ----
     if (dAlpha > 0.01) {
       ctx.save();
-      ctx.globalAlpha = dAlpha;
+      ctx.globalAlpha = dAlpha * entryFade;
       const pts = BM_DD.line.map(([sx, sy]) => [mapX(sx), mapY(sy)] as [number, number]);
       fillDrawdownArea(ctx, pts, mapY(BM_DD.topY), y1, FILL_BEAR);
       ctx.strokeStyle = LINE; ctx.lineWidth = 4; ctx.lineJoin = 'round';
@@ -900,6 +904,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   function applyProgress(linear: number): string {
     const N = CHART_STEPS.length;
     const clamped = Math.max(0, Math.min(N - 1, linear));
+    // Everything on the slide arrives TOGETHER: the whole stage (pink backdrop + canvas
+    // chart + HTML chrome + the −20% plate) is faded in as one unit by the ChartsChapter
+    // stage opacity, so the candles no longer lag behind the framing/plate.
+    entryFade = 1;
     const i = Math.floor(clamped);
     const frac = clamped - i;
     // per-step dwell: hold the view for the first/last DWELL_HOLD_FRAC of the travel.

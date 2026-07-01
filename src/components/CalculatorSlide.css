@@ -33,7 +33,7 @@
 .calc-flag .yr {
   position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); cursor: ew-resize;
   font: 700 12px 'Space Mono', monospace; color: #06210b; background: #61E26B;
-  padding: 3px 9px; border-radius: 7px; white-space: nowrap; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
+  padding: 3px 9px; border-radius: 7px; white-space: nowrap;
 }
 .calc-flag .yr::before { content: '\21C4  '; opacity: 0.6; }
 

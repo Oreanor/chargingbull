@@ -32,10 +32,11 @@ export const OPENER_EXTRAS: ChapterExtra[] = [
 export const OPENER_TRACK: CameraTrack = {
   leadIn: 0,
   keys: [
-    { at: 0, az: 12.3, polar: 77.7, dist: 1.4, push: 0.1, fov: 40, target: [0.13, 0.32, 0.39] },
-    { at: 0.05, az: 85.3, polar: 86.1, dist: 11.04, opacity: 0, fov: 40, target: [0.27, 0.52, -0.16] },
-    { at: 0.28, az: 3.8, polar: 83.2, dist: 9.95, opacity: 0, fov: 40, target: [0.27, 0.52, -0.16] },
-    { at: 0.37, az: 33.8, polar: 75.3, dist: 1.32, fov: 44, target: [0.02, 0.39, 0.18] },
+    { at: 0, az: 17.5, polar: 79.5, dist: 1.47, push: 0.1, fov: 40, target: [0.09, 0.32, 0.39] },
+    { at: 0.05, az: 85.3, polar: 86.1, dist: 5.2, opacity: 0, fov: 40, target: [0.27, 0.52, -0.16] },
+    { at: 0.3, az: 27.5, polar: 68.8, dist: 5.2, push: 0.6, opacity: 0, fov: 40, target: [0.27, 0.52, -0.16] },
+    { at: 0.37, az: 33.8, polar: 77, dist: 1.32, fov: 44, target: [0.02, 0.39, 0.18] },
+    { at: 0.39, az: 39.7, polar: 81.4, dist: 1.62, fov: 44, target: [0.05, 0.36, 0.18] },
     { at: 0.44, az: 39.7, polar: 81.4, dist: 1.62, fov: 44, target: [0.05, 0.36, 0.18] },
     { at: 0.54, az: 50.5, polar: 84.4, dist: 1.74, fov: 50, target: [0.25, 0.34, 0.31] },
     { at: 0.58, az: 41.6, polar: 76.6, dist: 2.13, fov: 46.9, target: [0.42, 0.34, 0.1] },

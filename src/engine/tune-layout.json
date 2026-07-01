@@ -77,23 +77,23 @@
     1.676
   ],
   "opener.subtitle": [
-    0.73,
-    7.73,
-    1.319
+    -1.82,
+    1.25,
+    1.091
   ],
   "opener.wordmark": [
-    5.29,
-    1.89,
-    1.311
+    3.29,
+    0.39,
+    1.123
   ],
   "opener.coords": [
-    4.45,
-    4.89,
+    4.85,
+    0.99,
     1.404
   ],
   "opener.logo": [
-    -1.07,
-    2.5
+    -2.57,
+    -1.1
   ],
   "opener.plaque0": [
     0,
@@ -117,7 +117,7 @@
   ],
   "tonnes.headline": [
     -25.81,
-    -1.65,
+    -0.65,
     0.696
   ],
   "tonnes.leaderTop": [
@@ -193,5 +193,43 @@
   "auto:#root > main > section:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1)": [
     -11.02,
     5.25
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(4) > div:nth-of-type(2) > p > span:nth-of-type(2)": [
+    0,
+    -1.1
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(4) > div:nth-of-type(2) > p > span:nth-of-type(1)": [
+    0.2,
+    -0.3
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(16)": [
+    0,
+    -3
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(14)": [
+    0,
+    -3
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(12)": [
+    0,
+    -3
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(10)": [
+    0,
+    -2.9
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(8)": [
+    0,
+    -3
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(4) > div:nth-of-type(2) > div > span > img:nth-of-type(1)": [
+    -2.84,
+    8.8,
+    0.78
+  ],
+  "auto:#root > main > section:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(4) > div:nth-of-type(2) > div > span > img:nth-of-type(2)": [
+    -3.74,
+    -15.98,
+    0.86
   ]
 }

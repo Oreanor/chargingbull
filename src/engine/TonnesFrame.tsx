@@ -105,13 +105,21 @@ export default function TonnesFrame() {
         style={{ ...anchor, height: '68vh' }}
         dangerouslySetInnerHTML={{ __html: MEASURE_H }}
       />
-      {/* dashed ground line under the cab (bottom of the 3.4 m height measure) */}
+      {/* dashed ground line under the cab (bottom of the 3.4 m height measure). A
+          transparent gap in the mask breaks it where the rear wheel crosses it, so the
+          line doesn't run through the tyre. Tune the two % stops if the gap isn't
+          exactly over the wheel. */}
       <div
         ref={baselineRef}
         data-tune="tonnes.baseline"
         data-tune-mode="store"
         className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: '66vh' }}
+        style={{
+          ...anchor,
+          width: '66vh',
+          maskImage: 'linear-gradient(90deg, #000 0 19.5%, transparent 19.5% 39%, #000 39%)',
+          WebkitMaskImage: 'linear-gradient(90deg, #000 0 19.5%, transparent 19.5% 39%, #000 39%)',
+        }}
         dangerouslySetInnerHTML={{ __html: BASELINE }}
       />
       {/* dashed leader line at the TOP of the 3.4 m height measure */}

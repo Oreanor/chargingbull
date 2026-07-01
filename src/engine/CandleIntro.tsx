@@ -9,6 +9,9 @@ import { t } from '../i18n';
 // Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
 // drop straight into the overlay: arrow-in-circle (green up / pink down) and the
 // skull. Colors are baked into the files.
+// Opener chapter logos — shown stacked on MOBILE in place of the wide combined wordmark.
+import OPENER_WALLST from '../assets/logos/wallst.svg?url';
+import OPENER_RODEO from '../assets/logos/rodeo.svg?url';
 import ICON_UP from '../assets/icons/candle-arrow-up.svg?raw';
 import ICON_DOWN from '../assets/icons/candle-arrow-down.svg?raw';
 import ICON_SKULL from '../assets/icons/candle-skull.svg?raw';
@@ -114,7 +117,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
   const overlayRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const logoRef = useRef<HTMLImageElement>(null);
-  const wordmarkRef = useRef<HTMLImageElement>(null);
+  const wordmarkRef = useRef<HTMLDivElement>(null);
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const coordsRef = useRef<HTMLDivElement>(null);
   const spanRef = useRef(span);
@@ -255,7 +258,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // in left→right (no pan, no zoom).
       const chartT = clamp01((sp - PH.chartStart) / (PH.chartEnd - PH.chartStart));
       const camX = chartHalfW;
-      const camZNow = Math.max(camZForHeight(WORLD_H * 1.22), camZForWidth(chartW * 1.06));
+      // Zoom in ~15% ONLY on the height-fit — so wide screens read larger, but a narrow
+      // (portrait/mobile) frame that's width-constrained isn't pushed off the sides/bottom.
+      const camZNow = Math.max(camZForHeight(WORLD_H * 1.22) / 1.15, camZForWidth(chartW * 1.06));
       camera.position.set(camX, 0, camZNow); camera.lookAt(camX, 0, 0); camera.updateProjectionMatrix();
       const revealEdge = (chartT / 0.92) * (N + 0.5) - 0.5;
       const scatter = smootherstep(clamp01((sp - PH.scatterStart) / PH.scatterDur));
@@ -380,19 +385,15 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // scrolls, the slide-out takes over. Order: logo instant → subtitle types
       // (~2s) → wordmark from black + glow pulse → coords fade (with wordmark).
       {
-        const slideOff = (off: number) => {
-          const s = clamp01((sp - off) / Math.max(0.001, PH.heroSlide - off));
-          return s < 0.5 ? s * 0.7 : 0.35 + (s - 0.5) * 0.7 + 1.3 * (s - 0.5) ** 2;
-        };
-        const fadeOut = (off: number) =>
-          1 - smoothstep(clamp01(((sp - off) / Math.max(0.001, PH.heroSlide - off) - 0.7) / 0.3));
-        const STAG = 0.035;
-        // No intro reveal: logo/wordmark/coords/subtitle are fully present from the
-        // first frame; only the scroll-driven slide-out below still animates them.
-        const logoIn = 1, wmIn = 1, coIn = 1, glow = 0;
-        // Layout-editor nudge (✎): each hero piece reads its tuneStore offset/scale
-        // and bakes it into its OWN per-frame transform (store-mode), so the editor
-        // can move/resize them without fighting this scroll animation.
+        // Hero exit is a pure FADE on scroll — the pieces stay put (only the layout-
+        // editor offset positions them) and dissolve in place, no slide-off.
+        // Hero dissolves right at the start so it's GONE before the chart draws in —
+        // fades over the first ~0.05 of scroll, tiny stagger (logo/wordmark → coords).
+        const fadeOut = (off: number) => 1 - smoothstep(clamp01((sp - off) / 0.045));
+        const STAG = 0.012;
+        const glow = 0;
+        // Layout-editor nudge (✎): each hero piece bakes its tuneStore offset/scale
+        // into its transform (store-mode) so the editor can move/resize it.
         const vhPx = host.clientHeight / 100;
         const tunePrefix = (id: string) => {
           const [ox, oy] = tuneStore.get(id);
@@ -401,25 +402,23 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         };
 
         if (logoRef.current) {
-          // logo clears UP almost immediately so it doesn't get in the way
-          const logoUp = clamp01(sp / 0.07);
-          logoRef.current.style.transform = tunePrefix('opener.logo') + `translateY(${(-(logoUp * logoUp) * 200).toFixed(1)}px)`;
-          logoRef.current.style.opacity = (logoIn * (1 - smoothstep(clamp01((logoUp - 0.4) / 0.6)))).toFixed(3);
+          logoRef.current.style.transform = tunePrefix('opener.logo');
+          logoRef.current.style.opacity = fadeOut(0).toFixed(3);
         }
         if (wordmarkRef.current) {
-          wordmarkRef.current.style.transform = tunePrefix('opener.wordmark') + `translateX(${(slideOff(0) * 130).toFixed(2)}vw)`;
-          wordmarkRef.current.style.opacity = (wmIn * fadeOut(0)).toFixed(3);
+          wordmarkRef.current.style.transform = tunePrefix('opener.wordmark');
+          wordmarkRef.current.style.opacity = fadeOut(0).toFixed(3);
           wordmarkRef.current.style.filter = glow > 0.01
             ? `brightness(${(1 + glow * 0.8).toFixed(2)}) drop-shadow(0 0 ${(glow * 13).toFixed(0)}px rgba(255,255,255,${(glow * 0.7).toFixed(2)}))`
             : '';
         }
         if (subtitleRef.current) {
-          subtitleRef.current.style.transform = tunePrefix('opener.subtitle') + `translateX(${(slideOff(STAG) * 130).toFixed(2)}vw)`;
-          subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3); // chars carry the intro
+          subtitleRef.current.style.transform = tunePrefix('opener.subtitle');
+          subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3);
         }
         if (coordsRef.current) {
-          coordsRef.current.style.transform = tunePrefix('opener.coords') + `translateX(${(slideOff(2 * STAG) * 130).toFixed(2)}vw)`;
-          coordsRef.current.style.opacity = (coIn * fadeOut(2 * STAG)).toFixed(3);
+          coordsRef.current.style.transform = tunePrefix('opener.coords');
+          coordsRef.current.style.opacity = fadeOut(2 * STAG).toFixed(3);
         }
       }
 
@@ -493,14 +492,28 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         {/* wordmark (biggest, leaves first) + subtitle (leaves second) */}
         {/* nudged down 100px from dead-center per design */}
         <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center translate-y-[100px]">
-          <img
+          {/* wordmark wrapper carries the slide-off transform/opacity/glow (set per-frame).
+              Desktop = the combined "Wall St Rodeo" mark; mobile = the two logos stacked
+              big with ~30px side padding. */}
+          <div
             ref={wordmarkRef}
-            src="/brand/wall-st-rodeo.svg"
-            alt={t('opener.wordmarkAlt')}
             data-tune="opener.wordmark"
             data-tune-mode="store"
-            className="w-[clamp(320px,72vw,1000px)] h-auto will-change-transform"
-          />
+            className="will-change-transform"
+          >
+            <img
+              src="/brand/wall-st-rodeo.svg"
+              alt={t('opener.wordmarkAlt')}
+              className="w-[clamp(320px,72vw,1000px)] h-auto max-sm:hidden"
+            />
+            {/* Two logos but ONE scale: widths are proportional to their natural widths
+                (wallst 308 : rodeo 344 → 89.5% : 100%), so they render at the same px-per-
+                unit and read as a single wordmark, shrinking together as one whole. */}
+            <span className="hidden max-sm:flex flex-col items-center gap-[4vw] w-[calc(100vw-60px)] mx-auto">
+              <img src={OPENER_WALLST} alt="Wall St" className="w-[89.5%] h-auto" />
+              <img src={OPENER_RODEO} alt="Rodeo" className="w-full h-auto" />
+            </span>
+          </div>
           {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}
           <p
             ref={subtitleRef}

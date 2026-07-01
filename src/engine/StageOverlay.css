@@ -13,8 +13,8 @@
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   border-radius: 30px;
   padding: 40px 50px 46px 50px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-  font: 400 clamp(15px, 1.25vw, 18px) / 1.55 var(--font-struve);
+  /* body text matches the map/chart cards (second part): clamp(17,1.65vw,24)/1.33 */
+  font: 400 clamp(17px, 1.65vw, 24px) / 1.33 var(--font-struve);
   color: rgba(245, 243, 238, 0.82);
   transform-origin: left bottom;
   will-change: opacity, transform;
@@ -48,7 +48,7 @@
 .so-anno {
   position: absolute; opacity: 0; transform: translate(-50%, -50%);
   transition: opacity 0.4s ease; will-change: opacity;
-  color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+  color: #fff;
 }
 .so-anno.so-txt {
   white-space: nowrap; font-family: var(--font-struve); font-weight: 600; letter-spacing: 0.02em;

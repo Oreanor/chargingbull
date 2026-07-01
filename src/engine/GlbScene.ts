@@ -89,6 +89,8 @@ export class GlbScene {
   private readonly extraHomes: (THREE.Vector3 | null)[] = [];
   /** Shared PMREM environment map for extras' reflections (generated lazily). */
   private extraEnvTex: THREE.Texture | null = null;
+  /** Per-extra depth-only shell meshes (built lazily) for single-layer transparency. */
+  private readonly extraShells: (THREE.Mesh[] | null)[] = [];
   /** Main model + its home position, for the forward push/lunge. */
   private mainModel: THREE.Object3D | null = null;
   private readonly modelHome = new THREE.Vector3();
@@ -423,15 +425,66 @@ export class GlbScene {
     if (o && h) o.position.set(h.x + x, h.y + y, h.z + z);
   }
 
-  /** Fade a secondary model (1 = opaque). */
-  setExtraOpacity(i: number, opacity: number): void {
+  /** Build a depth-only shell (same geometry, colour-write off) over each opaque mesh
+   *  of an extra, so a translucent body shows only its FRONT surface — no internals,
+   *  no dither. Glass (originally-transparent) meshes are left out so you still see
+   *  through the windows. Lazy + idempotent. */
+  private ensureExtraShells(i: number): void {
+    if (this.extraShells[i]) return;
     const o = this.extraObjects[i];
-    if (!o) return;
+    if (!o) { this.extraShells[i] = []; return; }
+    const opaque: THREE.Mesh[] = [];
     o.traverse((c) => {
       const m = c as THREE.Mesh;
-      if (!m.isMesh || !m.material) return;
+      if (!m.isMesh || !m.material || m.userData._isDepthShell) return;
       const mats = Array.isArray(m.material) ? m.material : [m.material];
-      for (const mat of mats) { mat.transparent = opacity < 1; mat.opacity = opacity; }
+      if (mats.every((mat) => !mat.transparent)) opaque.push(m);
+    });
+    const shells: THREE.Mesh[] = [];
+    for (const m of opaque) {
+      const dm = new THREE.MeshBasicMaterial({ colorWrite: false });
+      dm.depthWrite = true;
+      const shell = new THREE.Mesh(m.geometry, dm);
+      shell.renderOrder = -1; // write depth before the translucent body draws
+      shell.visible = false;
+      shell.userData._isDepthShell = true;
+      m.add(shell); // child → inherits the mesh's (and extra's) transforms exactly
+      shells.push(shell);
+    }
+    this.extraShells[i] = shells;
+  }
+
+  /** Fade a secondary model (1 = opaque, 0 = gone) with TRUE single-layer transparency:
+   *  a depth pre-pass (shell) writes the front surface, then the body blends only there,
+   *  so its own internals never show through. Glass keeps normal alpha. */
+  setExtraOpacity(i: number, level: number): void {
+    const o = this.extraObjects[i];
+    if (!o) return;
+    this.ensureExtraShells(i);
+    const fading = level < 1;
+    for (const s of this.extraShells[i] ?? []) s.visible = fading;
+    o.traverse((c) => {
+      const m = c as THREE.Mesh;
+      if (!m.isMesh || !m.material || m.userData._isDepthShell) return;
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of mats) {
+        const ud = mat.userData as { _fadeInit?: boolean; _origOpacity?: number; _glass?: boolean };
+        if (!ud._fadeInit) {
+          ud._fadeInit = true;
+          ud._origOpacity = mat.opacity;
+          ud._glass = mat.transparent; // originally-transparent = glass
+          mat.alphaHash = false;
+        }
+        if (ud._glass) {
+          // Keep the GLB's own glass settings (transparent/depthWrite) — only fade its
+          // opacity. Forcing depthWrite here made the rear window pop on rotation.
+          mat.opacity = (ud._origOpacity ?? 1) * level;
+        } else {
+          mat.transparent = fading;
+          mat.opacity = level;
+          mat.depthWrite = !fading; // the shell carries depth while fading
+        }
+      }
     });
   }
 
@@ -471,6 +524,14 @@ export class GlbScene {
           scene.add(obj);
           this.extraObjects[i] = obj;
           this.extraHomes[i] = obj.position.clone();
+          // Pre-compile the extra's shaders + upload its env texture NOW (while hidden),
+          // so the first time it appears mid-scroll there's no lazy-compile hitch — e.g.
+          // the glass popping in grey for a frame before it starts reflecting.
+          if (this.renderer && this.camera) {
+            obj.visible = true;
+            this.renderer.compile(scene, this.camera);
+            obj.visible = false;
+          }
         },
         undefined,
         (err) => this.options.onError?.(err),

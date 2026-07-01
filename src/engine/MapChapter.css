@@ -23,7 +23,7 @@
   width: min(672px, calc(100vw - 64px)); margin-left: clamp(24px, 5vw, 80px);
   background: rgba(44, 45, 57, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-radius: 30px;
-  padding: 44px 52px 50px 52px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  padding: 44px 52px 50px 52px;
   color: rgba(245, 243, 238, 0.92);
   font: 400 clamp(17px, 1.65vw, 24px) / 1.33 var(--font-struve);
 }
