@@ -30,18 +30,21 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
   track={OPENER_TRACK}
 >
   <CandleIntro span={[0, 0.5]} />
+  {/* rear bull PHOTO — ordered before StageOverlay so the "Touch for luck" plaque
+      keeps overlaying it; the photo fills the screen (cover) and replaces the 3D bull
+      once it has turned rear (see RearFrame). */}
+  <RearFrame />
   <StageOverlay
     stagesUrl="/chapters/splash/stages.json"
     range={[0.52, 1]}
     plaques={t('opener.plaques')}
-    plaqueAt={[0.44, 0.54, undefined, 0.902]}
-    plaqueReach={[undefined, undefined, undefined, undefined, 0.03]}
-    hidePlaques={[2]}
+    plaqueAt={[0.44, 0.54, undefined, 0.838]}
+    plaqueReach={[undefined, undefined, undefined, 0.04, 0.025]}
+    hidePlaques={[1, 2]}
   />
   <TonnesFrame />
   <PartsFrame />
-  <SelfieFrame />
-  <RearFrame />
+  {/* <SelfieFrame /> — three green selfie dots cut per request (no separate selfie beat) */}
 </ModelChapter>
 
 {/* ===================== I · The Way of the Bull → bull scene =============
@@ -90,11 +93,11 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
 {/* Closing two-column slide — Di Modica portrait + quote, AI/SpaceX prose. */}
 <FutureSlide />
 
+{/* Grey credits / acknowledgements band — comes BEFORE the pink colophon. */}
+<SummaryBlock />
+
 {/* Pink colophon — published date · copy URL · reading list. */}
 <Colophon />
-
-{/* Full-width summary / credits band. */}
-<SummaryBlock />
 
 {/* Standard Méridien studio footer. */}
 <SiteFooter />

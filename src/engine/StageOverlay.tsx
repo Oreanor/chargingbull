@@ -165,10 +165,11 @@ export default function StageOverlay({
               // plaque keeps moving with the scene.
               const vhPx = window.innerHeight / 100;
               const [oxv, oyv] = tuneStore.get(PLAQUE_TUNE_ID(i));
-              const sc = tuneStore.getScale(PLAQUE_TUNE_ID(i));
-              // Below the desktop breakpoint the saved up-scale (~1.4×) would push the
-              // plaque off the right edge — drop it so the card fits the viewport width.
-              const scEff = window.innerWidth <= 1023 ? 1 : sc;
+              // Fit the card to the viewport width so the saved up-scale (~1.4×) never
+              // pushes it off the edge on a phone — replaces the old "drop scale to 1
+              // under 1024px" hack. `force` fits even without the per-element adaptive
+              // flag; honours a captured maxW from the ✎ editor.
+              const scEff = tuneStore.fitScale(PLAQUE_TUNE_ID(i), tEl, true);
               tEl.style.opacity = op.toFixed(3);
               tEl.style.transform =
                 `translate(${(oxv * vhPx).toFixed(1)}px, ${(ty + oyv * vhPx).toFixed(1)}px)` +

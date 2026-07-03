@@ -10,7 +10,10 @@
 // vite.config.ts) so the nudges live in the repo and re-apply on the next load.
 //
 // Per-id offset is stored in vh units (so a tuned layout scales with the viewport
-// like the 3D bull does). Two apply modes:
+// like the 3D bull does). Offsets are ALSO per-breakpoint: an entry is either a
+// legacy plain vector (shared) or `{ desktop, mobile }`. Editing only ever writes
+// the slot for the CURRENT viewport width (mobile = ≤800px); mobile falls back to
+// the desktop slot until it's tuned. Two apply modes:
 //   - "store": the owning component reads tuneStore.get(id)/getScale(id) each frame
 //     and bakes it into its own JS-driven layout — used by elements tagged
 //     `data-tune` + `data-tune-mode="store"` (candle callouts, stage plaques, …).
@@ -23,24 +26,108 @@
 import layout from './tune-layout.json';
 
 type XY = [number, number];
-// Per-id entry is [x, y] or [x, y, scale] (scale omitted ⇒ 1). Stored as a plain
-// number[] so the JSON layout file stays compact and back-compatible.
-type Entry = number[];
+// A per-breakpoint vector: [x, y], [x, y, scale], or [x, y, scale, maxW] — offset in
+// vh, optional scale (⇒ 1), optional captured max rendered width in px (adaptive only).
+type Vec = number[];
+// Per-id entry is EITHER a legacy plain vector (shared across breakpoints) OR a
+// per-breakpoint object { desktop?, mobile? } (+ an optional `adaptive` flag, per-element).
+// Editing at a given viewport width only ever writes that breakpoint's slot; the other
+// is left untouched. Mobile falls back to desktop when it has no own slot, so a
+// desktop-only tune still shows on phones until it's specifically overridden there.
+// `adaptive`: the element shrinks so its rendered width fits the screen (never upscaling
+// past its own scale / captured maxW) — keeps intro copy from overflowing on mobile.
+// See tuneStore.fitScale.
+type Vecs = { desktop?: Vec; mobile?: Vec; adaptive?: boolean };
+type Entry = Vec | Vecs;
+type BP = 'desktop' | 'mobile';
 
 const offsets: Record<string, Entry> = { ...(layout as unknown as Record<string, Entry>) };
 
+// Mobile = ≤800px wide. Everything narrower reads/writes the `mobile` slot; wider
+// hits `desktop`. Editing in a given window only ever touches that window's layer.
+const MOBILE_MAX = 800;
+const currentBp = (): BP =>
+  typeof window !== 'undefined' && window.innerWidth <= MOBILE_MAX ? 'mobile' : 'desktop';
+
+// The effective vector for the CURRENT viewport: own slot → desktop fallback (mobile)
+// → nothing. Legacy plain-array entries apply to both breakpoints.
+const resolve = (id: string): Vec => {
+  const e = offsets[id];
+  if (!e) return [];
+  if (Array.isArray(e)) return e;
+  const bp = currentBp();
+  return e[bp] ?? (bp === 'mobile' ? e.desktop : undefined) ?? [];
+};
+
+// A MUTABLE slot for the current breakpoint. Migrates a legacy shared array to
+// { desktop } (so the *other* breakpoint keeps that value), and seeds an absent slot
+// from whatever the id resolves to now — so a first drag on a new breakpoint starts
+// exactly where the element already sits, then diverges from there.
+const slotFor = (id: string): Vec => {
+  const bp = currentBp();
+  let e = offsets[id];
+  if (!e || Array.isArray(e)) {
+    e = Array.isArray(e) ? { desktop: e.slice() } : {};
+    offsets[id] = e;
+  }
+  const obj = e as Vecs;
+  if (!obj[bp]) { const seed = resolve(id); obj[bp] = seed.length ? seed.slice() : [0, 0]; }
+  return obj[bp]!;
+};
+
+// The object form of an entry, migrating a legacy shared vector to { desktop } first —
+// needed to hold the per-element `adaptive` flag.
+const ensureObj = (id: string): Vecs => {
+  let e = offsets[id];
+  if (!e || Array.isArray(e)) { e = Array.isArray(e) ? { desktop: e.slice() } : {}; offsets[id] = e; }
+  return e as Vecs;
+};
+const isAdaptiveId = (id: string): boolean => {
+  const e = offsets[id];
+  return !!e && !Array.isArray(e) && e.adaptive === true;
+};
+
+// Side padding (px) kept on each edge when shrinking an adaptive element to the width.
+const FIT_PAD = 14;
+
 const activeSubs = new Set<(on: boolean) => void>();
 
-/** Shared store: components read offsets from here; the editor mutates them. */
+/** Shared store: components read offsets from here; the editor mutates them. Every
+ *  read/write targets the CURRENT breakpoint (see currentBp/resolve/slotFor). */
 export const tuneStore = {
   /** True while edit mode is on (lets components freeze/settle for tuning). */
   active: false,
-  get(id: string): XY { const o = offsets[id]; return [o?.[0] ?? 0, o?.[1] ?? 0]; },
+  /** Which layer the current window edits: 'desktop' (>800px) or 'mobile' (≤800px). */
+  bp(): BP { return currentBp(); },
+  get(id: string): XY { const v = resolve(id); return [v[0] ?? 0, v[1] ?? 0]; },
   /** Per-id scale factor (1 = unchanged). Components multiply their size by this. */
-  getScale(id: string): number { return offsets[id]?.[2] ?? 1; },
-  set(id: string, xy: XY) { const s = offsets[id]?.[2]; offsets[id] = s != null ? [xy[0], xy[1], s] : [xy[0], xy[1]]; },
-  setScale(id: string, s: number) { const o = offsets[id] ?? [0, 0]; offsets[id] = [o[0] ?? 0, o[1] ?? 0, s]; },
+  getScale(id: string): number { return resolve(id)[2] ?? 1; },
+  set(id: string, xy: XY) { const slot = slotFor(id); const s = slot[2]; slot[0] = xy[0]; slot[1] = xy[1]; if (s != null) slot[2] = s; },
+  setScale(id: string, s: number) { const slot = slotFor(id); slot[0] = slot[0] ?? 0; slot[1] = slot[1] ?? 0; slot[2] = s; },
   all(): Record<string, Entry> { return offsets; },
+  /** True if this element is flagged adaptive (fit-to-width). Per-element, both layers. */
+  isAdaptive(id: string): boolean { return isAdaptiveId(id); },
+  setAdaptive(id: string, on: boolean) { const o = ensureObj(id); if (on) o.adaptive = true; else delete o.adaptive; },
+  /** Captured max rendered width (px) for the CURRENT layer; 0 = none. */
+  getMaxW(id: string): number { return resolve(id)[3] ?? 0; },
+  /** Snapshot px as this layer's max width (the ✎ "взять как макс" button). */
+  captureMaxW(id: string, px: number) { const slot = slotFor(id); if (slot[2] == null) slot[2] = 1; slot[3] = Math.round(px); },
+  clearMaxW(id: string) { const slot = slotFor(id); if (slot.length > 3) slot.length = 3; },
+  /** Effective scale after adaptive fit-to-width. Returns the plain scale unless the
+   *  element is adaptive (or `force`, which the intro plaques pass so they never
+   *  overflow): then it shrinks so the rendered width fits `screen − 2·FIT_PAD`, capped
+   *  at any captured maxW, and never upscales past the element's own scale.
+   *  `el.offsetWidth` is the layout width WITHOUT transforms, so it's a stable base. */
+  fitScale(id: string, el: HTMLElement | null, force = false): number {
+    const base = resolve(id)[2] ?? 1;
+    if ((!force && !isAdaptiveId(id)) || !el) return base;
+    const naturalW = el.offsetWidth;
+    if (!naturalW || typeof window === 'undefined') return base;
+    const avail = window.innerWidth - 2 * FIT_PAD;
+    const maxW = resolve(id)[3] ?? 0;
+    const target = maxW > 0 ? Math.min(maxW, avail) : avail;
+    return Math.min(base, target / naturalW);
+  },
   /** Subscribe to edit-mode on/off — JS-positioned components use this to spin a
    *  re-apply loop while editing (so a drag shows live, not only on next scroll). */
   onActiveChange(f: (on: boolean) => void) { activeSubs.add(f); return () => { activeSubs.delete(f); }; },
@@ -95,7 +182,7 @@ export function initTuneEditor() {
 
   const applyTransform = (el: HTMLElement, id: string) => {
     const [x, y] = tuneStore.get(id);
-    const s = tuneStore.getScale(id);
+    const s = tuneStore.fitScale(id, el);
     if (!baseTransforms.has(el)) baseTransforms.set(el, el.style.transform || '');
     const base = baseTransforms.get(el) || '';
     el.style.transform =
@@ -210,17 +297,26 @@ export function initTuneEditor() {
     css(frame, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
     const { id } = idOf(selected);
     const s = tuneStore.getScale(id);
-    label.textContent = `${shortId(id)} · ${Math.round(r.width)}×${Math.round(r.height)}${s !== 1 ? ` · ×${r2(s)}` : ''}`;
+    const bp = currentBp();
+    const e = offsets[id];
+    // On mobile, mark when this element is still inheriting the desktop slot (↑) vs
+    // has its own mobile override — so it's clear which layer a drag will write.
+    const inherited = bp === 'mobile' && !!e && !Array.isArray(e) && !e.mobile;
+    const bpTag = `${bp === 'mobile' ? '📱' : '🖥'}${inherited ? '↑' : ''}`;
+    const adaptTag = isAdaptiveId(id) ? ' · ⭤fit' : '';
+    label.textContent = `${shortId(id)} · ${bpTag}${adaptTag} · ${Math.round(r.width)}×${Math.round(r.height)}${s !== 1 ? ` · ×${r2(s)}` : ''}`;
   };
 
   const select = (el: HTMLElement) => {
     selected = el;
     frame.style.display = 'block';
     updateFrame();
+    syncPanel();
   };
   function deselect() {
     selected = null;
     frame.style.display = 'none';
+    syncPanel();
   }
 
   // ---- drag (move) + resize -------------------------------------------------
@@ -399,6 +495,125 @@ export function initTuneEditor() {
     border: '0', borderRadius: '6px', cursor: 'pointer', pointerEvents: 'auto', display: 'none',
   });
 
+  // A small always-on readout (while editing) of which layer this window edits, so
+  // it's obvious that resizing past 800px switches between the desktop/mobile slots.
+  const bpBadge = document.createElement('div');
+  bpBadge.dataset.tuneUi = '';
+  bpBadge.title = 'Which layer this window edits — drag me anywhere if I get in the way';
+  css(bpBadge, {
+    position: 'fixed', top: '52px', right: '12px', zIndex: '2147483647',
+    font: '700 12px/1.9 monospace', color: '#fff',
+    border: '1px solid rgba(255,255,255,0.35)', borderRadius: '6px', padding: '0 10px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.4)', pointerEvents: 'auto', cursor: 'grab',
+    userSelect: 'none', touchAction: 'none', display: 'none', whiteSpace: 'nowrap',
+  });
+  // Distinct backgrounds so the current layer is unmistakable at a glance / on resize:
+  // desktop = blue, mobile = amber.
+  const updateBpBadge = () => {
+    const mobile = currentBp() === 'mobile';
+    bpBadge.textContent = mobile ? '📱 mobile layer' : '🖥 desktop layer';
+    bpBadge.style.background = mobile ? '#e07b1a' : '#2563eb';
+  };
+  // Draggable: grab it and move it out of the way (data-tune-ui ⇒ the editor's own
+  // click/select logic already ignores it, so this never selects a page element).
+  bpBadge.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const r = bpBadge.getBoundingClientRect();
+    const dx = e.clientX - r.left, dy = e.clientY - r.top;
+    bpBadge.style.cursor = 'grabbing';
+    css(bpBadge, { right: 'auto', left: `${r.left}px`, top: `${r.top}px` });
+    const move = (ev: PointerEvent) => { css(bpBadge, { left: `${ev.clientX - dx}px`, top: `${ev.clientY - dy}px` }); };
+    const up = () => {
+      bpBadge.style.cursor = 'grab';
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+
+  // ---- per-element panel: adaptive toggle + capture-max button --------------
+  // Shows in the corner while an element is selected. "адаптив" flags the element so
+  // it shrinks to fit the screen width (tuneStore.fitScale); "взять как макс" (only
+  // active when adaptive) snapshots its current px width as this layer's ceiling.
+  const panel = document.createElement('div');
+  panel.dataset.tuneUi = '';
+  css(panel, {
+    position: 'fixed', top: '90px', right: '12px', zIndex: '2147483647',
+    display: 'none', alignItems: 'center', gap: '8px', font: '600 11px/1.4 monospace',
+    color: '#fff', background: '#161616', border: '1px solid #444', borderRadius: '6px',
+    padding: '6px 9px', pointerEvents: 'auto', boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+  });
+
+  const adaptLabel = document.createElement('label');
+  adaptLabel.dataset.tuneUi = '';
+  css(adaptLabel, { display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none' });
+  const adaptBox = document.createElement('input');
+  adaptBox.type = 'checkbox';
+  adaptBox.dataset.tuneUi = '';
+  adaptBox.style.cursor = 'pointer';
+  const adaptTxt = document.createElement('span');
+  adaptTxt.textContent = 'адаптив (по ширине)';
+  adaptLabel.appendChild(adaptBox);
+  adaptLabel.appendChild(adaptTxt);
+
+  const maxBtn = document.createElement('button');
+  maxBtn.dataset.tuneUi = '';
+  maxBtn.textContent = 'взять как макс';
+  maxBtn.title = 'Snapshot the element’s current size as the max for this layer';
+  css(maxBtn, {
+    font: '600 11px monospace', color: '#fff', background: '#2563eb', border: '0',
+    borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
+  });
+
+  const maxInfo = document.createElement('span');
+  maxInfo.dataset.tuneUi = '';
+  css(maxInfo, { cursor: 'pointer', color: '#8ab4ff', whiteSpace: 'nowrap' });
+  maxInfo.title = 'Click to clear the captured max';
+
+  panel.appendChild(adaptLabel);
+  panel.appendChild(maxBtn);
+  panel.appendChild(maxInfo);
+
+  function syncPanel() {
+    if (!tuneStore.active || !selected) { panel.style.display = 'none'; return; }
+    const { id } = idOf(selected);
+    const adaptive = tuneStore.isAdaptive(id);
+    adaptBox.checked = adaptive;
+    maxBtn.style.opacity = adaptive ? '1' : '0.4';
+    maxBtn.style.pointerEvents = adaptive ? 'auto' : 'none';
+    const mw = tuneStore.getMaxW(id);
+    maxInfo.textContent = mw ? `max ${Math.round(mw)}px ✕` : '';
+    maxInfo.style.display = mw ? 'inline' : 'none';
+    panel.style.display = 'flex';
+  }
+
+  adaptBox.addEventListener('change', () => {
+    if (!selected) return;
+    const { id, mode } = idOf(selected);
+    tuneStore.setAdaptive(id, adaptBox.checked);
+    apply(selected, id, mode); // transform-mode re-writes; store-mode re-bakes itself
+    updateFrame();
+    syncPanel();
+  });
+  maxBtn.addEventListener('click', () => {
+    if (!selected) return;
+    const { id, mode } = idOf(selected);
+    if (!tuneStore.isAdaptive(id)) return;
+    tuneStore.captureMaxW(id, selected.getBoundingClientRect().width);
+    apply(selected, id, mode);
+    updateFrame();
+    syncPanel();
+  });
+  maxInfo.addEventListener('click', () => {
+    if (!selected) return;
+    const { id, mode } = idOf(selected);
+    tuneStore.clearMaxW(id);
+    apply(selected, id, mode);
+    updateFrame();
+    syncPanel();
+  });
+
   // While editing, force every element hittable (plaques live in pointer-events:none
   // overlay layers) so a click can land on them — EXCEPT the 3D/map/chart canvases,
   // which we make transparent to the pointer so the wheel passes through to the page
@@ -411,6 +626,8 @@ export function initTuneEditor() {
     tuneStore.active = on;
     toggle.style.background = on ? '#de2053' : '#222';
     save.style.display = on ? 'block' : 'none';
+    bpBadge.style.display = on ? 'block' : 'none';
+    updateBpBadge();
     if (on) {
       document.head.appendChild(peStyle);
       window.addEventListener('pointerdown', onPointerDown, true);
@@ -467,4 +684,24 @@ export function initTuneEditor() {
   document.body.appendChild(frame);
   document.body.appendChild(toggle);
   document.body.appendChild(save);
+  document.body.appendChild(bpBadge);
+  document.body.appendChild(panel);
+
+  // On any resize, re-apply persisted transforms — the layer may have flipped across
+  // 800px AND adaptive elements re-fit to the new width. Store-mode elements pick both
+  // up on their own next frame. Runs regardless of edit mode (rAF-coalesced).
+  let lastBp = currentBp();
+  let resizeRaf = 0;
+  window.addEventListener('resize', () => {
+    if (resizeRaf) return;
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = 0;
+      updateBpBadge();
+      document.querySelectorAll<HTMLElement>('[data-tune]').forEach(persistTagged);
+      applyAuto();
+      const bp = currentBp();
+      if (bp !== lastBp) { lastBp = bp; syncPanel(); } // maxW/inherit differ per layer
+      updateFrame();
+    });
+  });
 }

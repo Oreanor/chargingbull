@@ -89,8 +89,17 @@ export default function ChartsChapter({
       // Start the fade a touch LATER (rect.top 1.05→0.9 screens) so the candle slide waits
       // until the explainer's pink has fully stretched, instead of jumping in the instant
       // it begins to fill.
-      stage.style.opacity = past ? '0' : clamp01((vh * 1.05 - rect.top) / (vh * 0.15)).toFixed(3);
-      stage.style.pointerEvents = past ? 'none' : '';
+      const op = past ? 0 : clamp01((vh * 1.05 - rect.top) / (vh * 0.15));
+      stage.style.opacity = op.toFixed(3);
+      // This stage is fixed inset-0 z-20 over the WHOLE viewport, so while invisible it must
+      // NOT eat clicks/scroll — that includes when the section is still BELOW (you're up at
+      // the bull, rect.top > 0), not only when it's already PAST. `visibility:hidden` removes
+      // it from hit-testing entirely (survives even a `pointer-events:auto !important` from
+      // the ✎ layout editor's global style); otherwise the invisible chart canvas swallows
+      // the whole page — clicks land on cc-canvas and nothing else responds.
+      const hidden = op < 0.004;
+      stage.style.pointerEvents = hidden ? 'none' : 'auto';
+      stage.style.visibility = hidden ? 'hidden' : 'visible';
     };
     update();
     window.addEventListener('scroll', update, { passive: true });
@@ -147,7 +156,7 @@ export default function ChartsChapter({
 
   return (
     <section ref={ref} style={{ height: `${N * 100}dvh` }} className="cc-section relative w-full">
-      <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100dvh] w-full overflow-hidden" style={{ opacity: 0 }}>
+      <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100dvh] w-full overflow-hidden" style={{ opacity: 0, visibility: 'hidden', pointerEvents: 'none' }}>
         <canvas ref={canvasRef} className="cc-canvas" />
         <div className="cc-gradient" aria-hidden />
         <div className="cc-topbar">

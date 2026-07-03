@@ -9,7 +9,7 @@ import type { ChapterExtra } from '../engine/ModelChapter';
  */
 
 export const OPENER_MODEL = '/chapters/splash/models/Bullforweb2-butcher4.glb';
-export const OPENER_FRAMES = 12;
+export const OPENER_FRAMES = 13;
 export const OPENER_PLACEMENT = { scale: 0.3593, recenter: false } as const;
 
 export const OPENER_EXTRAS: ChapterExtra[] = [
@@ -43,11 +43,9 @@ export const OPENER_TRACK: CameraTrack = {
     { at: 0.62, az: 41.6, polar: 76.6, dist: 2.13, fov: 46.9, target: [0.42, 0.34, 0.1] },
     { at: 0.67, az: 87.4, polar: 94.4, dist: 2.86, fov: 39.6, target: [0.08, 0.44, -0.07] }, // profile @ f9 (bull + taxi)
     { at: 0.75, az: 87.4, polar: 94.4, dist: 2.86, fov: 39.6, target: [0.08, 0.44, -0.07] },
-    { at: 0.8, az: -19, polar: 89.1, dist: 1.52, explode: 1.06, fov: 46, target: [-0.1, 0.37, 0.89] }, // explode
-    { at: 0.85, az: -19, polar: 89.1, dist: 1.52, explode: 1.06, fov: 46, target: [-0.1, 0.37, 0.89] }, // explode holds
-    { at: 0.88, az: 16.5, polar: 85.6, dist: 2.16, fov: 34, target: [-0.05, 0.47, 0.5] },
-    { at: 0.92, az: 16.5, polar: 85.6, dist: 2.16, fov: 34, target: [-0.05, 0.47, 0.5] },
-    { at: 0.97, az: 178.1, polar: 92.8, dist: 2.72, fov: 40, target: [0.18, 0.61, 0] },
-    { at: 1, az: 178.1, polar: 92.8, dist: 2.72, fov: 40, target: [0.18, 0.61, 0] },
+    { at: 0.8, az: 28.7, polar: 99.7, dist: 1.77, explode: 1.2, fov: 46, target: [0.29, 0.45, 0.5] }, // explode ("30 parts" + selfie beat)
+    { at: 0.85, az: 28.7, polar: 99.7, dist: 1.77, explode: 1.2, fov: 46, target: [0.29, 0.45, 0.5] }, // holds, then straight to rear
+    { at: 0.92, az: 143.9, polar: 117, dist: 1.86, fov: 40, target: [-0.23, 0.72, -0.05] }, // rear reached EARLY → room to see the photo before "Touch for luck" arrives
+    { at: 1, az: 143.9, polar: 117, dist: 1.86, fov: 40, target: [-0.23, 0.72, -0.05] },   // holds rear to the end
   ],
 };

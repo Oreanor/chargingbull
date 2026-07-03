@@ -30,13 +30,22 @@ export default function PartsFrame() {
   const dotRef = useRef<HTMLDivElement>(null);
   const emptyRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
+  const hornsRef = useRef<HTMLDivElement>(null);
+  const hornsDot1Ref = useRef<HTMLDivElement>(null);
+  const hornsDot2Ref = useRef<HTMLDivElement>(null);
 
-  // base offsets from screen centre, in vh
+  // Base offsets = each piece's CENTRE from screen centre, in vh, laid out to match
+  // Desktop-63.svg (design 1440×800 → centre 720,400, 1vh≈8px). The ✎ editor's saved
+  // offset (tune-layout.json, zeroed for these) adds on top for per-piece fine-tuning.
   const pieces: Piece[] = [
-    { id: 'parts.title', x: -56, y: -10, ref: titleRef },
-    { id: 'parts.dot', x: 2, y: -12, ref: dotRef },
-    { id: 'parts.emptyInside', x: -6, y: -6, ref: emptyRef },
-    { id: 'parts.measure5cm', x: 35, y: -30, ref: measureRef },
+    { id: 'parts.title', x: 58.25, y: -3.04, ref: titleRef },
+    { id: 'parts.dot', x: -34.94, y: 9.31, ref: dotRef },
+    { id: 'parts.emptyInside', x: 9.8, y: 4.38, ref: emptyRef },
+    { id: 'parts.measure5cm', x: -9.63, y: -24.88, ref: measureRef },
+    // horns note + two marker dots — green overlay added per Desktop-63.svg
+    { id: 'parts.horns', x: -11.5, y: -38.56, ref: hornsRef },
+    { id: 'parts.hornsDot1', x: -46.31, y: -38.19, ref: hornsDot1Ref },
+    { id: 'parts.hornsDot2', x: 37.56, y: -42.31, ref: hornsDot2Ref },
   ];
 
   useEffect(() => {
@@ -113,6 +122,31 @@ export default function PartsFrame() {
         className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
         style={{ ...anchor, width: '11vh' }}
         dangerouslySetInnerHTML={{ __html: MEASURE_5CM }}
+      />
+
+      {/* horns note — "cast thicker, ~7.5 cm of bronze" (green overlay, Desktop-63) */}
+      <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: '57vh' }}>
+        <div style={{ color: '#61E26B', fontFamily: 'var(--font-struve)', fontSize: '2.25vh', lineHeight: 1.55 }}>
+          The horns were cast thicker, <strong style={{ fontWeight: 700 }}>about&nbsp;7.5&nbsp;cm of bronze,</strong> because the sculptor knew they’d be touched most. Years of touch have worn away the darker patina.
+        </div>
+      </div>
+
+      {/* two green marker dots for the horns note */}
+      <div
+        ref={hornsDot1Ref}
+        data-tune="parts.hornsDot1"
+        data-tune-mode="store"
+        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+        style={{ ...anchor, width: '4vh' }}
+        dangerouslySetInnerHTML={{ __html: DOT }}
+      />
+      <div
+        ref={hornsDot2Ref}
+        data-tune="parts.hornsDot2"
+        data-tune-mode="store"
+        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+        style={{ ...anchor, width: '4vh' }}
+        dangerouslySetInnerHTML={{ __html: DOT }}
       />
     </div>
   );
