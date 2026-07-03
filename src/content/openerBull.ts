@@ -38,7 +38,6 @@ export const OPENER_TRACK: CameraTrack = {
     { at: 0.37, az: 33.8, polar: 77, dist: 1.32, fov: 44, target: [0.02, 0.39, 0.18] },
     { at: 0.39, az: 39.7, polar: 81.4, dist: 1.62, fov: 44, target: [0.05, 0.36, 0.18] },
     { at: 0.44, az: 39.7, polar: 81.4, dist: 1.62, fov: 44, target: [0.05, 0.36, 0.18] },
-    { at: 0.54, az: 50.5, polar: 84.4, dist: 1.74, fov: 50, target: [0.25, 0.34, 0.31] },
     { at: 0.58, az: 41.6, polar: 76.6, dist: 2.13, fov: 46.9, target: [0.42, 0.34, 0.1] },
     { at: 0.62, az: 41.6, polar: 76.6, dist: 2.13, fov: 46.9, target: [0.42, 0.34, 0.1] },
     { at: 0.67, az: 87.4, polar: 94.4, dist: 2.86, fov: 39.6, target: [0.08, 0.44, -0.07] }, // profile @ f9 (bull + taxi)
