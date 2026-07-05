@@ -7,8 +7,10 @@ import { useChapterProgress } from './chapterScroll';
  * behind is revealed. Its opacity is tied DIRECTLY to scroll: it grows from 0 at the
  * rear-reached point (REAR_AT) to fully opaque by FADE_END — no time-based animation, so
  * scrolling back and forth scrubs it. It reaches full BEFORE the "Touch for luck" plaque
- * slides in near the very end (~0.975→1), so a casual scroll lands on the clean photo
- * first. The photo is `object-cover` (fills the viewport, no gaps) so it tracks the bull's
+ * slides in (~0.95→0.97), so a casual scroll lands on the clean photo first; the plaque
+ * then rides up and OFF (gone by ~0.99) so it's cleared before the next chapter scrolls
+ * over — the last narrative beat leaves the frame first, like the map's final card. The
+ * photo holds full to the end. The photo is `object-cover` (fills the viewport, no gaps) so it tracks the bull's
  * framing on resize, and sits BELOW that plaque (ordered before StageOverlay in the MDX).
  * The 3D bull keeps rendering behind. (Earlier this frame held a green marker dot — removed.)
  */
@@ -16,7 +18,7 @@ import { useChapterProgress } from './chapterScroll';
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
 const REAR_AT = 0.92;   // scroll where the photo starts appearing (bull reaches rear)
-const FADE_END = 0.965; // scroll where the photo is fully opaque (before the plaque ~0.975)
+const FADE_END = 0.95;  // scroll where the photo is fully opaque (before the plaque slides in ~0.95)
 
 export default function RearFrame() {
   const progress = useChapterProgress();

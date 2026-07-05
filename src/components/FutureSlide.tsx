@@ -15,6 +15,7 @@ export function FutureSlide() {
             src="/chapters/closing/dimodica.png"
             alt="Arturo Di Modica"
             className="w-[96px] h-[96px] rounded-full object-cover mb-7"
+            style={{ background: 'var(--color-grays-800, #292929)' }}
           />
           <blockquote className="text-white/90 text-[clamp(14px,1.1vw,18px)] leading-[1.5]">
             &ldquo;My point was to show people that if you want to do something in a moment

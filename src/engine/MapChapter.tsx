@@ -156,8 +156,13 @@ const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 
 // handing off to the Datum bull scene that emerges from that darkness.
 const DIVE_FRAC = 0.18;
 const DIVE_ZOOM = 3.4;    // extra mapbox zoom levels added across the dive (~2× closer)
-const DIVE_BEARING = 145; // rotate the map counter-clockwise ~145° as we dive in (bull turns to face us)
+const DIVE_BEARING = 184; // rotate the map ~184° as we dive in — MATCHES the splat bull's orbit (AZ_START) so they spin in lockstep (bull turns to face us)
 const DIVE_PITCH = 38;    // tilt up toward the horizon (so the view matches the bull scene)
+// The splat reveal (MapBullHandoff) plays over this dive sub-window; the map's bearing
+// rotation is matched to it (same window + easing + magnitude) so the map spins in
+// LOCKSTEP with the revealed bull's ~164° orbit — not slower / short of a half turn.
+const REVEAL_DIVE_FROM = 0.26;
+const REVEAL_DIVE_SPAN = 0.54;
 
 // Intro punch: when the map first reveals (title dissolve), it flies in from this
 // many extra zoom levels and eases out to the stop-0 framing over INTRO_MS.
@@ -308,9 +313,10 @@ export default function MapChapter({
    *  (false) instead fades a black veil in across the dive's second half. */
   revealUnderlay?: boolean;
   /** Called every frame with the dive progress 0..1 (0 = journey, 1 = fully dived
-   *  into the bull spot). Lets a parent sync the revealed underlay (e.g. scale the
-   *  bull in as the map dissolves). */
-  onDive?: (dive: number) => void;
+   *  into the bull spot) and the MAP bull's on-screen offset from viewport centre
+   *  (px). Lets a parent sync the revealed underlay (scale the bull in, and glue the
+   *  reveal iris to the map bull's screen spot so it rides to centre with the pan). */
+  onDive?: (dive: number, bullOffset?: { x: number; y: number }) => void;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
@@ -681,7 +687,6 @@ export default function MapChapter({
       // dive: zoom into the last stop (where the bull stands), rotate CCW and tilt
       // up toward the horizon so the framing lands on the bull-scene viewpoint.
       const dive = easeInOutCubic(diveOf(sj));
-      onDive?.(diveOf(sj));
 
       // Fire the intro punch once, when the title starts dissolving into the map.
       const revealProg = stopProgress(journeyOf(sj));
@@ -706,11 +711,12 @@ export default function MapChapter({
       // ends up in the screen centre (where the revealed splat scene is centred).
       const last = steps[steps.length - 1];
       const bull: [number, number] = last ? [last.lng, last.lat] : cam.center;
-      // All dive movements start together. Pan to the bull is slightly front-loaded
-      // (centred by ~45% of the dive) so the spin's axis sits on the bull; the
-      // rotation itself runs smoothly across the WHOLE dive (no delayed start).
+      // Pan to the bull is slightly front-loaded (centred by ~45% of the dive) so the
+      // spin's axis sits on the bull. The BEARING rotation, however, is timed to the splat
+      // reveal window (same easeInOutCubic + [0.26,0.80] window as the bull's orbit) so the
+      // map spins in LOCKSTEP with the revealed bull instead of slower / across the whole dive.
       const panE = smoothstep(clamp(dive / 0.45, 0, 1));
-      const rotE = dive;
+      const rotE = easeInOutCubic(clamp((diveOf(sj) - REVEAL_DIVE_FROM) / REVEAL_DIVE_SPAN, 0, 1));
       const center: [number, number] = [lerp(cam.center[0], bull[0], panE), lerp(cam.center[1], bull[1], panE)];
       const isNarrow = window.innerWidth < 720;
       const padLeft = lerp(isNarrow ? 30 : 480, isNarrow ? 30 : 60, panE);
@@ -721,6 +727,17 @@ export default function MapChapter({
         pitch: Math.min(85, cam.pitch + DIVE_PITCH * dive),
         bearing: cam.bearing + DIVE_BEARING * rotE,
       });
+      // Project the bull's world coord to the (updated) screen and hand its offset from
+      // viewport centre to the splat reveal, so the iris + bull start GLUED to the map
+      // bull and ride to centre with the pan — not popping in higher/right at a fixed centre.
+      // Only during the dive (the reveal window); the journey doesn't need the projection.
+      const dv = diveOf(sj);
+      if (dv > 0) {
+        const bp = map.project(bull);
+        onDive?.(dv, { x: bp.x - window.innerWidth / 2, y: bp.y - window.innerHeight / 2 });
+      } else {
+        onDive?.(dv);
+      }
     };
     // coalesce both sources into at most one apply per frame (else map.jumpTo fires
     // ~2× per frame — once for playhead, once for raw scroll).
@@ -871,7 +888,7 @@ export default function MapChapter({
         {introTitle ? (
           <div
             ref={introRef}
-            className="absolute inset-0 z-30 bg-[#070F26] flex items-center justify-center px-6 pointer-events-none"
+            className="absolute inset-0 z-30 bg-black flex items-center justify-center px-6 pointer-events-none"
             style={{ opacity: 1 }}
           >
             <div className="max-w-[920px]">

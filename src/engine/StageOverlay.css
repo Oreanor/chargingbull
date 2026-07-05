@@ -2,7 +2,13 @@
    Ported from the splash chapter (#scenes / #annos), on the longread fonts.
    Opacity/position are driven from JS; these are base styles to be hand-tuned. */
 
-.so-root { --so-accent: #e8c87c; }
+/* Lift the whole narrative layer (plaques + annotations) ABOVE every sibling
+   overlay riding the same scroll (PartsFrame/TonnesFrame/SelfieFrame dots, the
+   RearFrame photo). Those are z-index:auto siblings inside ModelChapter's shared
+   children wrapper, so plain DOM order would let e.g. the PartsFrame «horns» dots
+   paint over the «Selfie magnet» plaque. Any positive value wins; keep the whole
+   overlay one layer so plaques always sit on top of the bull's scene overlays. */
+.so-root { --so-accent: #e8c87c; z-index: 30; }
 
 /* narrative plaque, bottom-left — semi-transparent blurred card (per the mockup:
    #25221E @ 85%, radius 30, padding 41/50/47/50, background-blur 12). */

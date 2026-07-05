@@ -15,6 +15,11 @@ import './ChartsChapter.css';
 
 const N = CHART_STEPS.length;
 
+/** Extra scroll (vh) after the chart reaches its LAST frame: the chart holds while the
+ *  final «Minus inflation» card slides straight up and off on its own, before the next
+ *  slide (AnatomyCrisis) rises over the clean chart — all at plain 1:1 scroll speed. */
+const EXIT_VH = 70;
+
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
 /** Candle close-up + the drawdown slides before the Dotcom bust show no card. */
@@ -100,6 +105,18 @@ export default function ChartsChapter({
       const hidden = op < 0.004;
       stage.style.pointerEvents = hidden ? 'none' : 'auto';
       stage.style.visibility = hidden ? 'hidden' : 'visible';
+      // EXIT — the chart doesn't just sit and get covered: over the LAST screen (once the
+      // section bottom enters the viewport, rect.bottom < vh) the fixed stage UN-PINS and
+      // rides straight up and off, 1:1 with scroll, so AnatomyCrisis (z-30) rises into its
+      // place instead of masking a frozen chart. The final card has already left by now.
+      const exitPx = rect.bottom < vh ? vh - rect.bottom : 0; // 0 → vh across the last screen
+      stage.style.transform = exitPx > 0 ? `translateY(${(-exitPx).toFixed(1)}px)` : '';
+      // The strip exposed behind the sliding (fixed) stage is the SECTION's own background,
+      // pink by default (bear ground for the explainer handoff on ENTRY). A fixed element
+      // moved by JS lags the native compositor by a frame on a jerked scroll, so that pink
+      // would flash between the chart and the rising AnatomyCrisis. Paint the section black
+      // for the exit slide so any residual gap reads as black (= AnatomyCrisis), not pink.
+      secEl.style.background = exitPx > 0 ? '#000' : '#f14268';
     };
     update();
     window.addEventListener('scroll', update, { passive: true });
@@ -113,9 +130,19 @@ export default function ChartsChapter({
   // Drive the morph off the smoothed scroll; map 0..1 → step index 0..N-1.
   useEffect(() => {
     if (!engine) return;
+    const lastCardIdx = CARD_STEPS[CARD_STEPS.length - 1].i; // «Minus inflation» — the final card
     const apply = () => {
       const raw = progress.get();
-      const idx = raw * (N - 1);
+      // Split the section: the morph runs 0..1 over the first part (idx 0→N-1); the last
+      // EXIT_VH is a tail where the chart HOLDS its final frame and only the last card moves.
+      const secEl = ref.current;
+      const vhPx = window.innerHeight || 1;
+      const rangePx = secEl ? Math.max(1, secEl.offsetHeight - vhPx) : 1;
+      const rEnd = clamp01((rangePx - (EXIT_VH / 100) * vhPx) / rangePx);
+      const chartRaw = rEnd > 0 ? clamp01(raw / rEnd) : raw;
+      const idx = chartRaw * (N - 1);
+      // 0 while the chart still morphs → 1 across the tail: drives the last card off.
+      const exitProg = rEnd < 1 ? clamp01((raw - rEnd) / (1 - rEnd)) : 0;
       const cap = engine.draw(idx);
       if (captionRef.current) captionRef.current.textContent = cap;
       // Cards RIDE bottom→top at constant velocity through their step — exactly like the
@@ -129,7 +156,9 @@ export default function ChartsChapter({
       for (const { i } of CARD_STEPS) {
         const el = cardRefs.current[i];
         if (!el) continue;
-        const tt = (idx - i) / REACH;            // -1 below → 0 rest → +1 above
+        // The final «Minus inflation» card doesn't park at the end — across the tail it
+        // rides UP and OFF on its own (exitProg), leaving the clean chart before Anatomy rises.
+        const tt = (idx - i) / REACH + (i === lastCardIdx ? exitProg * 1.4 : 0);
         const a = Math.abs(tt);
         const op = a < 1 ? (a > 1 - FADE ? (1 - a) / FADE : 1) : 0;
         el.style.opacity = op.toFixed(3);
@@ -155,7 +184,7 @@ export default function ChartsChapter({
   }, [engine, progress]);
 
   return (
-    <section ref={ref} style={{ height: `${N * 100}dvh` }} className="cc-section relative w-full">
+    <section ref={ref} style={{ height: `${N * 100 + EXIT_VH}dvh` }} className="cc-section relative w-full">
       <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100dvh] w-full overflow-hidden" style={{ opacity: 0, visibility: 'hidden', pointerEvents: 'none' }}>
         <canvas ref={canvasRef} className="cc-canvas" />
         <div className="cc-gradient" aria-hidden />
