@@ -62,7 +62,7 @@ function circleMask(radiusPx: number): string {
 export default function MapBullHandoff({
   introTitle,
   introBody,
-  holdVh = 110,
+  holdVh = 35,
   ...splatProps
 }: ComponentProps<typeof DatumSplat> & {
   introTitle?: string;
