@@ -1,42 +1,77 @@
 /* S&P 500 investment calculator — ported from wallst-rodeo/calculator.html. */
-.calc-slide {
-  width: 100%; min-height: 100vh; padding: clamp(32px, 6vh, 64px) 20px;
+/* Pinned scene: a tall section holds the calculator sticky while a scripted intro plays
+   (left flag slides in, hint fades up), then it stays interactive, then scrolls on. */
+.calc-section { width: 100%; background: #000; }
+.calc-sticky {
+  position: sticky; top: 0; height: 100vh; width: 100%; padding: clamp(16px, 3vh, 32px) 10px;
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse 130% 120% at 50% 24%, #181b22 0%, #0b0c10 58%, #000 100%) no-repeat #000;
-  color: #ECEFEC; font-family: 'Inter', system-ui, sans-serif;
+  background: #000; color: #ECEFEC; font-family: var(--font-grotesk), 'Inter', system-ui, sans-serif;
 }
-.calc-wrap { width: 100%; max-width: min(920px, 92vw); }
+/* ~10% larger slide — widen the wrap + taller chart; fonts stay put (they key off vw/px, not the container). */
+.calc-wrap { width: 100%; max-width: min(1169px, 98vw); }
 .calc-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
-.calc-eyebrow { font: 700 clamp(11px, 1vw, 13px) 'Space Mono', monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #61E26B; }
-.calc-amt { font: 700 clamp(24px, 3.6vw, 34px)/1.2 'Inter', system-ui, sans-serif; letter-spacing: -0.01em; margin-top: 10px; }
-.calc-amt .cur { color: rgba(236, 239, 236, 0.5); }
-.calc-amt input {
-  width: 4.6em; background: transparent; border: none; border-bottom: 2px solid rgba(255, 255, 255, 0.18);
-  color: #61E26B; font: inherit; letter-spacing: -0.01em; padding: 0 2px 2px; -moz-appearance: textfield;
+.calc-eyebrow { font: 500 clamp(14px, 1.5vw, 18px) var(--font-grotesk); letter-spacing: 0; color: #61E26B; }
+.calc-amt { font: 700 clamp(24px, 3.6vw, 34px)/1.2 var(--font-struve); letter-spacing: -0.01em; margin-top: 10px; color: #fff; }
+.calc-amt .cur { color: rgba(97, 226, 107, 0.5); } /* $ dim (green @50%) until the value is changed */
+
+/* Bordered amount field with a left up/down spinner (down disabled at the 100 minimum);
+   the $ brightens to full green once the value is changed (.changed added in JS). */
+.calc-field {
+  display: inline-flex; align-items: center; gap: 8px; vertical-align: middle;
+  background: #1A1A1A; border: 1px solid rgba(97, 226, 107, 0.5); border-radius: 12px;
+  padding: 4px 16px 4px 10px; margin: 0 4px;
 }
-.calc-amt input::-webkit-outer-spin-button, .calc-amt input::-webkit-inner-spin-button { -webkit-appearance: none; }
-.calc-amt input:focus { outline: none; border-bottom-color: #61E26B; }
+.calc-field.changed .cur { color: #61E26B; }
+/* while the scene is inactive the field reads dead — dim border/digit, no interaction */
+.calc-field.inactive { border-color: rgba(97, 226, 107, 0.25); pointer-events: none; }
+.calc-field.inactive input { color: rgba(97, 226, 107, 0.5); }
+.calc-spin { display: inline-flex; flex-direction: column; gap: 5px; }
+.calc-step {
+  width: 20px; height: 11px; padding: 0; border: 0; background: transparent;
+  cursor: pointer; position: relative; line-height: 0;
+}
+.calc-step::before {
+  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent;
+}
+.calc-up::before { border-bottom: 9px solid #61E26B; }
+.calc-down::before { border-top: 9px solid #61E26B; }
+.calc-step:disabled { cursor: default; }
+.calc-step:disabled::before { opacity: 0.5; }
+.calc-field input {
+  width: 3ch; background: transparent; border: none; color: #61E26B; font: inherit;
+  letter-spacing: -0.01em; padding: 0; -moz-appearance: textfield; /* width set to value length in JS */
+}
+.calc-field input::-webkit-outer-spin-button, .calc-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.calc-field input:focus { outline: none; }
 
 .calc-result { text-align: right; line-height: 1.1; }
-.calc-result .per { font: 700 clamp(11px, 1vw, 13px) 'Space Mono', monospace; letter-spacing: 0.06em; color: rgba(236, 239, 236, 0.5); }
-.calc-result .big { font: 800 clamp(32px, 5.2vw, 48px)/1.05 'Inter', system-ui, sans-serif; letter-spacing: -0.025em; color: #61E26B; margin: 6px 0 5px; }
+.calc-result .big { font: 700 clamp(32px, 5.2vw, 48px)/1.05 var(--font-struve); letter-spacing: -0.025em; color: #61E26B; margin: 4px 0 0; }
 .calc-result.neg .big { color: #EF5350; }
-.calc-result .sub { font: 500 clamp(13px, 1.2vw, 15px) 'Inter', system-ui, sans-serif; color: rgba(236, 239, 236, 0.5); }
-.calc-result .sub b { color: #ECEFEC; font-weight: 700; }
-.calc-result .sub .ri { color: #aeb6af; }
+.calc-result .sub { font: 400 clamp(13px, 1.2vw, 15px) var(--font-grotesk); color: #575757; } /* multiple/CAGR muted */
+.calc-result .sub b { color: inherit; font-weight: 700; }
+.calc-result .sub .ri { color: #61E26B; } /* "real $…" is the highlighted bit */
 
 .calc-viz { position: relative; margin: 28px 0 8px; touch-action: none; user-select: none; }
-.calc-chart { width: 100%; height: clamp(360px, 56vh, 620px); display: block; }
+.calc-chart { width: 100%; height: clamp(462px, 71vh, 788px); display: block; }
 .calc-flag { position: absolute; top: 0; bottom: 0; width: 0; }
 .calc-flag .line { position: absolute; top: 0; bottom: 26px; left: -1px; width: 2px; background: #61E26B; }
 .calc-flag .grab { position: absolute; left: -15px; top: 0; bottom: 0; width: 30px; cursor: ew-resize; }
 .calc-flag .yr {
   position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); cursor: ew-resize;
-  font: 700 12px 'Space Mono', monospace; color: #06210b; background: #61E26B;
+  font: 700 12px var(--font-mono); color: #06210b; background: #61E26B;
   padding: 3px 9px; border-radius: 7px; white-space: nowrap;
 }
 .calc-flag .yr::before { content: '\21C4  '; opacity: 0.6; }
+/* flags are inert during the scripted intro (no .active on the viz) */
+.calc-viz:not(.active) .calc-flag .grab { cursor: default; }
 
-.calc-hint { font: 500 clamp(12px, 1.1vw, 14px) 'Inter', system-ui, sans-serif; color: rgba(236, 239, 236, 0.5); margin-top: 4px; }
-.calc-note { font: 400 clamp(11.5px, 1.05vw, 13.5px)/1.5 'Inter', system-ui, sans-serif; color: rgba(236, 239, 236, 0.5); margin-top: 20px; }
+/* Hint — overlays the lower-left of the chart, fades in from transparency (opacity in JS). */
+.calc-hint {
+  position: absolute; left: clamp(6px, 2.5%, 34px); top: 60%; transform: translateY(-50%);
+  max-width: min(300px, 42%); opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
+  font: 400 clamp(17px, 1.9vw, 24px)/1.32 var(--font-struve); color: #61E26B;
+}
+.calc-hint .ar { display: block; font-size: 1.15em; line-height: 1; margin-bottom: 6px; }
+.calc-note { font: 400 clamp(13px, 1.15vw, 16px)/1.5 var(--font-struve); color: rgba(255, 255, 255, 0.5); margin-top: 20px; }
 @media (max-width: 560px) { .calc-top { align-items: flex-start; } .calc-result { text-align: left; } }

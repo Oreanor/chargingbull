@@ -290,10 +290,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   function fillDrawdownArea(
     ctx: CanvasRenderingContext2D,
     pts: [number, number][],
-    topY: number, botY: number, color: string,
+    topY: number, botY: number, color: string, k = 1,
   ) {
-    if (pts.length < 2) return;
+    if (pts.length < 2 || k <= 0) return;
     ctx.save();
+    ctx.globalAlpha *= k;                       // k fades the whole area (gradient + hatch)
     ctx.beginPath();
     ctx.moveTo(pts[0][0], topY);
     for (const [px, py] of pts) ctx.lineTo(px, py);
@@ -304,7 +305,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     g.addColorStop(1, withAlpha(color, 0.5));  // white toward the drawdown
     ctx.fillStyle = g; ctx.fill();
     const pat = hatchPattern(ctx, color);
-    if (pat) { ctx.globalAlpha = 0.22; ctx.fillStyle = pat; ctx.fill(); }
+    if (pat) { ctx.globalAlpha = 0.22 * k; ctx.fillStyle = pat; ctx.fill(); }
     ctx.restore();
   }
 
@@ -327,6 +328,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
     canvas.width = W * dpr; canvas.height = H * dpr;
+    // Resetting canvas.width invalidates any CanvasPattern built from this context, so the
+    // cached hatch would draw blank on every frame after the first — rebuild it per frame.
+    for (const k in hatchCache) delete hatchCache[k];
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
@@ -418,6 +422,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // line, like the multi-line state2 views (mockup frame 41). The state1 '1' view
     // (all five crises at once, frame 38) has no fill.
     const isSlide = cfgA.kind === 'slide' || cfgB.kind === 'slide';
+    // The hatched drawdown belongs to the slide views. When the morph LEAVES a slide for the
+    // overview (0e → '1') fade it out fast so it never lingers on frame 07; fade it back in
+    // when arriving. Slide→slide keeps it solid.
+    const aSlide = cfgA.kind === 'slide', bSlide = cfgB.kind === 'slide';
+    const cl01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+    const fillK = (aSlide && !bSlide) ? 1 - cl01(t / 0.35)
+      : (!aSlide && bSlide) ? cl01((t - 0.5) / 0.4)
+      : 1;
     const visibleSet = new Set([...(cfgA.visibleYears as number[]), ...(cfgB.visibleYears as number[])]);
     const visible = CRISES.filter((c) => visibleSet.has(c.peak[0]));
     const order = [...visible].sort((a, b) => {
@@ -459,10 +471,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       }
       if (!pts.length) continue;
 
-      // Drawdown area (between the line and the 0% line) on the focused slide crisis —
-      // hatched + gradient like Desktop-41. Drawn first, under the line.
-      const focused = cfgA.focusYear === c.peak[0] || cfgB.focusYear === c.peak[0];
-      if (isSlide && focused) fillDrawdownArea(ctx, pts, sy(100), y1, FILL_BEAR);
+      // Drawdown area (between the line and the 0% line) — hatched + gradient like Desktop-41,
+      // drawn first, under the line. EVERY visible crisis on a slide view keeps its fill (none
+      // vanish one-by-one as the next crisis is added); fillK only removes them on the way out
+      // to the overview (frame 07). Each fades in with its own line via ctx.globalAlpha=alpha.
+      if (isSlide) fillDrawdownArea(ctx, pts, sy(100), y1, FILL_BEAR, fillK);
 
       ctx.strokeStyle = stroke; ctx.lineWidth = width;
       ctx.beginPath();
@@ -499,7 +512,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       if (alpha <= 0) continue;
       ctx.globalAlpha = alpha;
 
-      ctx.fillStyle = (cfgA.focusAll || cfgB.focusAll || cfgA.focusYear === c.peak[0] || cfgB.focusYear === c.peak[0]) ? CRISIS : 'rgba(245,243,238,0.5)';
+      ctx.fillStyle = CRISIS; // uniform dark ink — the focus moves between slides, so the old
+                              // focused/non-focused split made a label flip black↔white for no reason
       if (px >= x0 - 2 && px <= x1 + 80 && py >= y0 && py <= y1) {
         ctx.fillText(c.troughLbl, px + 6, py);
       }
@@ -699,8 +713,20 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const sy2 = (price: number, yClip: number) => y1 - price / yClip * (y1 - y0);
 
     const isAState2 = cfgA.kind === 'state2';
-    const a2Alpha = isAState2 ? (1 - t) : t;
-    const a1Alpha = 1 - a2Alpha;
+    // Forward '1' → '1a' plays in three ORDERED phases so nothing overlaps wrongly:
+    //   (1) the date labels + % grid (a1Alpha) DISSOLVE first,
+    //   (2) THEN the crisis pieces slide down (pieceT),
+    //   (3) THEN the growth curve + price grid (a2Alpha) fade in.
+    // Scrolling back up ('1a' → '1') is a plain linear morph.
+    let a1Alpha: number, a2Alpha: number, gridAlpha: number, pieceT: number;
+    if (isAState2) { a2Alpha = 1 - t; gridAlpha = 1 - t; pieceT = t; a1Alpha = t; }
+    else {
+      const ss = (x: number) => { const c = x < 0 ? 0 : x > 1 ? 1 : x; return c * c * (3 - 2 * c); };
+      a1Alpha = 1 - ss(t / 0.3);          // (1)  labels + old %-grid gone by t≈0.3
+      gridAlpha = ss((t - 0.32) / 0.26);  // (1b) new price grid fades in right after — small gap
+      pieceT = ss((t - 0.38) / 0.34);     // (2)  pieces slide down over 0.38 → 0.72
+      a2Alpha = ss((t - 0.64) / 0.36);    // (3)  growth curve comes last, after the pieces land
+    }
     const state2Cfg = isAState2 ? cfgA : cfgB;
     const yClip = state2Cfg.yClip as number;
 
@@ -708,21 +734,21 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     if (a1Alpha > 0.02) {
       ctx.save(); ctx.globalAlpha = a1Alpha;
-      for (const p of [100, 75, 50, 25, 0]) {
-        const y = sy1(p);
+      for (let p = 0; p <= 100; p += 10) {          // 10% grid to match drawNow — the old 25%
+        const y = sy1(p);                            // step dropped half the lines at the '1' handoff
         ctx.strokeStyle = p === 100 ? 'rgba(245,243,238,0.35)' : GRID;
         ctx.setLineDash(p === 100 ? [] : [2, 3]);
         ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-        ctx.fillStyle = AXIS;
-        ctx.fillText(fmtPct(p), x1 + 10, y);
+        if (p % 50 === 0) { ctx.fillStyle = AXIS; ctx.fillText(fmtPct(p), x1 + 10, y); }
       }
       ctx.setLineDash([]);
       ctx.restore();
     }
 
-    if (a2Alpha > 0.02) {
+    if (gridAlpha > 0.02) {
       const step = yClip >= 4500 ? 1000 : yClip > 2000 ? 500 : yClip > 400 ? 100 : 50;
-      ctx.save(); ctx.globalAlpha = a2Alpha;
+      ctx.save(); ctx.globalAlpha = gridAlpha;
+      ctx.setLineDash([2, 6]); // dotted, like the settled '1a' grid — was inheriting stray state
       for (let v = 0; v <= yClip + 0.1; v += step) {
         const y = sy2(v, yClip);
         ctx.strokeStyle = GRID;
@@ -782,7 +808,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         if (!isFinite(Y[i])) continue;
         const yA = screenYAt(i, peakPrice, cfgA.kind);
         const yB = screenYAt(i, peakPrice, cfgB.kind);
-        const y = lerp(yA, yB, t);
+        const y = lerp(yA, yB, pieceT);
         const px = sx(xs[i]);
         lastSx = px; lastSy = y;
         if (!st) { ctx.moveTo(px, y); st = true; } else ctx.lineTo(px, y);
@@ -794,12 +820,30 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         ctx.save(); ctx.globalAlpha = a2Alpha;
         const pyA = screenYAt(iP, peakPrice, cfgA.kind);
         const pyB = screenYAt(iP, peakPrice, cfgB.kind);
-        const py = lerp(pyA, pyB, t);
+        const py = lerp(pyA, pyB, pieceT);
         ctx.beginPath(); ctx.arc(sx(xs[iP]), py, 2.8, 0, 2 * Math.PI); ctx.fill();
         ctx.restore();
       }
     }
     ctx.restore();
+
+    // Crisis date labels — fade out with a1Alpha as the growth chart arrives, instead of
+    // popping the instant drawNow hands the '1' overview off to drawMixed (which drew none).
+    if (a1Alpha > 0.02) {
+      ctx.save(); ctx.globalAlpha = a1Alpha;
+      ctx.fillStyle = CRISIS; ctx.font = FONT;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      for (const c of CRISES) {
+        if (!crisesYears.includes(c.peak[0])) continue;
+        const iP = ymToIdx(xs, c.peak), iT = ymToIdx(xs, c.trough);
+        if (iP < 0 || iT >= xs.length) continue;
+        const peakPrice = Y[iP];
+        if (!isFinite(peakPrice)) continue;
+        const py = lerp(screenYAt(iT, peakPrice, cfgA.kind), screenYAt(iT, peakPrice, cfgB.kind), pieceT);
+        ctx.fillText(c.troughLbl, sx(xs[iT]) + 6, py);
+      }
+      ctx.restore();
+    }
 
     const bullAlpha = ((state2Cfg.bullAlpha as number) || 0) * a2Alpha;
     if (bullAlpha > 0.02) {

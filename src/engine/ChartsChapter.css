@@ -62,7 +62,8 @@
 
 /* Text cards — PINNED overlays over the chart, all stacked at the same spot; only the
    active one is shown (opacity driven per-frame in JS), so the chart is visible between. */
-.cc-cards { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+/* Cards sit ABOVE the "Bear Markets" topbar (z-50) so the heading doesn't creep over them. */
+.cc-cards { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
 .cc-card {
   pointer-events: auto;
   position: absolute; top: 50%; left: clamp(24px, 4vw, 56px);
