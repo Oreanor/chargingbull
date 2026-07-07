@@ -40,28 +40,38 @@ export function Colophon() {
   const serif = { fontFamily: 'var(--font-martina)' };
   const COL = 'lg:w-[300px] lg:shrink-0';
   const GAP = 'gap-x-[clamp(40px,6vw,90px)]';
+  // "Copy URL" — reused in two spots: the label row on MOBILE (top-right, per the mockup)
+  // and the date row on DESKTOP. Same handler/state; only one is visible per breakpoint.
+  const copyBtn = (cls: string) => (
+    <button
+      type="button"
+      onClick={copy}
+      className={`items-center gap-2 rounded-[5px] border border-white/80 px-4 py-1.5 shrink-0 hover:bg-white hover:text-[#F14268] transition-colors ${cls}`}
+      style={{ fontFamily: 'var(--font-grotesk)', fontSize: 'clamp(14px,3.8vw,16px)' }}
+    >
+      <LinkIcon /> {copied ? 'Copied!' : 'Copy URL'}
+    </button>
+  );
 
   return (
-    <section className="w-full min-h-[100dvh] flex flex-col justify-center bg-[#F14268] text-white px-6 md:px-[97px] py-20">
-      <div className="max-w-[1246px] mx-auto text-[clamp(15px,1.4vw,24px)] leading-[1.45]">
-        {/* Published | date (aligned with the list) · Copy URL */}
-        <div className={`flex flex-col lg:flex-row ${GAP} gap-y-3 mb-16`}>
-          <div className={COL} style={struve}>Published</div>
+    <section className="w-full min-h-[100dvh] flex flex-col justify-center bg-[#F14268] text-white px-5 md:px-[97px] py-20">
+      {/* Mobile font sizes follow the mockup (iPhone 16-15): ~24px serif body / bold Struve
+          labels, ~15px grotesk button; desktop keeps its own smaller fluid scale. */}
+      <div className="max-w-[1246px] mx-auto text-[clamp(18px,5.3vw,22px)] lg:text-[clamp(15px,1.4vw,24px)] leading-[1.4]">
+        {/* Published (+ Copy URL, mobile) | date · Copy URL (desktop) */}
+        <div className={`flex flex-col lg:flex-row ${GAP} gap-y-2 mb-12 lg:mb-16`}>
+          <div className={`${COL} flex items-start justify-between gap-4`} style={struve}>
+            <span>Published</span>
+            {copyBtn('inline-flex lg:hidden')}
+          </div>
           <div className="flex-1 flex flex-wrap items-baseline gap-x-6 gap-y-3">
             <span className="italic" style={serif}>8 May 2026</span>
-            <button
-              type="button"
-              onClick={copy}
-              className="lg:ml-auto inline-flex items-center gap-2 rounded-[5px] border border-white/80 px-4 py-1.5 hover:bg-white hover:text-[#F14268] transition-colors"
-              style={{ fontFamily: 'var(--font-grotesk)' }}
-            >
-              <LinkIcon /> {copied ? 'Copied!' : 'Copy URL'}
-            </button>
+            {copyBtn('hidden lg:inline-flex lg:ml-auto')}
           </div>
         </div>
 
         {/* Reading list —— | numbered refs */}
-        <div className={`flex flex-col lg:flex-row gap-y-6 ${GAP}`}>
+        <div className={`flex flex-col lg:flex-row gap-y-5 ${GAP}`}>
           <div className={`${COL} flex items-center gap-4`} style={struve}>
             <span className="whitespace-nowrap">Reading list</span>
             <span className="hidden lg:block h-px flex-1 bg-white/70" />

@@ -1,30 +1,75 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
 import { tuneStore } from './tuneEditor';
-// Inlined (not <img>) so the SVG <text> can use the page's @font-face fonts
-// (struve, Space Mono). The big "30" is already outlined paths, no font needed.
-import N30 from '../assets/parts/n30.svg?raw';            // "30" (outlined)
-import EMPTY_INSIDE from '../assets/parts/empty-inside.svg?raw'; // "Empty inside"
+import { t } from '../i18n';
+// Inlined (not <img>) so the SVG can use the page's @font-face fonts. On DESKTOP the
+// label SVGs are used as-is; on MOBILE all copy is rendered as DOM text pulled from
+// i18n (per the "no text baked into SVG" rule) — only the pure-graphic pieces (the
+// outlined "30", the marker dot, the measure arrow) stay as SVG.
+import N30 from '../assets/parts/n30.svg?raw';            // "30" (outlined glyph — graphic)
+import EMPTY_INSIDE from '../assets/parts/empty-inside.svg?raw'; // "Empty inside" (desktop)
 import DOT from '../assets/parts/dot.svg?raw';            // green marker dot
-import MEASURE_5CM from '../assets/parts/measure-5cm.svg?raw';   // "5 cm" ↕ arrows
+import MEASURE_5CM from '../assets/parts/measure-5cm.svg?raw';   // "5 cm" ↕ (desktop)
+import MEASURE_ARROW from '../assets/parts/measure-arrow.svg?raw'; // ↕ arrow only (mobile)
 
 /**
- * PartsFrame — the "30 separate parts / Empty inside / 5 cm" overlay for the
- * exploded-sections stage (stages.json stage 2). Fades in/out around the explode
+ * PartsFrame — the "30 separate parts / Empty inside / 5 cm / horns" green overlay for
+ * the exploded-sections stage (stages.json stage 2). Fades in/out around the explode
  * (~0.72–0.84).
  *
- * Like TonnesFrame: every piece is anchored to screen centre and positioned + sized
- * in vh so it tracks the bull on resize; `x`/`y` are the base offset from centre in
- * vh, with the ✎ editor's saved vh offset + scale added each frame.
+ * Two layouts, picked by viewport width (≤800px = mobile):
+ *  - DESKTOP (Desktop-63.svg): labels drawn from their SVG assets, positions unchanged.
+ *  - MOBILE (iPhone 17-16.svg): copy rendered as DOM text from i18n (`parts.*`), laid out
+ *    to the phone mockup (horns note up top, the 5 cm measure + Empty inside mid, the big
+ *    "30" bottom-left, two marker dots).
+ *
+ * Every piece is anchored to screen centre and positioned + sized in vh so it tracks the
+ * bull on resize; base x/y are the piece's CENTRE from centre in vh (per-breakpoint), with
+ * the ✎ editor's saved vh offset + scale added each frame.
  */
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); };
 
+const MOBILE_MAX = 800;
+
 interface Piece { id: string; x: number; y: number; ref: React.RefObject<HTMLDivElement> }
+
+// Base offsets = each piece's CENTRE from screen centre, in vh.
+//  desktop: laid out to Desktop-63.svg (design 1440×800 → centre 720,400, 1vh≈8px).
+//  mobile : laid out to iPhone 17-16.svg (design 402×874 → centre 201,437, 1vh≈8.74px).
+// (The ✎ editor's mobile layer nudges these live; these are just the starting points.)
+const COORDS_DESKTOP: Record<string, [number, number]> = {
+  'parts.title': [58.25, -3.04],
+  'parts.dot': [-34.94, 9.31],
+  'parts.emptyInside': [9.8, 4.38],
+  'parts.measure5cm': [-9.63, -24.88],
+  'parts.horns': [-11.5, -38.56],
+  'parts.hornsDot1': [-46.31, -38.19],
+  'parts.hornsDot2': [37.56, -42.31],
+};
+const COORDS_MOBILE: Record<string, [number, number]> = {
+  'parts.title': [-5.4, 27.6],       // "30" + subtitle, bottom-left
+  'parts.dot': [-12.4, 4.3],         // marker on the bull's cheek
+  'parts.emptyInside': [12.2, 3.4],  // right of the head
+  'parts.measure5cm': [-0.1, -15.7], // 5 cm measure, upper-middle
+  'parts.horns': [1.6, -30.7],       // horns note across the top
+  'parts.hornsDot1': [-18.9, -25.9], // marker by the horn
+  'parts.hornsDot2': [0, 0],         // (hidden on mobile — mockup has two dots)
+};
 
 export default function PartsFrame() {
   const progress = useChapterProgress();
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= MOBILE_MAX,
+  );
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= MOBILE_MAX);
+    window.addEventListener('resize', onResize);
+    onResize();
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const rootRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLDivElement>(null);
@@ -34,18 +79,16 @@ export default function PartsFrame() {
   const hornsDot1Ref = useRef<HTMLDivElement>(null);
   const hornsDot2Ref = useRef<HTMLDivElement>(null);
 
-  // Base offsets = each piece's CENTRE from screen centre, in vh, laid out to match
-  // Desktop-63.svg (design 1440×800 → centre 720,400, 1vh≈8px). The ✎ editor's saved
-  // offset (tune-layout.json, zeroed for these) adds on top for per-piece fine-tuning.
+  const C = isMobile ? COORDS_MOBILE : COORDS_DESKTOP;
+  const mk = (id: string, ref: React.RefObject<HTMLDivElement>): Piece => ({ id, x: C[id][0], y: C[id][1], ref });
   const pieces: Piece[] = [
-    { id: 'parts.title', x: 58.25, y: -3.04, ref: titleRef },
-    { id: 'parts.dot', x: -34.94, y: 9.31, ref: dotRef },
-    { id: 'parts.emptyInside', x: 9.8, y: 4.38, ref: emptyRef },
-    { id: 'parts.measure5cm', x: -9.63, y: -24.88, ref: measureRef },
-    // horns note + two marker dots — green overlay added per Desktop-63.svg
-    { id: 'parts.horns', x: -11.5, y: -38.56, ref: hornsRef },
-    { id: 'parts.hornsDot1', x: -46.31, y: -38.19, ref: hornsDot1Ref },
-    { id: 'parts.hornsDot2', x: 37.56, y: -42.31, ref: hornsDot2Ref },
+    mk('parts.title', titleRef),
+    mk('parts.dot', dotRef),
+    mk('parts.emptyInside', emptyRef),
+    mk('parts.measure5cm', measureRef),
+    mk('parts.horns', hornsRef),
+    mk('parts.hornsDot1', hornsDot1Ref),
+    mk('parts.hornsDot2', hornsDot2Ref),
   ];
 
   useEffect(() => {
@@ -74,80 +117,101 @@ export default function PartsFrame() {
     tick();
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress]);
+  }, [progress, isMobile]);
 
   const anchor = { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' } as const;
+  // isMobile ? mobileValue : desktopValue — keeps the two layouts' sizes side by side.
+  const mob = <T,>(m: T, d: T): T => (isMobile ? m : d);
+  const green = '#61E26B';
 
   return (
     <div ref={rootRef} className="absolute inset-0 pointer-events-none" style={{ opacity: 0 }}>
-      {/* "30" + subtitle — one draggable block */}
+      {/* "30" (outlined graphic) + subtitle (DOM text from i18n) — one draggable block */}
       <div ref={titleRef} data-tune="parts.title" data-tune-mode="store" className="absolute" style={anchor}>
         <div
           className="[&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ width: '19.5vh' }}
+          style={{ width: mob('12vh', '19.5vh') }}
           dangerouslySetInnerHTML={{ __html: N30 }}
         />
         <div
-          style={{ color: '#61E26B', fontFamily: 'var(--font-struve)', fontSize: '3vh', lineHeight: 1.2, marginTop: '1.2vh' }}
-        >
-          separate parts<br />form the bull
-        </div>
+          style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.75vh', '3vh'), lineHeight: 1.2, marginTop: mob('0.8vh', '1.2vh') }}
+          dangerouslySetInnerHTML={{ __html: t('parts.subtitle') }}
+        />
       </div>
 
-      {/* green marker dot (points at the hollow cavity) */}
+      {/* green marker dot (points at the hollow cavity / cheek) */}
       <div
         ref={dotRef}
         data-tune="parts.dot"
         data-tune-mode="store"
         className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: '4vh' }}
+        style={{ ...anchor, width: mob('4.6vh', '4vh') }}
         dangerouslySetInnerHTML={{ __html: DOT }}
       />
 
-      {/* "Empty inside" label */}
+      {/* "Empty inside" — DOM text (i18n) on mobile, SVG on desktop */}
       <div
         ref={emptyRef}
         data-tune="parts.emptyInside"
         data-tune-mode="store"
         className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: '32vh' }}
-        dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }}
-      />
+        style={{ ...anchor, width: mob('9vh', '32vh') }}
+      >
+        {isMobile
+          ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75vh', lineHeight: 1.15 }}>{t('parts.emptyInside')}</div>
+          : <div dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }} />}
+      </div>
 
-      {/* "5 cm" vertical measure (wall thickness), near the head */}
+      {/* "5 cm" vertical measure (wall thickness) — DOM text + arrow on mobile, SVG on desktop */}
       <div
         ref={measureRef}
         data-tune="parts.measure5cm"
         data-tune-mode="store"
         className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: '11vh' }}
-        dangerouslySetInnerHTML={{ __html: MEASURE_5CM }}
-      />
-
-      {/* horns note — "cast thicker, ~7.5 cm of bronze" (green overlay, Desktop-63) */}
-      <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: '57vh' }}>
-        <div style={{ color: '#61E26B', fontFamily: 'var(--font-struve)', fontSize: '2.25vh', lineHeight: 1.55 }}>
-          The horns were cast thicker, <strong style={{ fontWeight: 700 }}>about&nbsp;7.5&nbsp;cm of bronze,</strong> because the sculptor knew they’d be touched most. Years of touch have worn away the darker patina.
-        </div>
+        style={{ ...anchor, width: mob('7vh', '11vh') }}
+      >
+        {isMobile
+          ? (
+            <>
+              <div style={{ color: green, fontFamily: 'var(--font-mono)', fontSize: '2.5vh', lineHeight: 1, textAlign: 'center' }}>{t('parts.measure')}</div>
+              <div
+                className="[&>svg]:block [&>svg]:mx-auto [&>svg]:w-full [&>svg]:h-auto"
+                style={{ width: '1.9vh', margin: '0.6vh auto 0' }}
+                dangerouslySetInnerHTML={{ __html: MEASURE_ARROW }}
+              />
+            </>
+          )
+          : <div dangerouslySetInnerHTML={{ __html: MEASURE_5CM }} />}
       </div>
 
-      {/* two green marker dots for the horns note */}
+      {/* horns note — "cast thicker, ~7.5 cm of bronze" (DOM text from i18n, both layouts) */}
+      <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: mob('34vh', '57vh') }}>
+        <div
+          style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06vh', '2.25vh'), lineHeight: 1.55 }}
+          dangerouslySetInnerHTML={{ __html: t('parts.horns') }}
+        />
+      </div>
+
+      {/* marker dot by the horn */}
       <div
         ref={hornsDot1Ref}
         data-tune="parts.hornsDot1"
         data-tune-mode="store"
         className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: '4vh' }}
+        style={{ ...anchor, width: mob('4.6vh', '4vh') }}
         dangerouslySetInnerHTML={{ __html: DOT }}
       />
-      <div
-        ref={hornsDot2Ref}
-        data-tune="parts.hornsDot2"
-        data-tune-mode="store"
-        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: '4vh' }}
-        dangerouslySetInnerHTML={{ __html: DOT }}
-      />
+      {/* second horns dot — desktop only (the mobile mockup shows just two dots) */}
+      {!isMobile && (
+        <div
+          ref={hornsDot2Ref}
+          data-tune="parts.hornsDot2"
+          data-tune-mode="store"
+          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+          style={{ ...anchor, width: '4vh' }}
+          dangerouslySetInnerHTML={{ __html: DOT }}
+        />
+      )}
     </div>
   );
 }

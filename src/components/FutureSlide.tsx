@@ -7,9 +7,32 @@ import './BullBearExplainer.css';
  * other editorial slides. Portrait served from /public.
  */
 export function FutureSlide() {
+  // The opening AI/SpaceX lede. On desktop it heads the right column; on mobile it
+  // moves ABOVE the portrait (rendered once here, placed in two spots via responsive
+  // visibility so the copy isn't duplicated in source).
+  const aiLede = (
+    <>
+      Today, the pressure point is AI. The trade is being priced through physical
+      infrastructure: data centres, chips, power, cooling, cloud capacity. Space
+      companies sit in the same part of the market: capital-heavy, fast-growing and
+      priced for a future that still has to arrive. SpaceX priced its IPO at $135 a
+      share, raised $75 billion, and reached a valuation of about $1.77 trillion
+      before trading began.
+    </>
+  );
   return (
-    <section className="min-h-[100dvh] flex flex-col justify-center lg:px-6 py-24 md:py-32 bg-black">
-      <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start gap-y-32 lg:gap-y-12 gap-x-[clamp(40px,8vw,130px)]">
+    <section className="min-h-[100dvh] flex flex-col justify-center lg:px-6 py-16 md:py-32 bg-black">
+      {/* Mobile flows as one article (lede → portrait → prose) with modest spacing; the big
+          gap-y-32 only applied to the desktop two-column split, so it's lg-only now. */}
+      <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start gap-y-10 lg:gap-y-12 gap-x-[clamp(40px,8vw,130px)]">
+        {/* MOBILE-only: the AI lede sits above the portrait (hidden on desktop, where it
+            heads the right column instead). Serif styling matches the main column. */}
+        <p
+          className="lg:hidden text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white"
+          style={{ fontFamily: 'var(--font-martina)' }}
+        >
+          {aiLede}
+        </p>
         <aside className="xpl-aside lg:w-[348px] lg:shrink-0" style={{ fontFamily: 'var(--font-struve)' }}>
           <img
             src="/chapters/closing/dimodica.png"
@@ -30,14 +53,8 @@ export function FutureSlide() {
           className="xpl-main lg:flex-1 lg:max-w-[760px] text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white space-y-7"
           style={{ fontFamily: 'var(--font-martina)' }}
         >
-          <p>
-            Today, the pressure point is AI. The trade is being priced through physical
-            infrastructure: data centres, chips, power, cooling, cloud capacity. Space
-            companies sit in the same part of the market: capital-heavy, fast-growing and
-            priced for a future that still has to arrive. SpaceX priced its IPO at $135 a
-            share, raised $75 billion, and reached a valuation of about $1.77 trillion
-            before trading began.
-          </p>
+          {/* DESKTOP-only: same lede, hidden on mobile where it's shown above the portrait. */}
+          <p className="hidden lg:block">{aiLede}</p>
           <p>
             That valuation assumes years of growth and heavy demand. It assumes a market
             willing to keep funding expensive hardware before the returns are visible.

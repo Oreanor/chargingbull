@@ -9,9 +9,7 @@ import { t } from '../i18n';
 // Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
 // drop straight into the overlay: arrow-in-circle (green up / pink down) and the
 // skull. Colors are baked into the files.
-// Opener chapter logos — shown stacked on MOBILE in place of the wide combined wordmark.
-import OPENER_WALLST from '../assets/logos/wallst.svg?url';
-import OPENER_RODEO from '../assets/logos/rodeo.svg?url';
+// (The mobile wordmark is set live in the brand faces below — no logo asset import.)
 import ICON_UP from '../assets/icons/candle-arrow-up.svg?raw';
 import ICON_DOWN from '../assets/icons/candle-arrow-down.svg?raw';
 import ICON_SKULL from '../assets/icons/candle-skull.svg?raw';
@@ -140,7 +138,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const WORLD_H = 120;
     const priceToY = (p: number) => ((p - pMid) / pSpan) * WORLD_H;
     const COLW = 2.2, BODYW = COLW * 0.62, WICKW = COLW * 0.16;
-    const chartW = (N - 1) * COLW, chartHalfW = chartW / 2;
+    const chartW = (N - 1) * COLW;
     const xOfIdx = (i: number) => (i - (N - 1) / 2) * COLW;
 
     // --- three.js scene (transparent canvas) ---
@@ -257,7 +255,13 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // STATIC full-chart camera — the chart stays in place; only the candles draw
       // in left→right (no pan, no zoom).
       const chartT = clamp01((sp - PH.chartStart) / (PH.chartEnd - PH.chartStart));
-      const camX = chartHalfW;
+      // Look at the chart's CENTRE (candles are laid out symmetric about x=0 via
+      // xOfIdx), not its right edge — otherwise the chart sits in the left half and
+      // camZForWidth (which measures from the look-at centre) can't fit it by width,
+      // clipping the left side. Centred, the width-fit governs correctly on narrow
+      // frames so the whole chart scales to fit. Scatter still converges to screen
+      // centre (candles lerp toward camX), so the fly-apart is visually unchanged.
+      const camX = 0;
       // Zoom in ~15% ONLY on the height-fit — so wide screens read larger, but a narrow
       // (portrait/mobile) frame that's width-constrained isn't pushed off the sides/bottom.
       const camZNow = Math.max(camZForHeight(WORLD_H * 1.22) / 1.15, camZForWidth(chartW * 1.06));
@@ -326,10 +330,16 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // Per-plate spin (deg): mixed clockwise / counter-clockwise, varied magnitude.
       const FACT_FLY_SPIN = [16, -19, 13];
       const CRASH_FLY_SPIN = -15;
+      // On mobile (≤800px, the editor's mobile breakpoint) the first two callouts
+      // (25 Aug + 4 Sep) are hidden — the narrow frame only keeps 16 Oct + the
+      // Black Monday (19 Oct) block, so the plates don't crowd/overlap.
+      const isMobile = W <= 800;
       factItems.forEach((fi, i) => {
         // fade each label up gradually as the chart draws past it; on scatter it
         // flies off (transform) and dissolves (plateFade).
-        const op = chartOn * smoothstep(clamp01((revealEdge - fi.idx) / 9)) * plateFade;
+        const op = isMobile && i < 2
+          ? 0
+          : chartOn * smoothstep(clamp01((revealEdge - fi.idx) / 9)) * plateFade;
         fi.el.style.opacity = op.toFixed(3);
         if (op > 0.005) {
           const maxL = host.clientWidth - 320;
@@ -395,29 +405,37 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         // Layout-editor nudge (✎): each hero piece bakes its tuneStore offset/scale
         // into its transform (store-mode) so the editor can move/resize it.
         const vhPx = host.clientHeight / 100;
-        const tunePrefix = (id: string) => {
+        // fitScale with force=true so EVERY hero piece (texts + the SVG wordmark/logo)
+        // is always fit-to-width: it shrinks the element so its rendered width fits the
+        // screen (screen − 2·pad), scaling the whole thing (e.g. the two-line mobile
+        // wordmark) as ONE unit, and never upscales past its own tuned scale. Text that
+        // already fits just wraps; only a piece that would overflow is scaled down —
+        // "подгоняли свою ширину и постепенно уменьшали размер если совсем не влезает".
+        const tunePrefix = (id: string, el: HTMLElement | null, fit = true) => {
           const [ox, oy] = tuneStore.get(id);
-          const sc = tuneStore.getScale(id);
+          // fit=true → shrink-to-width (texts/logos that must not overflow); fit=false →
+          // plain scale, so the mobile wordmark can bleed off the right per the mockup.
+          const sc = fit ? tuneStore.fitScale(id, el, true) : tuneStore.getScale(id);
           return `translate(${(ox * vhPx).toFixed(1)}px, ${(oy * vhPx).toFixed(1)}px) ` + (sc !== 1 ? `scale(${sc}) ` : '');
         };
 
         if (logoRef.current) {
-          logoRef.current.style.transform = tunePrefix('opener.logo');
+          logoRef.current.style.transform = tunePrefix('opener.logo', logoRef.current);
           logoRef.current.style.opacity = fadeOut(0).toFixed(3);
         }
         if (wordmarkRef.current) {
-          wordmarkRef.current.style.transform = tunePrefix('opener.wordmark');
+          wordmarkRef.current.style.transform = tunePrefix('opener.wordmark', wordmarkRef.current, false);
           wordmarkRef.current.style.opacity = fadeOut(0).toFixed(3);
           wordmarkRef.current.style.filter = glow > 0.01
             ? `brightness(${(1 + glow * 0.8).toFixed(2)}) drop-shadow(0 0 ${(glow * 13).toFixed(0)}px rgba(255,255,255,${(glow * 0.7).toFixed(2)}))`
             : '';
         }
         if (subtitleRef.current) {
-          subtitleRef.current.style.transform = tunePrefix('opener.subtitle');
+          subtitleRef.current.style.transform = tunePrefix('opener.subtitle', subtitleRef.current);
           subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3);
         }
         if (coordsRef.current) {
-          coordsRef.current.style.transform = tunePrefix('opener.coords');
+          coordsRef.current.style.transform = tunePrefix('opener.coords', coordsRef.current);
           coordsRef.current.style.opacity = fadeOut(2 * STAG).toFixed(3);
         }
       }
@@ -491,7 +509,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         </div>
         {/* wordmark (biggest, leaves first) + subtitle (leaves second) */}
         {/* nudged down 100px from dead-center per design */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center translate-y-[100px]">
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center translate-y-[100px] max-sm:translate-y-0">
           {/* wordmark wrapper carries the slide-off transform/opacity/glow (set per-frame).
               Desktop = the combined "Wall St Rodeo" mark; mobile = the two logos stacked
               big with ~30px side padding. */}
@@ -499,20 +517,29 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
             ref={wordmarkRef}
             data-tune="opener.wordmark"
             data-tune-mode="store"
-            className="will-change-transform"
+            className="will-change-transform max-sm:w-full max-sm:text-left"
           >
             <img
               src="/brand/wall-st-rodeo.svg"
               alt={t('opener.wordmarkAlt')}
               className="w-[clamp(320px,72vw,1000px)] h-auto max-sm:hidden"
             />
-            {/* Two logos but ONE scale: widths are proportional to their natural widths
-                (wallst 308 : rodeo 344 → 89.5% : 100%), so they render at the same px-per-
-                unit and read as a single wordmark, shrinking together as one whole. */}
-            <span className="hidden max-sm:flex flex-col items-center gap-[4vw] w-[calc(100vw-60px)] mx-auto">
-              <img src={OPENER_WALLST} alt="Wall St" className="w-[89.5%] h-auto" />
-              <img src={OPENER_RODEO} alt="Rodeo" className="w-full h-auto" />
-            </span>
+            {/* Mobile: the wordmark SET LIVE in the brand faces (Druk XX-Cond «WALL ST» in
+                white + Ayer Poster Cursive «Rodeo» in pink), oversized and bleeding off the
+                right edge exactly per the iPhone 17-4 mockup. It's ONE text block, so it
+                scales as one object; sizes are in vw so it tracks width. */}
+            <div
+              role="img"
+              aria-label={t('opener.wordmarkAlt')}
+              className="hidden max-sm:block pl-[11vw] leading-none whitespace-nowrap"
+            >
+              <div style={{ fontFamily: 'var(--font-druk)', color: '#fff', opacity: 0.9, fontSize: '67vw', lineHeight: 1 }}>
+                WALL<span style={{ fontSize: '0.5em', position: 'relative', top: '-0.74em' }}>ST</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-ayer)', color: '#DE2053', fontStyle: 'italic', fontSize: '53.5vw', lineHeight: 1, marginTop: '-27vw', marginLeft: '-2vw' }}>
+                Rodeo
+              </div>
+            </div>
           </div>
           {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}
           <p

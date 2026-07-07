@@ -41,7 +41,6 @@ export default function ChartsChapter({
 }) {
   const { ref, mounted } = useInViewMount<HTMLElement>({ mountMargin: 1, unmountMargin: 1.5 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const captionRef = useRef<HTMLDivElement>(null);
   const brandRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
   const legendRef = useRef<HTMLDivElement>(null);
@@ -143,8 +142,7 @@ export default function ChartsChapter({
       const idx = chartRaw * (N - 1);
       // 0 while the chart still morphs → 1 across the tail: drives the last card off.
       const exitProg = rEnd < 1 ? clamp01((raw - rEnd) / (1 - rEnd)) : 0;
-      const cap = engine.draw(idx);
-      if (captionRef.current) captionRef.current.textContent = cap;
+      engine.draw(idx); // caption string is unused — the white per-frame caption was dropped
       // Cards RIDE bottom→top at constant velocity through their step — exactly like the
       // map/opener plaques (no fade-from-transparent): opacity is full and only fades at
       // the off-screen edges, and a translateY sweeps them up. Card i sits at rest (tt=0,
@@ -194,7 +192,11 @@ export default function ChartsChapter({
             <span ref={titleRef}>{t('charts.topbarTitle')}</span>
           </div>
         </div>
-        <div ref={captionRef} className="cc-caption" />
+        {/* The per-frame white caption was dropped, but this empty placeholder STAYS so the
+            stage's child order (nth-of-type) is unchanged — saved ✎ auto-tunes are keyed by
+            child index, and removing this element re-bound them onto the wrong siblings (the
+            cards slid off). Kept display:none so nothing shows. */}
+        <div className="cc-caption" aria-hidden style={{ display: 'none' }} />
         {/* credits/legend, bottom-left — present on every mockup frame */}
         <div
           ref={legendRef}

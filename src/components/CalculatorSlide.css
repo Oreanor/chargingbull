@@ -75,3 +75,17 @@
 .calc-hint .ar { display: block; font-size: 1.15em; line-height: 1; margin-bottom: 6px; }
 .calc-note { font: 400 clamp(13px, 1.15vw, 16px)/1.5 var(--font-struve); color: rgba(255, 255, 255, 0.5); margin-top: 20px; }
 @media (max-width: 560px) { .calc-top { align-items: flex-start; } .calc-result { text-align: left; } }
+
+/* Mobile: the calculator is vertically centred in a 100vh sticky, so when the tall chart +
+   header + note add up to more than one screen the whole thing gets squeezed off the top AND
+   bottom. Draw it a bit smaller — shorter chart, tighter margins, slightly smaller headline
+   type — so it fits within the height. */
+@media (max-width: 640px) {
+  .calc-sticky { padding: clamp(12px, 2vh, 20px) 10px; }
+  .calc-amt { font-size: clamp(20px, 5.4vw, 28px); }
+  .calc-result .big { font-size: clamp(27px, 7.4vw, 40px); }
+  .calc-chart { height: clamp(300px, 46vh, 520px); }
+  .calc-viz { margin: 16px 0 6px; }
+  .calc-note { margin-top: 12px; }
+  .calc-hint { font-size: clamp(15px, 4vw, 20px); }
+}

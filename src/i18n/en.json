@@ -86,17 +86,17 @@
       { "troughLbl": "Mar 2020", "label": "2020" }
     ],
     "captions": {
-      "bm": "01 — S&P 500 daily close, Black Monday (Aug–Oct 1987)",
-      "0a": "02 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "0b": "03 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "0c": "04 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "0d": "05 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "0e": "06 — S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
-      "1": "07 — Each crisis normalized to its own peak = 100%. Monthly, real",
-      "1a": "08 — S&P 500 nominal price. Monthly. Source: Robert Shiller",
-      "1b": "09 — S&P 500 nominal price, zoom 1986–1991. Monthly",
-      "2": "10 — S&P 500 nominal price + a hypothetical $350k buy-and-hold from Oct 1987",
-      "3": "11 — S&P 500 real price (CPI-adjusted) + the same $350k position"
+      "bm": "S&P 500 daily close, Black Monday (Aug–Oct 1987)",
+      "0a": "S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0b": "S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0c": "S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0d": "S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "0e": "S&P 500, drawdown from peak. Monthly, real (CPI-adjusted)",
+      "1": "Each crisis normalized to its own peak = 100%. Monthly, real",
+      "1a": "S&P 500 nominal price. Monthly. Source: Robert Shiller",
+      "1b": "S&P 500 nominal price, zoom 1986–1991. Monthly",
+      "2": "S&P 500 nominal price + a hypothetical $350k buy-and-hold from Oct 1987",
+      "3": "S&P 500 real price (CPI-adjusted) + the same $350k position"
     },
     "steps": [
       { "view": "bm", "date": "August — October 1987", "title": "Black Monday",
@@ -139,5 +139,11 @@
       { "text": "Stubbornness is not.", "emphasis": true }
     ],
     "credit": "A long-form scroll-piece · candlesticks-v2 · charging_bull · finance_charts<br/>Bowling Green, New York · bronze, 3,200 kg, since 15 December 1989"
+  },
+  "parts": {
+    "subtitle": "separate parts<br>form the bull",
+    "emptyInside": "Empty inside",
+    "measure": "5 cm",
+    "horns": "The horns were cast thicker, <b>about&nbsp;7.5&nbsp;cm of bronze,</b> because the sculptor knew they’d be touched most. Years of touch have worn away the darker patina."
   }
 }
