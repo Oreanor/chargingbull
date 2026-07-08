@@ -37,10 +37,12 @@ export function BullBearExplainer() {
       // read the section first, expand the panel over the back half, then hand off
       const e = smoothstep(clamp01((p - 0.42) / 0.5));
       const sr = sticky.getBoundingClientRect();
-      // Rest the panel as a small 150×30 chip centred on the «bear market» words; it
-      // grows from there to fill the whole screen.
+      // Rest the panel EXACTLY over the «bear market» pill — its own size, centre and
+      // radius — so at rest (e=0) it hides perfectly behind the pink highlight (same
+      // #f14268). It then grows to fill the screen; at full expansion (e=1) every inset is
+      // ×(1-e)=0, so it fills 100% regardless of this rest size.
       const mr = (bearPill ?? main).getBoundingClientRect();
-      const W = 150, H = 30;
+      const W = mr.width, H = mr.height;
       const cx = (mr.left + mr.right) / 2;
       const cy = (mr.top + mr.bottom) / 2;
       const rl = (cx - W / 2) - sr.left;
@@ -51,7 +53,7 @@ export function BullBearExplainer() {
       panel.style.left = (rl * (1 - e)).toFixed(1) + 'px';
       panel.style.right = (rr * (1 - e)).toFixed(1) + 'px';
       panel.style.bottom = (rb * (1 - e)).toFixed(1) + 'px';
-      panel.style.borderRadius = (14 * (1 - e)).toFixed(1) + 'px';
+      panel.style.borderRadius = (8 * (1 - e)).toFixed(1) + 'px'; // 8px = the pill's radius
       content.style.opacity = (1 - smoothstep(clamp01((p - 0.74) / 0.22))).toFixed(3);
     };
     update();

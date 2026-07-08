@@ -9,7 +9,9 @@ import { t } from '../i18n';
 // Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
 // drop straight into the overlay: arrow-in-circle (green up / pink down) and the
 // skull. Colors are baked into the files.
-// (The mobile wordmark is set live in the brand faces below — no logo asset import.)
+// Mobile opener wordmark — the designer's EXACT mark (WALL ST + Rodeo) as outlined
+// vectors, extracted straight from the iPhone 17-4 mockup (no fonts, no re-typesetting).
+import WORDMARK_MOBILE from '../assets/logos/wallst-rodeo-mobile.svg?url';
 import ICON_UP from '../assets/icons/candle-arrow-up.svg?raw';
 import ICON_DOWN from '../assets/icons/candle-arrow-down.svg?raw';
 import ICON_SKULL from '../assets/icons/candle-skull.svg?raw';
@@ -517,29 +519,21 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
             ref={wordmarkRef}
             data-tune="opener.wordmark"
             data-tune-mode="store"
-            className="will-change-transform max-sm:w-full max-sm:text-left"
+            className="will-change-transform"
           >
             <img
               src="/brand/wall-st-rodeo.svg"
               alt={t('opener.wordmarkAlt')}
               className="w-[clamp(320px,72vw,1000px)] h-auto max-sm:hidden"
             />
-            {/* Mobile: the wordmark SET LIVE in the brand faces (Druk XX-Cond «WALL ST» in
-                white + Ayer Poster Cursive «Rodeo» in pink), oversized and bleeding off the
-                right edge exactly per the iPhone 17-4 mockup. It's ONE text block, so it
-                scales as one object; sizes are in vw so it tracks width. */}
-            <div
-              role="img"
-              aria-label={t('opener.wordmarkAlt')}
-              className="hidden max-sm:block pl-[11vw] leading-none whitespace-nowrap"
-            >
-              <div style={{ fontFamily: 'var(--font-druk)', color: '#fff', opacity: 0.9, fontSize: '67vw', lineHeight: 1 }}>
-                WALL<span style={{ fontSize: '0.5em', position: 'relative', top: '-0.74em' }}>ST</span>
-              </div>
-              <div style={{ fontFamily: 'var(--font-ayer)', color: '#DE2053', fontStyle: 'italic', fontSize: '53.5vw', lineHeight: 1, marginTop: '-27vw', marginLeft: '-2vw' }}>
-                Rodeo
-              </div>
-            </div>
+            {/* Mobile: the designer's EXACT wordmark (outlined vectors from the mockup).
+                w-screen so the SVG's design-x maps 1:1 to the viewport — «Rodeo» bleeds off
+                and clips at the right edge exactly as drawn, no fonts involved. */}
+            <img
+              src={WORDMARK_MOBILE}
+              alt={t('opener.wordmarkAlt')}
+              className="hidden max-sm:block w-screen max-w-none h-auto"
+            />
           </div>
           {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}
           <p

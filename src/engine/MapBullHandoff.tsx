@@ -170,7 +170,10 @@ export default function MapBullHandoff({
     <div ref={gateRef} className="relative bg-black">
       {/* BULL — overlay ON TOP; transparent + tiny circle until the dive reveals it,
           then slides up and away on the exit scroll. */}
-      <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none">
+      {/* grab hand — this is the ONLY bull the reader drag-rotates. The overlay flips to
+          pointer-events:auto only once settled (see onDive), so the hand shows exactly when
+          the bull is orbitable; while it's still pointer-events:none the cursor is moot. */}
+      <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none cursor-grab active:cursor-grabbing">
         <div ref={clipRef} className="h-full w-full" style={{ opacity: 0 }}>
           <div ref={scaleRef} className="h-full w-full will-change-transform" style={{ transform: `scale(${START_SCALE})` }}>
             {armed ? <DatumSplat ref={bullRef} {...splatProps} /> : null}

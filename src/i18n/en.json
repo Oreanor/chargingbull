@@ -77,7 +77,7 @@
       "indexLabel": "S&P 500 INDEX"
     },
     "blackMonday": { "date": "19 October 1987", "title": "Black Monday", "figure": "−20%" },
-    "footer": "© Méridien 2026 — <a href=\"https://creativecommons.org/licenses/by-nc/4.0/deed.en\">CC BY 4.0</a>. Data: Robert J. Shiller, U.S. Stock Markets 1871–Present and CAPE Ratio (Yale University) — monthly S&P 500 price, dividends, earnings, and CPI; daily S&P 500 close prices from Yahoo Finance.",
+    "footer": "© Méridien 2026 — <a href=\"https://creativecommons.org/licenses/by-nc/4.0/deed.en\">CC BY 4.0</a>. Data: Robert J. Shiller, U.S. Stock Markets 1871–Present and CAPE Ratio (Yale University) —<br>monthly S&P 500 price, dividends, earnings, and CPI; daily S&P 500 close prices from Yahoo Finance.",
     "crises": [
       { "troughLbl": "Sep 1974", "label": "1973–74" },
       { "troughLbl": "Nov 1987", "label": "1987" },
