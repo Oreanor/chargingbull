@@ -392,7 +392,10 @@ export default function MapChapter({
       style: 'mapbox://styles/mapbox/dark-v11',
       center: v0.center, zoom: v0.zoom, pitch: v0.pitch, bearing: v0.bearing,
       antialias: true, minZoom: 0.5, maxZoom: 20, projection: 'mercator',
-      interactive: true,
+      // Non-interactive: the camera is fully scroll-driven, so the reader can't drag/pan/
+      // zoom the map, and (without the mapboxgl-interactive class) the cursor stays a plain
+      // arrow instead of the grab hand. The hand belongs on the bull splat, not here.
+      interactive: false,
     });
     mapRef.current = map;
     map.setPadding(padding);

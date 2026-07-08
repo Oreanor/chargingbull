@@ -317,7 +317,9 @@ function ModelScene({
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-black">
-      <div ref={containerRef} className="w-full h-full" />
+      {/* grab hand — the splat bull is orbit-draggable, so the cursor signals it (the map,
+          by contrast, is a plain arrow). active: → grabbing while rotating. */}
+      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
       {status !== 'ready' ? (
         <div className="absolute bottom-6 left-6 text-[10px] uppercase tracking-[3px] text-fg/40 pointer-events-none">
           {status === 'error' ? `err: ${err}` : `loading ${pct}%`}
