@@ -14,7 +14,8 @@
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-hl {
-  position: absolute; left: 0; right: 0; height: 1px;
+  /* flush to the left edge; stop 20px short on the RIGHT (where the price numbers sit). */
+  position: absolute; left: 0; right: 20px; height: 1px;
   background: #434343;
   opacity: var(--ci-grid);
 }
@@ -28,13 +29,13 @@
      (was a dev-only tune delta of -3vh that never shipped to production — the editor
      re-applies auto/transform offsets only in dev, so prod showed the numbers on the
      lines). Baked here it renders identically everywhere. */
-  position: absolute; right: 14px; transform: translateY(-3vh); text-align: right; white-space: nowrap;
+  position: absolute; right: 20px; transform: translateY(-3vh); text-align: right; white-space: nowrap;
   font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
 /* "S&P 500 INDEX" caption, top-right corner (above the top price line) */
 .ci-overlay .ci-index {
-  position: absolute; top: 24px; right: 14px; white-space: nowrap;
+  position: absolute; top: 24px; right: 20px; white-space: nowrap;
   font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
