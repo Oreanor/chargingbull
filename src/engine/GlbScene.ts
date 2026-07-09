@@ -166,6 +166,11 @@ export class GlbScene {
     controls.screenSpacePanning = true;
     controls.enableZoom = true; // editor needs wheel-zoom to set distance
     controls.enableRotate = this.options.rotate ?? true; // off for cinematic chapters
+    // OrbitControls sets `touch-action: none` on the canvas when it connects — which
+    // TRAPS touch gestures on mobile so a swipe over this (full-screen, scroll-driven)
+    // canvas never scrolls the page. Allow vertical panning to fall through to the page;
+    // `?edit` flips it back to 'none' for one-finger orbit (see setEditControls).
+    renderer.domElement.style.touchAction = 'pan-y';
     this.controls = controls;
     // Tell the editor when the user grabs/releases (orbit/zoom), so it can bake the
     // hand-tuned pose into the selected keyframe on release.
@@ -276,6 +281,8 @@ export class GlbScene {
     if (!this.controls) return;
     this.controls.enableRotate = on;
     this.controls.enableZoom = on;
+    // Capture all touch while editing; let vertical scroll through otherwise (mobile).
+    (this.controls.domElement as HTMLElement).style.touchAction = on ? 'none' : 'pan-y';
   }
 
   /** Drive the camera from a spherical pose (target + az/polar/dist + fov). */

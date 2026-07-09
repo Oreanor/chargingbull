@@ -188,40 +188,36 @@ export function CalculatorSlide({
     // scripted intro plays) — so nothing blinks while the calculator is inert.
     let focused = false;
 
-    // Scroll choreography: while the pinned calculator holds, a SCRIPTED intro slides the
-    // left flag 1928 → 1969 over the first bit of scroll and fades the hint in; the flags
-    // stay inert until then (sceneActive), so the reader lands cleanly on the live phase.
-    const START_YEAR = 1928, INTRO_YEAR = 1969, INTRO_P = 0.18, ACTIVE_FROM = 0.16;
-    const sceneProgress = () => {
-      const el = sectionRef.current;
-      if (!el) return 0;
-      const r = el.getBoundingClientRect();
-      const range = r.height - window.innerHeight;
-      return range > 0 ? clamp01(-r.top / range) : 0;
+    // AUTO intro (no scroll scrubbing): when the reader REACHES this slide, play a one-time
+    // animation — the left flag sweeps 1928 → 1969, the scene turns live and the hint fades
+    // in. An IntersectionObserver fires it on arrival; from then the flags are the reader's.
+    const START_YEAR = 1928, INTRO_YEAR = 1969, INTRO_MS = 900;
+    let introPlayed = false, sectionVisible = false, introRaf = 0;
+    const playIntro = () => {
+      if (introPlayed || !rows.length || !sectionVisible) return;
+      introPlayed = true;
+      sceneActive = true;
+      vizEl.classList.add('active');
+      refreshField();               // flags + arrows go live
+      if (!focused) { focused = true; amountEl.focus({ preventScroll: true }); }
+      hintEl.style.opacity = '1';   // invite the drag (CSS fades it; dissolves on first grab)
+      let t0 = 0;
+      const step = (now: number) => {
+        if (!t0) t0 = now;
+        const k = clamp01((now - t0) / INTRO_MS);
+        if (!userDragged) {
+          const ns = Math.min(endY - 1, Math.round(lerp(START_YEAR, INTRO_YEAR, smoothstep(k))));
+          if (ns !== startY) { startY = ns; render(); }
+        }
+        if (k < 1 && !userDragged) introRaf = requestAnimationFrame(step);
+      };
+      introRaf = requestAnimationFrame(step);
     };
-    const onScene = () => {
-      const p = sceneProgress();
-      if (!userDragged && rows.length) {
-        const ns = Math.min(endY - 1, Math.round(lerp(START_YEAR, INTRO_YEAR, clamp01(p / INTRO_P))));
-        if (ns !== startY) { startY = ns; render(); }
-      }
-      const nowActive = p >= ACTIVE_FROM;
-      if (nowActive !== sceneActive) {
-        sceneActive = nowActive;
-        vizEl.classList.toggle('active', sceneActive);
-        refreshField(); // arrows follow the active state
-        if (sceneActive && !focused) { focused = true; amountEl.focus({ preventScroll: true }); }
-        else if (!sceneActive && focused) { focused = false; amountEl.blur(); }
-      }
-      // Hint fades in over the intro, then DISSOLVES the moment the reader carries on past the
-      // settle (p climbs past the short hold) — or the instant a flag is grabbed. Pausing on the
-      // hint keeps it up; the CSS 0.5s opacity transition turns the threshold into a smooth fade.
-      const hideHint = userDragged || p > INTRO_P + 0.08;
-      hintEl.style.opacity = hideHint ? '0' : smoothstep(clamp01((p - INTRO_P * 0.5) / (INTRO_P * 0.6))).toFixed(3);
-    };
-    window.addEventListener('scroll', onScene, { passive: true });
-    window.addEventListener('resize', onScene);
-    onScene();
+    const introIO = new IntersectionObserver(
+      ([e]) => { sectionVisible = e.isIntersecting; if (sectionVisible) playIntro(); },
+      { threshold: 0.5 },
+    );
+    introIO.observe(vizEl);
 
     let alive = true;
     fetch(dataUrl).then((r) => r.text()).then((text) => {
@@ -241,7 +237,7 @@ export function CalculatorSlide({
       MINY = 1928; MAXY = rows[rows.length - 1].y; I0 = firstIdx[MINY];
       startY = MINY; endY = MAXY; // left flag starts at the left edge; the intro drives it in
       render();
-      onScene(); // sync flag + hint to the current scroll position
+      playIntro(); // if the reader is already on the slide when data lands, play now
     }).catch((e) => console.warn('[CalculatorSlide] data load failed', e));
 
     return () => {
@@ -251,8 +247,8 @@ export function CalculatorSlide({
       amountEl.removeEventListener('input', onInput);
       upRef.current?.removeEventListener('click', onUp);
       downRef.current?.removeEventListener('click', onDown);
-      window.removeEventListener('scroll', onScene);
-      window.removeEventListener('resize', onScene);
+      introIO.disconnect();
+      cancelAnimationFrame(introRaf);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', endDrag);

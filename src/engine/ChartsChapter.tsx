@@ -107,18 +107,30 @@ export default function ChartsChapter({
       const hidden = op < 0.004;
       stage.style.pointerEvents = hidden ? 'none' : 'auto';
       stage.style.visibility = hidden ? 'hidden' : 'visible';
-      // EXIT — the chart doesn't just sit and get covered: over the LAST screen (once the
-      // section bottom enters the viewport, rect.bottom < vh) the fixed stage UN-PINS and
-      // rides straight up and off, 1:1 with scroll, so AnatomyCrisis (z-30) rises into its
-      // place instead of masking a frozen chart. The final card has already left by now.
-      const exitPx = rect.bottom < vh ? vh - rect.bottom : 0; // 0 → vh across the last screen
-      stage.style.transform = exitPx > 0 ? `translateY(${(-exitPx).toFixed(1)}px)` : '';
-      // The strip exposed behind the sliding (fixed) stage is the SECTION's own background,
-      // pink by default (bear ground for the explainer handoff on ENTRY). A fixed element
-      // moved by JS lags the native compositor by a frame on a jerked scroll, so that pink
-      // would flash between the chart and the rising AnatomyCrisis. Paint the section black
-      // for the exit slide so any residual gap reads as black (= AnatomyCrisis), not pink.
-      secEl.style.background = exitPx > 0 ? '#000' : '#f14268';
+      // EXIT — over the LAST screen (section bottom within a viewport, rect.bottom ≤ vh) the
+      // stage UN-PINS and rides up off the top so AnatomyCrisis (z-30) rises into its place.
+      // Rather than JS-translating a position:fixed element — which lags the native
+      // compositor by a frame, so the leaving chart and the rising next section desync
+      // ("two cars with a buffer, jerky") — switch the stage to position:absolute anchored
+      // to the RELATIVE section's bottom. At the switch point the fixed and absolute boxes
+      // are pixel-identical (the section bottom is exactly one viewport down), so there's no
+      // jump; from there the BROWSER scrolls it away natively, on the compositor, perfectly
+      // in sync with the next section — exactly how every other pinned scene un-pins (CSS
+      // sticky). No more JS transform driving the slide.
+      const exiting = rect.bottom <= vh;
+      if (exiting) {
+        stage.style.position = 'absolute';
+        stage.style.top = 'auto';
+        stage.style.bottom = '0';
+      } else {
+        stage.style.position = ''; // revert to the class's `fixed inset-0`
+        stage.style.top = '';
+        stage.style.bottom = '';
+      }
+      stage.style.transform = '';
+      // Any residual sub-pixel seam behind the rising stage reads as black (= AnatomyCrisis),
+      // never the section's pink entry ground.
+      secEl.style.background = exiting ? '#000' : '#f14268';
     };
     update();
     window.addEventListener('scroll', update, { passive: true });
