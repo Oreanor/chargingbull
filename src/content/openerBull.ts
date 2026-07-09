@@ -14,7 +14,7 @@ export const OPENER_PLACEMENT = { scale: 0.3593, recenter: false } as const;
 
 export const OPENER_EXTRAS: ChapterExtra[] = [
   {
-    src: '/models/checker-cab.glb',
+    src: '/models/cab_wheels.glb', // cab body + separate front_wheels/back_wheels nodes (spin while driving)
     position: [0.83, 0, 0.12], // hand-placed via the 🚕 control
     rotation: [0, 1.54, 0],
     scale: 0.32,

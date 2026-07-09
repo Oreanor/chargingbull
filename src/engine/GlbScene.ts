@@ -87,6 +87,10 @@ export class GlbScene {
   private readonly extraObjects: (THREE.Object3D | null)[] = [];
   /** Each extra's resting (home) position, so it can be offset for a drive-in. */
   private readonly extraHomes: (THREE.Vector3 | null)[] = [];
+  /** Per-extra wheel-roll state: wheel nodes (name ~ /wheel|roue/) + their world radius +
+   *  the last drive offset, so the wheels SPIN proportional to how far the model has driven
+   *  (setExtraOffset). Null when the model has no separate wheel nodes. */
+  private readonly extraRoll: ({ wheels: THREE.Object3D[]; radius: number; axle: 'x' | 'y' | 'z'; lastX: number; lastZ: number } | null)[] = [];
   /** Shared PMREM environment map for extras' reflections (generated lazily). */
   private extraEnvTex: THREE.Texture | null = null;
   /** Per-extra depth-only shell meshes (built lazily) for single-layer transparency. */
@@ -434,6 +438,20 @@ export class GlbScene {
     const o = this.extraObjects[i];
     const h = this.extraHomes[i];
     if (o && h) o.position.set(h.x + x, h.y + y, h.z + z);
+    // Roll the wheels by the distance driven this frame. The offset is in scene units
+    // (= world units, the extra's parent is the unscaled scene) and the radius is in world
+    // units, so dist/radius = radians. Spin around each wheel node's LOCAL Z (the axle),
+    // which stays correct whatever the body's world rotation/scale.
+    const roll = this.extraRoll[i];
+    if (roll) {
+      const dx = x - roll.lastX, dz = z - roll.lastZ;
+      roll.lastX = x; roll.lastZ = z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 1e-5 && dist < 1) { // skip the teleport when the extra re-enters its window
+        const dAng = (Math.sign(dz) || Math.sign(dx) || 1) * dist / roll.radius;
+        for (const w of roll.wheels) w.rotation[roll.axle] += dAng; // spin around the axle only
+      }
+    }
   }
 
   /** Build a depth-only shell (same geometry, colour-write off) over each opaque mesh
@@ -535,6 +553,32 @@ export class GlbScene {
           scene.add(obj);
           this.extraObjects[i] = obj;
           this.extraHomes[i] = obj.position.clone();
+          // Separate wheel nodes (front_wheels / back_wheels) spin as the model drives. Find
+          // them + their world radius (from the LOCAL geometry's two circular-face dims ×
+          // the model scale — rotation-invariant), so setExtraOffset can roll them by dist.
+          const wheels: THREE.Object3D[] = [];
+          obj.traverse((o) => { if (/wheel|roue/i.test(o.name)) wheels.push(o); });
+          let radius = 0;
+          let axle: 'x' | 'y' | 'z' = 'z';
+          if (wheels.length) {
+            const gbox = new THREE.Box3();
+            wheels[0].traverse((c) => {
+              const m = c as THREE.Mesh;
+              if (m.isMesh && m.geometry) {
+                if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+                if (m.geometry.boundingBox) gbox.union(m.geometry.boundingBox);
+              }
+            });
+            const s = new THREE.Vector3(); gbox.getSize(s);
+            const dims = [s.x, s.y, s.z];
+            // The wheel node holds the L+R pair, so the AXLE is the axis they're spread widest
+            // along (largest extent); the other two dims are the circular face (= diameter).
+            const ai = dims.indexOf(Math.max(...dims));
+            axle = (['x', 'y', 'z'] as const)[ai];
+            const face = dims.filter((_, k) => k !== ai);
+            radius = ((face[0] + face[1]) / 4) * (spec.scale ?? 1);
+          }
+          this.extraRoll[i] = wheels.length && radius > 0 ? { wheels, radius, axle, lastX: 0, lastZ: 0 } : null;
           // Pre-compile the extra's shaders + upload its env texture NOW (while hidden),
           // so the first time it appears mid-scroll there's no lazy-compile hitch — e.g.
           // the glass popping in grey for a frame before it starts reflecting.
