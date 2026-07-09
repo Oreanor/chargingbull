@@ -204,10 +204,10 @@ export default function ChartsChapter({
           dangerouslySetInnerHTML={{ __html: t('charts.footer') }}
         />
         {/* Black Monday plate (HTML overlay) — only on the candle frame, Druk crash figure */}
-        <div ref={bmPlateRef} className="cc-bm-plate" style={{ opacity: 0 }} aria-hidden>
+        <div ref={bmPlateRef} className="cc-bm-plate translate-x-[-10.8vh] translate-y-[5.3vh]" style={{ opacity: 0 }} aria-hidden>
           <div className="cc-bm-date">{BM.date}</div>
           <div className="cc-bm-title">{BM.title}</div>
-          <div className="cc-bm-fig">{BM.figure}</div>
+          <div className="cc-bm-fig scale-[0.967]">{BM.figure}</div>
         </div>
         {/* Text cards — PINNED overlays (not scrolled). Each fades in only when its
             chart has settled and out during the morph (opacity driven in apply above),

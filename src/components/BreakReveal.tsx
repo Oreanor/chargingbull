@@ -1,5 +1,4 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { tuneStore } from '../engine/tuneEditor';
 
 /**
  * BreakReveal — a chapter divider that appears FROM DARKNESS in place (not
@@ -15,7 +14,8 @@ export function BreakReveal({
   titleNode,
   body,
   preload,
-  tuneKey,
+  titleClassName = '',
+  bodyClassName = '',
 }: {
   /** Plain gold cursive title text… */
   title?: string;
@@ -24,9 +24,9 @@ export function BreakReveal({
   body: string;
   /** Optional next-chapter asset warm-up; lock holds until it resolves. */
   preload?: () => Promise<unknown>;
-  /** When set, the title block + body become draggable via the ✎ layout editor
-   *  (`<tuneKey>.title` / `<tuneKey>.body`), with offsets persisted + re-applied. */
-  tuneKey?: string;
+  /** Optional Tailwind classes baked onto the title / body (position + scale). */
+  titleClassName?: string;
+  bodyClassName?: string;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
@@ -65,27 +65,6 @@ export function BreakReveal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Bake the saved (or live-dragged) layout-editor offsets into the title + body
-  // transforms each frame, so the ✎ editor can nudge them and the saved positions
-  // also show with the editor off. (Opacity is owned by the reveal loop above.)
-  useEffect(() => {
-    if (!tuneKey) return;
-    let raf = 0;
-    const apply = (el: HTMLElement | null, id: string) => {
-      if (!el) return;
-      const [ox, oy] = tuneStore.get(id);
-      const s = tuneStore.getScale(id);
-      el.style.transform = ox || oy || s !== 1 ? `translate(${ox}vh, ${oy}vh) scale(${s})` : '';
-    };
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      apply(titleRef.current, `${tuneKey}.title`);
-      apply(bodyRef.current, `${tuneKey}.body`);
-    };
-    tick();
-    return () => cancelAnimationFrame(raf);
-  }, [tuneKey]);
-
   return (
     <section ref={sectionRef} className="relative h-[160vh] w-full bg-black">
       <div className="sticky top-0 h-[100dvh] flex items-center justify-center px-6">
@@ -93,9 +72,7 @@ export function BreakReveal({
           <div
             ref={titleRef}
             style={{ opacity: 0 }}
-            className="mb-7"
-            data-tune={tuneKey ? `${tuneKey}.title` : undefined}
-            data-tune-mode={tuneKey ? 'store' : undefined}
+            className={`mb-7 ${titleClassName}`}
           >
             {titleNode ?? (
               <span
@@ -109,9 +86,7 @@ export function BreakReveal({
           <p
             ref={bodyRef}
             style={{ fontFamily: 'var(--font-struve)' }}
-            className="mx-auto max-w-[480px] text-[clamp(16px,1.5vw,20px)] leading-[1.3] text-fg/80"
-            data-tune={tuneKey ? `${tuneKey}.body` : undefined}
-            data-tune-mode={tuneKey ? 'store' : undefined}
+            className={`mx-auto max-w-[480px] text-[clamp(16px,1.5vw,20px)] leading-[1.3] text-fg/80 ${bodyClassName}`}
           />
         </div>
       </div>

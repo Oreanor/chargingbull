@@ -24,7 +24,11 @@
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-yl {
-  position: absolute; right: 14px; transform: translateY(-50%); text-align: right; white-space: nowrap;
+  /* Sits ABOVE its price line. JS sets top = the line's y; this lift is baked in CSS
+     (was a dev-only tune delta of -3vh that never shipped to production — the editor
+     re-applies auto/transform offsets only in dev, so prod showed the numbers on the
+     lines). Baked here it renders identically everywhere. */
+  position: absolute; right: 14px; transform: translateY(-3vh); text-align: right; white-space: nowrap;
   font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }

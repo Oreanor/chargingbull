@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { useChapterProgress } from './chapterScroll';
-import { tuneStore } from './tuneEditor';
 // Inlined (not <img>) so the SVG <text> can use the page's @font-face fonts
 // (Space Mono for the m-labels, the display face for the headline). As <img>
 // these would render in an isolated context with no access to our webfonts.
@@ -23,7 +22,7 @@ import BASELINE from '../assets/tonnes/baseline.svg?raw';        // dashed groun
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); };
 
-interface Piece { id: string; x: number; y: number; ref: React.RefObject<HTMLDivElement> }
+interface Piece { id: string; x: number; y: number; s: number; ref: React.RefObject<HTMLDivElement> }
 
 export default function TonnesFrame() {
   const progress = useChapterProgress();
@@ -35,14 +34,16 @@ export default function TonnesFrame() {
   const leaderTopRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
 
-  // base offsets from screen centre, in vh
+  // Final offsets from screen centre + scale, in vh — the old base offset with the
+  // tuned nudge folded in (no runtime layer). e.g. headline base (0,-32) + tune
+  // (-25.81,-0.65)·0.696.
   const pieces: Piece[] = [
-    { id: 'tonnes.headline', x: 0, y: -32, ref: headlineRef },
-    { id: 'tonnes.measureW', x: 0, y: -17, ref: measureWRef },
-    { id: 'tonnes.measureH', x: 66, y: -8, ref: measureHRef },
-    { id: 'tonnes.baseline', x: -7, y: 29, ref: baselineRef },
-    { id: 'tonnes.leaderTop', x: 50, y: -30, ref: leaderTopRef },
-    { id: 'tonnes.caption', x: 0, y: 38, ref: captionRef },
+    { id: 'tonnes.headline', x: -25.81, y: -32.65, s: 0.696, ref: headlineRef },
+    { id: 'tonnes.measureW', x: -6.55, y: -15.95, s: 0.964, ref: measureWRef },
+    { id: 'tonnes.measureH', x: 66, y: -8.88, s: 0.94, ref: measureHRef },
+    { id: 'tonnes.baseline', x: 41.02, y: 25.41, s: 1, ref: baselineRef },
+    { id: 'tonnes.leaderTop', x: 50.11, y: -39, s: 1, ref: leaderTopRef },
+    { id: 'tonnes.caption', x: -12.63, y: 34.31, s: 0.801, ref: captionRef },
   ];
 
   useEffect(() => {
@@ -62,10 +63,8 @@ export default function TonnesFrame() {
       for (const pc of pieces) {
         const el = pc.ref.current;
         if (!el) continue;
-        const [ox, oy] = tuneStore.get(pc.id);
-        const s = tuneStore.getScale(pc.id);
-        // off (vh, base + tuned) → scale → centre on the anchor point
-        el.style.transform = `translate(${(ox + pc.x).toFixed(2)}vh, ${(oy + pc.y).toFixed(2)}vh) scale(${s}) translate(-50%, -50%)`;
+        // off (vh) → scale → centre on the anchor point (baked, no runtime layer)
+        el.style.transform = `translate(${pc.x}vh, ${pc.y}vh) scale(${pc.s}) translate(-50%, -50%)`;
       }
     };
     tick();

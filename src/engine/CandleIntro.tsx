@@ -4,7 +4,6 @@ import * as THREE from 'three';
 import './CandleIntro.css';
 import { useChapterProgress } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
-import { tuneStore } from './tuneEditor';
 import { t } from '../i18n';
 // Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
 // drop straight into the overlay: arrow-in-circle (green up / pink down) and the
@@ -88,11 +87,12 @@ const FACTS = [
 const CRASH = t<{ date: string; title: string; figure: string }>('opener.candles.crash');
 const INDEX_LABEL = t('opener.candles.indexLabel');
 
-// Placement nudges for the fact callouts + crash block come from the shared
-// layout editor (tuneStore): each block is draggable via the top-right edit
-// toggle, and the saved offsets live in tune-layout.json under these ids.
-const FACT_TUNE_ID = (i: number) => `candle.fact${i}`;
-const CRASH_TUNE_ID = 'candle.crash';
+// Placement nudges for the fact callouts + crash block — offset (vh) from each block's
+// canvas anchor + scale. Baked from the old layout editor; no runtime layer.
+const FACT_OFFSET: [number, number][] = [[-19.52, 28.74], [2.32, 5.91], [2.28, -0.39]];
+const FACT_SCALE = [1, 0.999, 0.996];
+const CRASH_OFFSET: [number, number] = [3.79, 1.31];
+const CRASH_SCALE: number = 0.965;
 
 // month markers at the first trading day of each month (labels are localized)
 const MONTHS = t<string[]>('opener.candles.months');
@@ -207,8 +207,6 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     Object.assign(mk('ci-index', gridEl), { textContent: INDEX_LABEL });
     const factItems = FACTS.map((f, i) => {
       const el = mk('ci-fact');
-      el.dataset.tune = FACT_TUNE_ID(i);   // draggable via the layout editor
-      el.dataset.tuneMode = 'store';        // JS-positioned → offset read in the loop
       const icon = f.marker === 'up' ? ICON_UP : ICON_DOWN;
       el.innerHTML =
         `<span class="ci-icon ci-icon-${f.marker}">${icon}</span>` +
@@ -218,8 +216,6 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       return { ...f, idx: candles.findIndex((c) => c.date === f.anchor), el };
     });
     const bmEl = mk('ci-bm');
-    bmEl.dataset.tune = CRASH_TUNE_ID;
-    bmEl.dataset.tuneMode = 'store';
     // The leading minus/dash hangs in the left margin (ci-bm-sign is absolute) so
     // the figure aligns on the "20", not on the dash — matching the reference.
     const dash = /^[‒–—−-]/.exec(CRASH.figure)?.[0] ?? '';
@@ -257,16 +253,15 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // STATIC full-chart camera — the chart stays in place; only the candles draw
       // in left→right (no pan, no zoom).
       const chartT = clamp01((sp - PH.chartStart) / (PH.chartEnd - PH.chartStart));
-      // Look at the chart's CENTRE (candles are laid out symmetric about x=0 via
-      // xOfIdx), not its right edge — otherwise the chart sits in the left half and
-      // camZForWidth (which measures from the look-at centre) can't fit it by width,
-      // clipping the left side. Centred, the width-fit governs correctly on narrow
-      // frames so the whole chart scales to fit. Scatter still converges to screen
-      // centre (candles lerp toward camX), so the fly-apart is visually unchanged.
-      const camX = 0;
       // Zoom in ~15% ONLY on the height-fit — so wide screens read larger, but a narrow
       // (portrait/mobile) frame that's width-constrained isn't pushed off the sides/bottom.
       const camZNow = Math.max(camZForHeight(WORLD_H * 1.22) / 1.15, camZForWidth(chartW * 1.06));
+      // LEFT-anchor the chart: candles are symmetric about x=0, so look at a point RIGHT of
+      // centre (camX>0) and the first candle sits near the LEFT edge — the chart draws
+      // left→right from there. vwNow = visible world width at the chart plane; clamp camX ≥0
+      // so a width-constrained (narrow) frame stays full-width instead of shifting right.
+      const vwNow = 2 * tan2 * aspect * camZNow;
+      const camX = Math.max(0, vwNow / 2 - chartW / 2 - COLW);
       camera.position.set(camX, 0, camZNow); camera.lookAt(camX, 0, 0); camera.updateProjectionMatrix();
       const revealEdge = (chartT / 0.92) * (N + 0.5) - 0.5;
       const scatter = smootherstep(clamp01((sp - PH.scatterStart) / PH.scatterDur));
@@ -346,8 +341,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         if (op > 0.005) {
           const maxL = host.clientWidth - 320;
           const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
-          const [oxv, oyv] = tuneStore.get(FACT_TUNE_ID(i));
-          const sc = tuneStore.getScale(FACT_TUNE_ID(i)); // ✎ resize
+          const [oxv, oyv] = FACT_OFFSET[i];
+          const sc = FACT_SCALE[i];
           const ox = oxv * vhPx, oy = oyv * vhPx;
           let leftPx: number, topPx: number, base: string;
           if (fi.pos === 'bottom') {
@@ -378,8 +373,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       if (bmOp > 0.005) {
         const cx = projX(N - 1).x;
         const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
-        const [bxv, byv] = tuneStore.get(CRASH_TUNE_ID);
-        const bsc = tuneStore.getScale(CRASH_TUNE_ID); // ✎ resize
+        const [bxv, byv] = CRASH_OFFSET;
+        const bsc = CRASH_SCALE;
         const bx = bxv * vhPx, by = byv * vhPx;
         const leftPx = Math.min(host.clientWidth - 220, cx + 22) + bx;
         const topPx = host.clientHeight * 0.48 + by;
@@ -404,42 +399,18 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         const fadeOut = (off: number) => 1 - smoothstep(clamp01((sp - off) / 0.045));
         const STAG = 0.012;
         const glow = 0;
-        // Layout-editor nudge (✎): each hero piece bakes its tuneStore offset/scale
-        // into its transform (store-mode) so the editor can move/resize it.
-        const vhPx = host.clientHeight / 100;
-        // fitScale with force=true so EVERY hero piece (texts + the SVG wordmark/logo)
-        // is always fit-to-width: it shrinks the element so its rendered width fits the
-        // screen (screen − 2·pad), scaling the whole thing (e.g. the two-line mobile
-        // wordmark) as ONE unit, and never upscales past its own tuned scale. Text that
-        // already fits just wraps; only a piece that would overflow is scaled down —
-        // "подгоняли свою ширину и постепенно уменьшали размер если совсем не влезает".
-        const tunePrefix = (id: string, el: HTMLElement | null, fit = true) => {
-          const [ox, oy] = tuneStore.get(id);
-          // fit=true → shrink-to-width (texts/logos that must not overflow); fit=false →
-          // plain scale, so the mobile wordmark can bleed off the right per the mockup.
-          const sc = fit ? tuneStore.fitScale(id, el, true) : tuneStore.getScale(id);
-          return `translate(${(ox * vhPx).toFixed(1)}px, ${(oy * vhPx).toFixed(1)}px) ` + (sc !== 1 ? `scale(${sc}) ` : '');
-        };
-
-        if (logoRef.current) {
-          logoRef.current.style.transform = tunePrefix('opener.logo', logoRef.current);
-          logoRef.current.style.opacity = fadeOut(0).toFixed(3);
-        }
+        // Hero pieces: position/scale/fit now live in Tailwind classes (desktop base +
+        // max-[800px] mobile overrides, fit-to-width via clamp()). Here we only drive the
+        // scroll slide-off opacity (+ the wordmark glow, currently disabled).
+        if (logoRef.current) logoRef.current.style.opacity = fadeOut(0).toFixed(3);
         if (wordmarkRef.current) {
-          wordmarkRef.current.style.transform = tunePrefix('opener.wordmark', wordmarkRef.current, false);
           wordmarkRef.current.style.opacity = fadeOut(0).toFixed(3);
           wordmarkRef.current.style.filter = glow > 0.01
             ? `brightness(${(1 + glow * 0.8).toFixed(2)}) drop-shadow(0 0 ${(glow * 13).toFixed(0)}px rgba(255,255,255,${(glow * 0.7).toFixed(2)}))`
             : '';
         }
-        if (subtitleRef.current) {
-          subtitleRef.current.style.transform = tunePrefix('opener.subtitle', subtitleRef.current);
-          subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3);
-        }
-        if (coordsRef.current) {
-          coordsRef.current.style.transform = tunePrefix('opener.coords', coordsRef.current);
-          coordsRef.current.style.opacity = fadeOut(2 * STAG).toFixed(3);
-        }
+        if (subtitleRef.current) subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3);
+        if (coordsRef.current) coordsRef.current.style.opacity = fadeOut(2 * STAG).toFixed(3);
       }
 
       renderer.render(scene, camera);
@@ -478,9 +449,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         ref={logoRef}
         src="/brand/meridian-logo.svg"
         alt={t('opener.logoAlt')}
-        data-tune="opener.logo"
-        data-tune-mode="store"
-        className="absolute left-[46px] top-[36px] h-[68px] w-auto z-20 pointer-events-none will-change-transform"
+        className="absolute left-[46px] top-[36px] h-[68px] w-auto z-20 pointer-events-none will-change-transform translate-x-[-2.57vh] translate-y-[-1.1vh]"
       />
       {/* hero — each element slides off independently (staggered in the loop). */}
       <div className="absolute inset-0 z-20 pointer-events-none">
@@ -488,10 +457,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         <div className="absolute top-[40px] left-1/2 -translate-x-1/2">
           <div
             ref={coordsRef}
-            data-tune="opener.coords"
-            data-tune-mode="store"
-            className="whitespace-nowrap text-white will-change-transform"
-            style={{ font: '400 15px var(--font-mono)', letterSpacing: '0.12em' }}
+            className="whitespace-nowrap text-white will-change-transform text-[clamp(13px,4.3vw,21px)] translate-x-[4.85vh] translate-y-[0.99vh] max-[800px]:translate-x-[-0.49vh] max-[800px]:translate-y-[11.31vh]"
+            style={{ fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: '0.12em' }}
           >
             {t('opener.hero.coordsCity')}{' '}
             <span
@@ -517,9 +484,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
               big with ~30px side padding. */}
           <div
             ref={wordmarkRef}
-            data-tune="opener.wordmark"
-            data-tune-mode="store"
-            className="will-change-transform"
+            className="will-change-transform translate-x-[3.29vh] translate-y-[0.39vh] scale-[1.123] max-[800px]:translate-x-0 max-[800px]:translate-y-0 max-[800px]:scale-100"
           >
             <img
               src="/brand/wall-st-rodeo.svg"
@@ -538,9 +503,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}
           <p
             ref={subtitleRef}
-            data-tune="opener.subtitle"
-            data-tune-mode="store"
-            className="mt-6 max-w-[760px] text-[clamp(17.6px,2.2vw,30.8px)] text-white/95 will-change-transform leading-[1.35]"
+            className="mt-6 max-w-[760px] text-[clamp(19.2px,2.4vw,33.6px)] text-white/95 will-change-transform leading-[1.35] translate-x-[-1.82vh] translate-y-[1.25vh] max-[800px]:translate-x-[-0.61vh] max-[800px]:translate-y-[5.6vh]"
             style={{ fontFamily: 'var(--font-struve)', fontWeight: 400 }}
           />
         </div>

@@ -2,10 +2,7 @@ import { useEffect, useRef } from 'react';
 import './StageOverlay.css';
 import { useChapterProgress } from './chapterScroll';
 import { localizeAssetUrl } from '../i18n';
-import { tuneStore } from './tuneEditor';
 
-/** Layout-editor id for stage plaque card i (draggable/resizable via the ✎ tool). */
-const PLAQUE_TUNE_ID = (i: number) => `opener.plaque${i}`;
 
 /**
  * StageOverlay — the bull's per-stage narrative: an eyebrow + paragraph (bottom
@@ -81,8 +78,6 @@ export default function StageOverlay({
     let cancelled = false;
     let unsub = () => {};
     let onResize = () => {};
-    let offActive = () => {};
-    let tuneRaf = 0;
 
     // Prefer the active locale's stages variant (stages.<locale>.json); fall back
     // to the base file when no translation has been dropped in yet.
@@ -113,8 +108,6 @@ export default function StageOverlay({
             : '';
           const el = document.createElement('div');
           el.className = 'so-text';
-          el.dataset.tune = PLAQUE_TUNE_ID(i); // draggable/resizable via the ✎ editor
-          el.dataset.tuneMode = 'store';        // JS-positioned → offset read in apply()
           el.innerHTML = `${kicker}<span class="so-eyebrow">${title}</span>${body}`;
           root.appendChild(el);
           return el;
@@ -160,20 +153,10 @@ export default function StageOverlay({
               let op = 0;
               const a = Math.abs(tt);
               if (a < 1) op = a > 1 - FADE ? (1 - a) / FADE : 1;
-              // Bake the layout-editor nudge (offset stored in vh, like the bull)
-              // and resize on top of the scroll-driven travel, so a dragged/resized
-              // plaque keeps moving with the scene.
-              const vhPx = window.innerHeight / 100;
-              const [oxv, oyv] = tuneStore.get(PLAQUE_TUNE_ID(i));
-              // Fit the card to the viewport width so the saved up-scale (~1.4×) never
-              // pushes it off the edge on a phone — replaces the old "drop scale to 1
-              // under 1024px" hack. `force` fits even without the per-element adaptive
-              // flag; honours a captured maxW from the ✎ editor.
-              const scEff = tuneStore.fitScale(PLAQUE_TUNE_ID(i), tEl, true);
+              // No tune offset/scale (the card is width-capped in CSS): the transform is
+              // just the scroll-driven vertical travel.
               tEl.style.opacity = op.toFixed(3);
-              tEl.style.transform =
-                `translate(${(oxv * vhPx).toFixed(1)}px, ${(ty + oyv * vhPx).toFixed(1)}px)` +
-                (scEff !== 1 ? ` scale(${scEff})` : '');
+              tEl.style.transform = `translateY(${ty.toFixed(1)}px)`;
             }
             const dwell = Math.abs(p - at) < gap * 0.42;
             for (const node of annos[i]) {
@@ -196,25 +179,12 @@ export default function StageOverlay({
         unsub = progress.on('change', apply);
         onResize = () => apply(progress.get());
         window.addEventListener('resize', onResize);
-
-        // While the layout editor is on, re-bake every frame so dragging/resizing a
-        // plaque shows live (a drag doesn't move scroll, so `apply` wouldn't fire).
-        const tuneLoop = () => {
-          if (!tuneStore.active) { tuneRaf = 0; return; }
-          apply(progress.get());
-          tuneRaf = requestAnimationFrame(tuneLoop);
-        };
-        const startTune = () => { if (!tuneRaf && tuneStore.active) tuneRaf = requestAnimationFrame(tuneLoop); };
-        offActive = tuneStore.onActiveChange((on) => { if (on) startTune(); });
-        startTune();
       })
       .catch((e) => console.warn('StageOverlay: stages load failed', e));
 
     return () => {
       cancelled = true;
       unsub();
-      offActive();
-      if (tuneRaf) cancelAnimationFrame(tuneRaf);
       window.removeEventListener('resize', onResize);
       root.innerHTML = '';
     };

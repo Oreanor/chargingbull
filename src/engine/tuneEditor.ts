@@ -330,7 +330,7 @@ export function initTuneEditor() {
       apply(el, id, mode);
       updateFrame();
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); syncPanel(); };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
@@ -346,7 +346,7 @@ export function initTuneEditor() {
       apply(el, id, mode);
       updateFrame();
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); syncPanel(); };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
@@ -442,6 +442,7 @@ export function initTuneEditor() {
     const [ox, oy] = tuneStore.get(id);
     tuneStore.set(id, [r2(ox + d[0] * stepVh), r2(oy + d[1] * stepVh)]);
     apply(selected, id, mode);
+    syncPanel();
   };
 
   // rAF: keep the frame glued to the (scroll-moving) selected element while active.
@@ -478,7 +479,7 @@ export function initTuneEditor() {
   // ---- UI: toggle (always) + save (while editing) --------------------------
   const toggle = document.createElement('button');
   toggle.dataset.tuneUi = '';
-  toggle.title = 'Toggle layout edit mode — click a plaque/SVG to select (drag / arrows / corner-resize), double-click text to edit it; Save persists layout + copy';
+  toggle.title = 'Toggle inspect/edit mode — click any element to select (drag / arrows / corner-resize); the panel shows its size, offset, type props + a "Copy Tailwind" button for the current breakpoint. Double-click text to edit copy; Save writes text edits to en.json (positions go via Copy Tailwind → className).';
   toggle.textContent = '✎';
   css(toggle, {
     position: 'fixed', top: '12px', right: '12px', width: '34px', height: '34px',
@@ -488,7 +489,8 @@ export function initTuneEditor() {
 
   const save = document.createElement('button');
   save.dataset.tuneUi = '';
-  save.textContent = 'Save';
+  save.title = 'Save double-click text edits to en.json (layout is copied out via the panel’s Copy Tailwind)';
+  save.textContent = 'Save text';
   css(save, {
     position: 'fixed', top: '12px', right: '54px', height: '34px', padding: '0 14px',
     zIndex: '2147483647', font: '600 13px monospace', color: '#fff', background: '#de2053',
@@ -532,62 +534,240 @@ export function initTuneEditor() {
     window.addEventListener('pointerup', up);
   });
 
-  // ---- per-element panel: adaptive toggle + capture-max button --------------
-  // Shows in the corner while an element is selected. "адаптив" flags the element so
-  // it shrinks to fit the screen width (tuneStore.fitScale); "взять как макс" (only
-  // active when adaptive) snapshots its current px width as this layer's ceiling.
+  // ---- per-element INSPECTOR + EDITOR panel --------------------------------
+  // Shows the selected element's geometry + (for text) type props, AND lets you edit
+  // them directly: offset/scale (→ the transform), text-align, font-size, colour, and
+  // explicit min/max width. "Copy Tailwind" emits every change as classes for the
+  // CURRENT breakpoint (base >800px, max-[800px]: on ≤800 — edit mobile by narrowing
+  // the window). Style edits (align/font/colour/min-w/max-w) are applied as inline
+  // styles for live preview and kept in `styleOv` per id — they aren't persisted; the
+  // Copy Tailwind output is the source-of-truth you paste into the className.
+  type StyleOv = { align?: string; fontPx?: number; color?: string; minW?: number; maxW?: number };
+  const styleOv = new Map<string, StyleOv>();
+  const ovFor = (id: string): StyleOv => { let o = styleOv.get(id); if (!o) { o = {}; styleOv.set(id, o); } return o; };
+  const applyStyleOv = (el: HTMLElement, id: string) => {
+    const o = styleOv.get(id); if (!o) return;
+    if (o.align != null) el.style.textAlign = o.align;
+    if (o.fontPx != null) el.style.fontSize = `${o.fontPx}px`;
+    if (o.color != null) el.style.color = o.color;
+    if (o.minW != null) el.style.minWidth = `${o.minW}px`;
+    if (o.maxW != null) el.style.maxWidth = `${o.maxW}px`;
+  };
+
   const panel = document.createElement('div');
   panel.dataset.tuneUi = '';
   css(panel, {
-    position: 'fixed', top: '90px', right: '12px', zIndex: '2147483647',
-    display: 'none', alignItems: 'center', gap: '8px', font: '600 11px/1.4 monospace',
-    color: '#fff', background: '#161616', border: '1px solid #444', borderRadius: '6px',
-    padding: '6px 9px', pointerEvents: 'auto', boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+    position: 'fixed', top: '92px', right: '12px', zIndex: '2147483647',
+    display: 'none', flexDirection: 'column', gap: '5px', font: '600 12px/1.5 monospace',
+    color: '#fff', background: '#171717', border: '1px solid #4a4a4a', borderRadius: '9px',
+    padding: '12px 14px', pointerEvents: 'auto', boxShadow: '0 6px 22px rgba(0,0,0,0.55)',
+    minWidth: '272px', maxWidth: '360px',
   });
 
+  const title = document.createElement('div');
+  title.dataset.tuneUi = '';
+  css(title, { color: '#2bd66b', fontWeight: '700', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '3px' });
+  panel.appendChild(title);
+
+  // ---- small builders (row / label / number input) ----
+  const rowEl = (): HTMLDivElement => {
+    const r = document.createElement('div'); r.dataset.tuneUi = '';
+    css(r, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', minHeight: '25px' });
+    return r;
+  };
+  const lblEl = (txt: string): HTMLSpanElement => {
+    const l = document.createElement('span'); l.dataset.tuneUi = ''; l.textContent = txt; l.style.color = '#9a9a9a'; return l;
+  };
+  const numInput = (step: number, w = '58px'): HTMLInputElement => {
+    const i = document.createElement('input');
+    i.type = 'number'; i.step = String(step); i.dataset.tuneUi = '';
+    css(i, { width: w, font: '600 12px monospace', color: '#fff', background: '#0c0c0c', border: '1px solid #565656', borderRadius: '4px', padding: '3px 5px', boxSizing: 'border-box' });
+    return i;
+  };
+  const rows: Record<string, HTMLSpanElement> = {};
+  const readRow = (key: string, lbl: string): HTMLDivElement => {
+    const r = rowEl();
+    const v = document.createElement('span'); v.dataset.tuneUi = ''; css(v, { color: '#fff', textAlign: 'right' });
+    r.appendChild(lblEl(lbl)); r.appendChild(v); panel.appendChild(r); rows[key] = v; return r;
+  };
+
+  readRow('size', 'size');
+
+  // offset X/Y (vh) — editable → the transform
+  const offX = numInput(0.1), offY = numInput(0.1);
+  { const r = rowEl(); const w = document.createElement('div'); w.dataset.tuneUi = ''; css(w, { display: 'flex', gap: '5px' });
+    w.appendChild(offX); w.appendChild(offY); r.appendChild(lblEl('offset vh')); r.appendChild(w); panel.appendChild(r); }
+
+  // scale — editable
+  const scaleIn = numInput(0.01);
+  { const r = rowEl(); r.appendChild(lblEl('scale')); r.appendChild(scaleIn); panel.appendChild(r); }
+
+  // align — L / C / R / J buttons
+  const alignBtns: Record<string, HTMLButtonElement> = {};
+  { const r = rowEl(); const w = document.createElement('div'); w.dataset.tuneUi = ''; css(w, { display: 'flex', gap: '4px' });
+    (['left', 'center', 'right', 'justify'] as const).forEach((a) => {
+      const b = document.createElement('button'); b.dataset.tuneUi = ''; b.textContent = { left: 'L', center: 'C', right: 'R', justify: 'J' }[a];
+      css(b, { width: '28px', height: '25px', font: '700 12px monospace', color: '#fff', background: '#0c0c0c', border: '1px solid #565656', borderRadius: '4px', cursor: 'pointer' });
+      b.addEventListener('click', () => { if (!selected) return; const { id } = idOf(selected); ovFor(id).align = a; selected.style.textAlign = a; syncPanel(); });
+      alignBtns[a] = b; w.appendChild(b);
+    });
+    r.appendChild(lblEl('align')); r.appendChild(w); panel.appendChild(r);
+  }
+
+  // explicit min / max width (px) — editable; empty clears the override
+  const minWIn = numInput(1, '56px'), maxWIn = numInput(1, '56px');
+  { const r = rowEl(); const w = document.createElement('div'); w.dataset.tuneUi = ''; css(w, { display: 'flex', alignItems: 'center', gap: '5px' });
+    const mn = lblEl('min'); const mx = lblEl('max');
+    w.appendChild(mn); w.appendChild(minWIn); w.appendChild(mx); w.appendChild(maxWIn);
+    r.appendChild(lblEl('width px')); r.appendChild(w); panel.appendChild(r); }
+
+  readRow('opz', 'opacity·z');
+
+  // ---- text-only rows ----
+  const textSep = document.createElement('div');
+  textSep.dataset.tuneUi = '';
+  css(textSep, { borderTop: '1px solid #333', margin: '3px 0' });
+  panel.appendChild(textSep);
+
+  const fontIn = numInput(1, '56px');
+  const fontRow = rowEl();
+  { const w = document.createElement('div'); w.dataset.tuneUi = ''; css(w, { display: 'flex', alignItems: 'center', gap: '5px' });
+    w.appendChild(fontIn); w.appendChild(lblEl('px')); fontRow.appendChild(lblEl('font size')); fontRow.appendChild(w); }
+  panel.appendChild(fontRow);
+
+  const colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.dataset.tuneUi = '';
+  css(colorIn, { width: '42px', height: '25px', padding: '0', border: '1px solid #565656', borderRadius: '4px', background: '#0c0c0c', cursor: 'pointer' });
+  const colorHex = document.createElement('span'); colorHex.dataset.tuneUi = ''; colorHex.style.color = '#fff';
+  const colorRow = rowEl();
+  { const w = document.createElement('div'); w.dataset.tuneUi = ''; css(w, { display: 'flex', alignItems: 'center', gap: '7px' });
+    w.appendChild(colorIn); w.appendChild(colorHex); colorRow.appendChild(lblEl('color')); colorRow.appendChild(w); }
+  panel.appendChild(colorRow);
+
+  const familyRow = readRow('family', 'family');
+
+  // adaptive toggle + capture-max (fit-to-width controls, kept)
+  const ctrlRow = document.createElement('div');
+  ctrlRow.dataset.tuneUi = '';
+  css(ctrlRow, { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '5px', borderTop: '1px solid #333', paddingTop: '7px' });
   const adaptLabel = document.createElement('label');
   adaptLabel.dataset.tuneUi = '';
   css(adaptLabel, { display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none' });
-  const adaptBox = document.createElement('input');
-  adaptBox.type = 'checkbox';
-  adaptBox.dataset.tuneUi = '';
-  adaptBox.style.cursor = 'pointer';
-  const adaptTxt = document.createElement('span');
-  adaptTxt.textContent = 'адаптив (по ширине)';
-  adaptLabel.appendChild(adaptBox);
-  adaptLabel.appendChild(adaptTxt);
+  const adaptBox = document.createElement('input'); adaptBox.type = 'checkbox'; adaptBox.dataset.tuneUi = ''; adaptBox.style.cursor = 'pointer';
+  const adaptTxt = document.createElement('span'); adaptTxt.textContent = 'адаптив';
+  adaptLabel.appendChild(adaptBox); adaptLabel.appendChild(adaptTxt);
+  const maxBtn = document.createElement('button'); maxBtn.dataset.tuneUi = ''; maxBtn.textContent = 'взять как макс';
+  maxBtn.title = 'Snapshot the element’s current width as this layer’s adaptive max';
+  css(maxBtn, { font: '600 11px monospace', color: '#fff', background: '#2563eb', border: '0', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', whiteSpace: 'nowrap' });
+  const maxInfo = document.createElement('span'); maxInfo.dataset.tuneUi = ''; css(maxInfo, { cursor: 'pointer', color: '#8ab4ff', whiteSpace: 'nowrap' }); maxInfo.title = 'Click to clear the captured max';
+  ctrlRow.appendChild(adaptLabel); ctrlRow.appendChild(maxBtn); ctrlRow.appendChild(maxInfo);
+  panel.appendChild(ctrlRow);
 
-  const maxBtn = document.createElement('button');
-  maxBtn.dataset.tuneUi = '';
-  maxBtn.textContent = 'взять как макс';
-  maxBtn.title = 'Snapshot the element’s current size as the max for this layer';
-  css(maxBtn, {
-    font: '600 11px monospace', color: '#fff', background: '#2563eb', border: '0',
-    borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
-  });
+  // Copy Tailwind — every change as classes for the current breakpoint.
+  const copyBtn = document.createElement('button');
+  copyBtn.dataset.tuneUi = '';
+  copyBtn.textContent = 'Copy Tailwind';
+  css(copyBtn, { marginTop: '7px', font: '700 12px monospace', color: '#001b08', background: '#2bd66b', border: '0', borderRadius: '5px', padding: '7px 10px', cursor: 'pointer' });
+  panel.appendChild(copyBtn);
 
-  const maxInfo = document.createElement('span');
-  maxInfo.dataset.tuneUi = '';
-  css(maxInfo, { cursor: 'pointer', color: '#8ab4ff', whiteSpace: 'nowrap' });
-  maxInfo.title = 'Click to clear the captured max';
+  const num = (v: string): number => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+  const rgbToHex = (c: string): string => {
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return /^#/.test(c) ? c : '#000000';
+    const [r, g, b] = m[1].split(',').map((n) => parseInt(n.trim(), 10));
+    return '#' + [r, g, b].map((n) => (n || 0).toString(16).padStart(2, '0')).join('');
+  };
+  const ALIGN_CLS: Record<string, string> = { left: 'text-left', center: 'text-center', right: 'text-right', justify: 'text-justify' };
+  // Tailwind for the current offset/scale + style overrides on the current breakpoint.
+  const tailwindFor = (id: string): string => {
+    const [x, y] = tuneStore.get(id);
+    const s = tuneStore.getScale(id);
+    const o = styleOv.get(id) || {};
+    const pfx = currentBp() === 'mobile' ? 'max-[800px]:' : '';
+    return [
+      x ? `${pfx}translate-x-[${x}vh]` : '',
+      y ? `${pfx}translate-y-[${y}vh]` : '',
+      s !== 1 ? `${pfx}scale-[${s}]` : '',
+      o.align ? `${pfx}${ALIGN_CLS[o.align] ?? ''}` : '',
+      o.fontPx != null ? `${pfx}text-[${o.fontPx}px]` : '',
+      o.color != null ? `${pfx}text-[${o.color}]` : '',
+      o.minW != null ? `${pfx}min-w-[${o.minW}px]` : '',
+      o.maxW != null ? `${pfx}max-w-[${o.maxW}px]` : '',
+    ].filter(Boolean).join(' ') || '(no changes — drag/resize/edit first)';
+  };
 
-  panel.appendChild(adaptLabel);
-  panel.appendChild(maxBtn);
-  panel.appendChild(maxInfo);
+  // ---- input wiring (each edits live) ----
+  offX.addEventListener('input', () => { if (!selected) return; const { id, mode } = idOf(selected); const [, y] = tuneStore.get(id); tuneStore.set(id, [r2(num(offX.value)), y]); apply(selected, id, mode); updateFrame(); });
+  offY.addEventListener('input', () => { if (!selected) return; const { id, mode } = idOf(selected); const [x] = tuneStore.get(id); tuneStore.set(id, [x, r2(num(offY.value))]); apply(selected, id, mode); updateFrame(); });
+  scaleIn.addEventListener('input', () => { if (!selected) return; const { id, mode } = idOf(selected); tuneStore.setScale(id, r3(num(scaleIn.value) || 1)); apply(selected, id, mode); updateFrame(); });
+  fontIn.addEventListener('input', () => { if (!selected) return; const { id } = idOf(selected); const o = ovFor(id); if (fontIn.value === '') { delete o.fontPx; selected.style.fontSize = ''; } else { o.fontPx = num(fontIn.value); selected.style.fontSize = `${o.fontPx}px`; } });
+  colorIn.addEventListener('input', () => { if (!selected) return; const { id } = idOf(selected); ovFor(id).color = colorIn.value; selected.style.color = colorIn.value; colorHex.textContent = colorIn.value; });
+  minWIn.addEventListener('input', () => { if (!selected) return; const { id } = idOf(selected); const o = ovFor(id); if (minWIn.value === '') { delete o.minW; selected.style.minWidth = ''; } else { o.minW = Math.round(num(minWIn.value)); selected.style.minWidth = `${o.minW}px`; } });
+  maxWIn.addEventListener('input', () => { if (!selected) return; const { id } = idOf(selected); const o = ovFor(id); if (maxWIn.value === '') { delete o.maxW; selected.style.maxWidth = ''; } else { o.maxW = Math.round(num(maxWIn.value)); selected.style.maxWidth = `${o.maxW}px`; } });
 
   function syncPanel() {
     if (!tuneStore.active || !selected) { panel.style.display = 'none'; return; }
     const { id } = idOf(selected);
+    applyStyleOv(selected, id); // re-assert live overrides in case the element re-rendered
+    const r = selected.getBoundingClientRect();
+    const cs = getComputedStyle(selected);
+    const vh = window.innerHeight / 100;
+    const [ox, oy] = tuneStore.get(id);
+    const s = tuneStore.getScale(id);
+    const o = styleOv.get(id) || {};
+    const bp = currentBp();
+    const e = offsets[id];
+    const inherited = bp === 'mobile' && !!e && !Array.isArray(e) && !e.mobile;
+    const active = document.activeElement;
+    title.textContent = `${shortId(id)}  ${bp === 'mobile' ? '📱' : '🖥'}${inherited ? '↑ (inherits desktop)' : ''}`;
+    rows.size.textContent = `${Math.round(r.width)}×${Math.round(r.height)}px · ${r2(r.width / vh)}×${r2(r.height / vh)}vh`;
+    rows.opz.textContent = `${r2(parseFloat(cs.opacity))} · z${cs.zIndex === 'auto' ? '—' : cs.zIndex}`;
+    if (active !== offX) offX.value = String(ox);
+    if (active !== offY) offY.value = String(oy);
+    if (active !== scaleIn) scaleIn.value = String(r2(s));
+    // align highlight (override wins; CSS 'start' reads as left)
+    const curAlign = o.align ?? (cs.textAlign === 'start' ? 'left' : cs.textAlign);
+    (Object.keys(alignBtns)).forEach((a) => {
+      const on = a === curAlign;
+      alignBtns[a].style.background = on ? '#2bd66b' : '#0c0c0c';
+      alignBtns[a].style.color = on ? '#001b08' : '#fff';
+    });
+    // min/max width — show override; placeholder hints the computed value
+    const cmn = Math.round(parseFloat(cs.minWidth)) || 0;
+    const cmx = Math.round(parseFloat(cs.maxWidth)) || 0;
+    minWIn.placeholder = cmn ? String(cmn) : '—';
+    maxWIn.placeholder = cmx ? String(cmx) : '—';
+    if (active !== minWIn) minWIn.value = o.minW != null ? String(o.minW) : '';
+    if (active !== maxWIn) maxWIn.value = o.maxW != null ? String(o.maxW) : '';
+    // Type properties — only for elements that directly hold text.
+    const isText = hasOwnText(selected);
+    const fs = parseFloat(cs.fontSize);
+    [textSep, fontRow, colorRow, familyRow].forEach((el) => { el.style.display = isText ? (el === textSep ? 'block' : 'flex') : 'none'; });
+    if (isText) {
+      if (active !== fontIn) fontIn.value = o.fontPx != null ? String(o.fontPx) : String(Math.round(fs));
+      const hex = o.color ?? rgbToHex(cs.color);
+      colorIn.value = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#000000';
+      colorHex.textContent = hex;
+      const lh = parseFloat(cs.lineHeight);
+      rows.family.textContent = `${cs.fontFamily.split(',')[0].replace(/["']/g, '')} · w${cs.fontWeight} · lh${isFinite(lh) ? r2(lh / fs) : '—'}`;
+    }
+    // adaptive / max
     const adaptive = tuneStore.isAdaptive(id);
     adaptBox.checked = adaptive;
     maxBtn.style.opacity = adaptive ? '1' : '0.4';
     maxBtn.style.pointerEvents = adaptive ? 'auto' : 'none';
     const mw = tuneStore.getMaxW(id);
-    maxInfo.textContent = mw ? `max ${Math.round(mw)}px ✕` : '';
+    maxInfo.textContent = mw ? `fit-max ${Math.round(mw)}px ✕` : '';
     maxInfo.style.display = mw ? 'inline' : 'none';
     panel.style.display = 'flex';
   }
 
+  copyBtn.addEventListener('click', async () => {
+    if (!selected) return;
+    const cls = tailwindFor(idOf(selected).id);
+    try { await navigator.clipboard.writeText(cls); copyBtn.textContent = 'Copied ✓'; }
+    catch { copyBtn.textContent = cls; } // clipboard blocked → show it to hand-copy
+    setTimeout(() => { copyBtn.textContent = 'Copy Tailwind'; }, 1500);
+  });
   adaptBox.addEventListener('change', () => {
     if (!selected) return;
     const { id, mode } = idOf(selected);
@@ -659,21 +839,17 @@ export function initTuneEditor() {
     // flush an in-progress edit so its text is included
     const ae = document.activeElement as HTMLElement | null;
     if (ae && ae.isContentEditable) commitEdit(ae);
+    // Positions are NO LONGER persisted to tune-layout.json — that runtime delta layer is
+    // dead (baked into source). Save now ONLY writes double-click text edits back to
+    // en.json; layout nudges leave via the panel's "Copy Tailwind" → paste into className.
     try {
-      const layoutRes = await fetch('/__tune', {
+      if (!pendingText.size) { save.textContent = 'No text edits'; return; }
+      const textRes = await fetch('/__i18n', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tuneStore.all(), null, 2),
+        body: JSON.stringify(Object.fromEntries(pendingText)),
       });
-      let ok = layoutRes.ok;
-      if (pendingText.size) {
-        const textRes = await fetch('/__i18n', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(Object.fromEntries(pendingText)),
-        });
-        ok = ok && textRes.ok;
-        if (textRes.ok) pendingText.clear();
-      }
-      save.textContent = ok ? 'Saved ✓' : 'Failed';
+      if (textRes.ok) pendingText.clear();
+      save.textContent = textRes.ok ? 'Saved ✓' : 'Failed';
     } catch {
       save.textContent = 'Failed';
     } finally {

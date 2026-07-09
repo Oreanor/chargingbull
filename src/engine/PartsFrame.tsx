@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
-import { tuneStore } from './tuneEditor';
 import { t } from '../i18n';
 // Inlined (not <img>) so the SVG can use the page's @font-face fonts. On DESKTOP the
 // label SVGs are used as-is; on MOBILE all copy is rendered as DOM text pulled from
@@ -33,7 +32,7 @@ const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); 
 
 const MOBILE_MAX = 800;
 
-interface Piece { id: string; x: number; y: number; ref: React.RefObject<HTMLDivElement> }
+interface Piece { id: string; x: number; y: number; s: number; ref: React.RefObject<HTMLDivElement> }
 
 // Base offsets = each piece's CENTRE from screen centre, in vh.
 //  desktop: laid out to Desktop-63.svg (design 1440×800 → centre 720,400, 1vh≈8px).
@@ -56,6 +55,13 @@ const COORDS_MOBILE: Record<string, [number, number]> = {
   'parts.horns': [1.6, -30.7],       // horns note across the top
   'parts.hornsDot1': [-18.9, -25.9], // marker by the horn
   'parts.hornsDot2': [0, 0],         // (hidden on mobile — mockup has two dots)
+};
+// Per-piece scale, DESKTOP only (mobile = 1). Baked from the old tune layer: the "30"
+// title, "Empty inside" and "5 cm" measure were scaled down to fit the wide layout.
+const SCALE_DESKTOP: Record<string, number> = {
+  'parts.title': 1.185,
+  'parts.emptyInside': 0.706,
+  'parts.measure5cm': 0.751,
 };
 
 export default function PartsFrame() {
@@ -80,7 +86,7 @@ export default function PartsFrame() {
   const hornsDot2Ref = useRef<HTMLDivElement>(null);
 
   const C = isMobile ? COORDS_MOBILE : COORDS_DESKTOP;
-  const mk = (id: string, ref: React.RefObject<HTMLDivElement>): Piece => ({ id, x: C[id][0], y: C[id][1], ref });
+  const mk = (id: string, ref: React.RefObject<HTMLDivElement>): Piece => ({ id, x: C[id][0], y: C[id][1], s: isMobile ? 1 : (SCALE_DESKTOP[id] ?? 1), ref });
   const pieces: Piece[] = [
     mk('parts.title', titleRef),
     mk('parts.dot', dotRef),
@@ -109,9 +115,7 @@ export default function PartsFrame() {
       for (const pc of pieces) {
         const el = pc.ref.current;
         if (!el) continue;
-        const [ox, oy] = tuneStore.get(pc.id);
-        const s = tuneStore.getScale(pc.id);
-        el.style.transform = `translate(${(ox + pc.x).toFixed(2)}vh, ${(oy + pc.y).toFixed(2)}vh) scale(${s}) translate(-50%, -50%)`;
+        el.style.transform = `translate(${pc.x.toFixed(2)}vh, ${pc.y.toFixed(2)}vh) scale(${pc.s}) translate(-50%, -50%)`;
       }
     };
     tick();

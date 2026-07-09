@@ -33,14 +33,14 @@ export function FutureSlide() {
         >
           {aiLede}
         </p>
-        <aside className="xpl-aside lg:w-[348px] lg:shrink-0" style={{ fontFamily: 'var(--font-struve)' }}>
+        <aside className="xpl-aside lg:w-[348px] lg:shrink-0 translate-x-[-3.29vh] translate-y-[1.7vh] max-[800px]:translate-x-[-2.28vh] max-[800px]:translate-y-[3.62vh]" style={{ fontFamily: 'var(--font-struve)' }}>
           <img
             src="/chapters/closing/dimodica.png"
             alt="Arturo Di Modica"
-            className="w-[96px] h-[96px] rounded-full object-cover mb-7"
+            className="w-[96px] h-[96px] rounded-full object-cover mb-7 translate-x-[6.92vh] translate-y-[3.3vh] scale-[1.876] max-[800px]:translate-x-[-17.16vh] max-[800px]:translate-y-[28.29vh]"
             style={{ background: 'var(--color-grays-800, #292929)' }}
           />
-          <blockquote className="text-white/90 text-[clamp(14px,1.1vw,18px)] leading-[1.5]">
+          <blockquote className="text-white/90 text-[clamp(14px,1.1vw,18px)] leading-[1.5] translate-x-[1.75vh] translate-y-[8.48vh]">
             &ldquo;My point was to show people that if you want to do something in a moment
             things are very bad, you can do it. You can do it by yourself. My point was
             that you must be strong.&rdquo;

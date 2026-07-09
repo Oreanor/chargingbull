@@ -3,7 +3,6 @@ import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } f
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
 import { t, localizeAssetUrl } from '../i18n';
-import { tuneStore } from './tuneEditor';
 import './MapChapter.css';
 // Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
 import ROUTE_THE from '../assets/route/the.svg?raw';
@@ -815,25 +814,22 @@ export default function MapChapter({
     if (introTitleRef.current) introTitleRef.current.style.opacity = '1';
   }, [introTitle, introBody]);
 
-  // Bake the saved (or live-dragged) layout-editor offsets into each title piece's
-  // transform, every frame — so the ✎ editor can nudge "The Bull's ROUTE" + the
-  // paragraph and the saved positions also show with the editor off.
+  // Position "The Bull's ROUTE" title pieces + the paragraph — offset (vh) + scale baked
+  // per piece from the old layout editor, no runtime layer. A short rAF loop applies them
+  // until every ref is mounted (the intro card renders on scroll), then they stay put.
   useEffect(() => {
-    const pieces: { ref: React.RefObject<HTMLElement>; id: string }[] = [
-      { ref: theRef, id: 'route.the' },
-      { ref: bullsRef, id: 'route.bulls' },
-      { ref: routeRef, id: 'route.route' },
-      { ref: introBodyRef, id: 'route.body' },
+    const pieces: { ref: React.RefObject<HTMLElement>; t: string }[] = [
+      { ref: theRef, t: 'translate(-14.57vh, -6.75vh) scale(1.301)' },
+      { ref: bullsRef, t: 'translate(-20.92vh, -10.3vh) scale(1.297)' },
+      { ref: routeRef, t: 'translate(13.56vh, -6.61vh) scale(1.305)' },
+      { ref: introBodyRef, t: 'translate(-1.8vh, 8.32vh) scale(1.676)' },
     ];
     let raf = 0;
     const tick = () => {
       raf = requestAnimationFrame(tick);
-      for (const { ref, id } of pieces) {
+      for (const { ref, t } of pieces) {
         const el = ref.current;
-        if (!el) continue;
-        const [ox, oy] = tuneStore.get(id);
-        const s = tuneStore.getScale(id);
-        el.style.transform = ox || oy || s !== 1 ? `translate(${ox}vh, ${oy}vh) scale(${s})` : '';
+        if (el) el.style.transform = t;
       }
     };
     tick();
