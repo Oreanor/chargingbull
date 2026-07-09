@@ -18,13 +18,15 @@ const A = ({ href, children }: { href: string; children: React.ReactNode }) => (
 export function SummaryBlock() {
   return (
     <section
-      className="w-full bg-[#292929] text-[#A5A5A5] px-6 md:px-[97px] py-16"
+      className="w-full bg-[#292929] text-[#A5A5A5] px-6 lg:px-6 py-16"
       style={{ fontFamily: 'var(--font-struve)' }}
     >
-      <div className="max-w-[1246px] mx-auto flex">
+      {/* Same editorial grid as FutureSlide / BullBearExplainer — container / spacer width /
+          gap / main measure match so the copy column lands on the shared vertical. */}
+      <div className="max-w-[1160px] mx-auto flex flex-col lg:flex-row lg:items-start gap-y-10 gap-x-[clamp(40px,8vw,130px)]">
         {/* empty first column (desktop only) — copy lives in the second column */}
-        <div className="hidden lg:block lg:w-[42%] shrink-0" aria-hidden />
-        <div className="flex-1 text-[clamp(14px,1.1vw,18px)] leading-[1.55] space-y-6">
+        <div className="hidden lg:block lg:w-[348px] lg:shrink-0" aria-hidden />
+        <div className="lg:flex-1 lg:max-w-[760px] text-[clamp(14px,1.1vw,18px)] leading-[1.55] space-y-6">
           <p>
             <b className="font-semibold">Credits</b>: Research, editing, design,
             illustrations, visualisations and layout by M&eacute;ridien. 3D Gaussian

@@ -9,7 +9,7 @@ import './BullBearExplainer.css';
 export function CrisisDynamics() {
   return (
     <section className="lg:px-6 py-24 md:py-32 bg-black">
-      <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start gap-y-14 gap-x-[clamp(32px,5vw,88px)]">
+      <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start gap-y-14 gap-x-[clamp(40px,8vw,130px)]">
         <aside
           className="xpl-aside lg:w-[348px] lg:shrink-0 text-right text-[clamp(14px,1.1vw,18px)] leading-[1.55]"
           style={{ fontFamily: 'var(--font-struve)' }}
@@ -19,7 +19,7 @@ export function CrisisDynamics() {
           counted.
         </aside>
         <div
-          className="xpl-main lg:flex-1 lg:max-w-[670px] text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white space-y-7"
+          className="xpl-main lg:flex-1 lg:max-w-[760px] text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white space-y-7"
           style={{ fontFamily: 'var(--font-martina)' }}
         >
           <p>

@@ -5,6 +5,7 @@ import './CandleIntro.css';
 import { useChapterProgress } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
 import { t } from '../i18n';
+import { tuneStore } from './tuneEditor';
 // Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
 // drop straight into the overlay: arrow-in-circle (green up / pink down) and the
 // skull. Colors are baked into the files.
@@ -91,8 +92,10 @@ const INDEX_LABEL = t('opener.candles.indexLabel');
 // canvas anchor + scale. Baked from the old layout editor; no runtime layer.
 const FACT_OFFSET: [number, number][] = [[-19.52, 28.74], [2.32, 5.91], [2.28, -0.39]];
 const FACT_SCALE = [1, 0.999, 0.996];
-const CRASH_OFFSET: [number, number] = [3.79, 1.31];
+const FACT_WIDTH: (number | null)[] = [null, null, null]; // px max-width per fact plate (null = CSS default)
+const CRASH_OFFSET: [number, number] = [3.79, -2.1];
 const CRASH_SCALE: number = 0.965;
+const CRASH_WIDTH: number | null = null; // px max-width of the crash block (null = CSS default)
 
 // month markers at the first trading day of each month (labels are localized)
 const MONTHS = t<string[]>('opener.candles.months');
@@ -209,6 +212,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     Object.assign(mk('ci-index', gridEl), { textContent: INDEX_LABEL });
     const factItems = FACTS.map((f, i) => {
       const el = mk('ci-fact');
+      // store-mode tune id: the layout editor drags this live (its offset/scale add on
+      // top of the baked FACT_OFFSET/FACT_SCALE below, read each frame in the tick).
+      el.dataset.tune = `opener.candle.fact.${i}`; el.dataset.tuneMode = 'store';
+      if (FACT_WIDTH[i] != null) el.style.maxWidth = `${FACT_WIDTH[i]}px`; // baked width (editor right-edge drag)
       const icon = f.marker === 'up' ? ICON_UP : ICON_DOWN;
       el.innerHTML =
         `<span class="ci-icon ci-icon-${f.marker}">${icon}</span>` +
@@ -218,6 +225,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       return { ...f, idx: candles.findIndex((c) => c.date === f.anchor), el };
     });
     const bmEl = mk('ci-bm');
+    bmEl.dataset.tune = 'opener.candle.crash'; bmEl.dataset.tuneMode = 'store'; // draggable via the layout editor (adds to CRASH_OFFSET/SCALE)
+    if (CRASH_WIDTH != null) bmEl.style.maxWidth = `${CRASH_WIDTH}px`; // baked width (editor right-edge drag)
     // The leading minus/dash hangs in the left margin (ci-bm-sign is absolute) so
     // the figure aligns on the "20", not on the dash — matching the reference.
     const dash = /^[‒–—−-]/.exec(CRASH.figure)?.[0] ?? '';
@@ -358,8 +367,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         if (op > 0.005) {
           const maxL = host.clientWidth - 320;
           const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
-          const [oxv, oyv] = FACT_OFFSET[i];
-          const sc = FACT_SCALE[i];
+          // baked constant + live layout-editor delta (store-mode), both in vh
+          const tune = tuneStore.get(`opener.candle.fact.${i}`);
+          const oxv = FACT_OFFSET[i][0] + tune[0], oyv = FACT_OFFSET[i][1] + tune[1];
+          const sc = FACT_SCALE[i] * tuneStore.getScale(`opener.candle.fact.${i}`);
           const ox = oxv * vhPx, oy = oyv * vhPx;
           let leftPx: number, topPx: number, base: string;
           if (fi.pos === 'bottom') {
@@ -390,8 +401,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       if (bmOp > 0.005) {
         const cx = projX(N - 1).x;
         const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
-        const [bxv, byv] = CRASH_OFFSET;
-        const bsc = CRASH_SCALE;
+        // baked constant + live layout-editor delta (store-mode), both in vh
+        const bTune = tuneStore.get('opener.candle.crash');
+        const bxv = CRASH_OFFSET[0] + bTune[0], byv = CRASH_OFFSET[1] + bTune[1];
+        const bsc = CRASH_SCALE * tuneStore.getScale('opener.candle.crash');
         const bx = bxv * vhPx, by = byv * vhPx;
         const leftPx = Math.min(host.clientWidth - 220, cx + 22) + bx;
         const topPx = host.clientHeight * 0.48 + by;

@@ -861,6 +861,20 @@ export default function MapChapter({
                 <div className="mc-date">{s.date}</div>
                 <div className="mc-loc">{s.location}{s.address ? ` · ${s.address}` : ''}</div>
                 <h2 className="mc-title">{s.title}</h2>
+                {/* optional photo (image path is relative to data.json's dir). onError
+                    hides the figure so cards whose image file doesn't exist yet stay clean. */}
+                {s.image ? (
+                  <figure className="mc-figure">
+                    <img
+                      className="mc-photo"
+                      src={dataUrl.replace(/[^/]*$/, '') + s.image.replace(/^\.\//, '')}
+                      alt={s.imageCaption ?? s.title}
+                      loading="lazy"
+                      onError={(e) => { const f = e.currentTarget.closest('figure'); if (f) (f as HTMLElement).style.display = 'none'; }}
+                    />
+                    {s.imageCaption ? <figcaption className="mc-caption">{s.imageCaption}</figcaption> : null}
+                  </figure>
+                ) : null}
                 {/* comment carries inline HTML (<a>…</a>, <b>…</b>) from data.json */}
                 <p className="mc-comment" dangerouslySetInnerHTML={{ __html: s.comment }} />
               </div>

@@ -200,7 +200,6 @@ export function CalculatorSlide({
       vizEl.classList.add('active');
       refreshField();               // flags + arrows go live
       if (!focused) { focused = true; amountEl.focus({ preventScroll: true }); }
-      hintEl.style.opacity = '1';   // invite the drag (CSS fades it; dissolves on first grab)
       let t0 = 0;
       const step = (now: number) => {
         if (!t0) t0 = now;
@@ -210,6 +209,9 @@ export function CalculatorSlide({
           if (ns !== startY) { startY = ns; render(); }
         }
         if (k < 1 && !userDragged) introRaf = requestAnimationFrame(step);
+        // hint appears only AFTER the flag has swept into place (штанга остановилась),
+        // not during the sweep — CSS fades it in; it dissolves again on the first grab.
+        else if (!userDragged) hintEl.style.opacity = '1';
       };
       introRaf = requestAnimationFrame(step);
     };

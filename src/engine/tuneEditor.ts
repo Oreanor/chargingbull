@@ -289,6 +289,19 @@ export function initTuneEditor() {
   handle.style.setProperty('pointer-events', 'auto', 'important');
   frame.appendChild(handle);
 
+  // Right-edge handle: drag the right vertical to set the element's WIDTH (max-width) —
+  // for trimming text blocks that run wider than wanted. Distinct from the corner
+  // (scale) handle. Stored as the maxW style override → Copy Tailwind emits max-w-[px].
+  const wHandle = document.createElement('div');
+  wHandle.dataset.tuneUi = '';
+  css(wHandle, {
+    position: 'absolute', right: '-5px', top: '15%', width: '9px', height: '70%',
+    borderRadius: '4px', background: '#2bd66b', boxShadow: '0 0 0 2px rgba(0,0,0,0.6)',
+    cursor: 'ew-resize', touchAction: 'none',
+  });
+  wHandle.style.setProperty('pointer-events', 'auto', 'important');
+  frame.appendChild(wHandle);
+
   const shortId = (id: string) => (id.startsWith('auto:') ? id.slice(id.lastIndexOf('>') + 1).trim() || 'auto' : id);
   const updateFrame = () => {
     if (!selected) return;
@@ -354,6 +367,28 @@ export function initTuneEditor() {
     if (!tuneStore.active || !selected) return;
     e.preventDefault(); e.stopPropagation();
     startResize(selected, e);
+  });
+
+  // Right-edge drag → element WIDTH (max-width). Uses the element's fixed left as the
+  // anchor so the block just gets narrower/wider; stored in the maxW override.
+  const startWidth = (el: HTMLElement) => {
+    const { id } = idOf(el);
+    const left = el.getBoundingClientRect().left;
+    const o = ovFor(id);
+    const move = (ev: PointerEvent) => {
+      const w = Math.max(40, Math.round(ev.clientX - left));
+      o.maxW = w;
+      el.style.maxWidth = `${w}px`;
+      updateFrame();
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); syncPanel(); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  wHandle.addEventListener('pointerdown', (e) => {
+    if (!tuneStore.active || !selected) return;
+    e.preventDefault(); e.stopPropagation();
+    startWidth(selected);
   });
 
   // ---- in-place TEXT editing (data-i18n elements) --------------------------
@@ -489,8 +524,8 @@ export function initTuneEditor() {
 
   const save = document.createElement('button');
   save.dataset.tuneUi = '';
-  save.title = 'Save double-click text edits to en.json (layout is copied out via the panel’s Copy Tailwind)';
-  save.textContent = 'Save text';
+  save.title = 'Save: bakes candle-plate drag positions into their source constants (FACT_OFFSET/CRASH_OFFSET) and writes double-click text edits to en.json. Other elements: bake position/props via Copy Tailwind → className.';
+  save.textContent = 'Save';
   css(save, {
     position: 'fixed', top: '12px', right: '54px', height: '34px', padding: '0 14px',
     zIndex: '2147483647', font: '600 13px monospace', color: '#fff', background: '#de2053',
@@ -593,7 +628,15 @@ export function initTuneEditor() {
 
   readRow('size', 'size');
 
-  // offset X/Y (vh) — editable → the transform
+  // absolute on-screen position X/Y (px) — the PRIMARY position control: type where the
+  // object should sit and it goes there. It drives the same underlying translate offset
+  // (so Copy Tailwind / the vh offset below stay in sync); coords are viewport-relative,
+  // matching the green frame you see on screen.
+  const posX = numInput(1), posY = numInput(1);
+  { const r = rowEl(); const w = document.createElement('div'); w.dataset.tuneUi = ''; css(w, { display: 'flex', gap: '5px' });
+    w.appendChild(posX); w.appendChild(posY); r.appendChild(lblEl('pos px')); r.appendChild(w); panel.appendChild(r); }
+
+  // offset X/Y (vh) — editable → the transform (kept: it's what Copy Tailwind emits)
   const offX = numInput(0.1), offY = numInput(0.1);
   { const r = rowEl(); const w = document.createElement('div'); w.dataset.tuneUi = ''; css(w, { display: 'flex', gap: '5px' });
     w.appendChild(offX); w.appendChild(offY); r.appendChild(lblEl('offset vh')); r.appendChild(w); panel.appendChild(r); }
@@ -697,6 +740,20 @@ export function initTuneEditor() {
   };
 
   // ---- input wiring (each edits live) ----
+  // pos px: set the offset so the element's on-screen rect.left/top hits the typed value.
+  // (delta from the CURRENT rect → converges as you type, same math as a drag.)
+  const applyPos = (axis: 'x' | 'y', val: number) => {
+    if (!selected) return;
+    const { id, mode } = idOf(selected);
+    const r = selected.getBoundingClientRect();
+    const vh = window.innerHeight / 100;
+    const [ox, oy] = tuneStore.get(id);
+    if (axis === 'x') tuneStore.set(id, [r2(ox + (val - r.left) / vh), oy]);
+    else tuneStore.set(id, [ox, r2(oy + (val - r.top) / vh)]);
+    apply(selected, id, mode); updateFrame();
+  };
+  posX.addEventListener('input', () => applyPos('x', num(posX.value)));
+  posY.addEventListener('input', () => applyPos('y', num(posY.value)));
   offX.addEventListener('input', () => { if (!selected) return; const { id, mode } = idOf(selected); const [, y] = tuneStore.get(id); tuneStore.set(id, [r2(num(offX.value)), y]); apply(selected, id, mode); updateFrame(); });
   offY.addEventListener('input', () => { if (!selected) return; const { id, mode } = idOf(selected); const [x] = tuneStore.get(id); tuneStore.set(id, [x, r2(num(offY.value))]); apply(selected, id, mode); updateFrame(); });
   scaleIn.addEventListener('input', () => { if (!selected) return; const { id, mode } = idOf(selected); tuneStore.setScale(id, r3(num(scaleIn.value) || 1)); apply(selected, id, mode); updateFrame(); });
@@ -722,6 +779,8 @@ export function initTuneEditor() {
     title.textContent = `${shortId(id)}  ${bp === 'mobile' ? '📱' : '🖥'}${inherited ? '↑ (inherits desktop)' : ''}`;
     rows.size.textContent = `${Math.round(r.width)}×${Math.round(r.height)}px · ${r2(r.width / vh)}×${r2(r.height / vh)}vh`;
     rows.opz.textContent = `${r2(parseFloat(cs.opacity))} · z${cs.zIndex === 'auto' ? '—' : cs.zIndex}`;
+    if (active !== posX) posX.value = String(Math.round(r.left));
+    if (active !== posY) posY.value = String(Math.round(r.top));
     if (active !== offX) offX.value = String(ox);
     if (active !== offY) offY.value = String(oy);
     if (active !== scaleIn) scaleIn.value = String(r2(s));
@@ -840,17 +899,50 @@ export function initTuneEditor() {
     // flush an in-progress edit so its text is included
     const ae = document.activeElement as HTMLElement | null;
     if (ae && ae.isContentEditable) commitEdit(ae);
-    // Positions are NO LONGER persisted to tune-layout.json — that runtime delta layer is
-    // dead (baked into source). Save now ONLY writes double-click text edits back to
-    // en.json; layout nudges leave via the panel's "Copy Tailwind" → paste into className.
+    // Save BAKES into source (no runtime delta layer): candle-plate drag deltas fold into
+    // the FACT_OFFSET/CRASH_OFFSET constants via /__bake; text edits go to en.json via
+    // /__i18n. After a successful candle bake the runtime delta is zeroed (the new position
+    // now lives in the source constant, so the plaque stays put; HMR reloads the new value).
+    // CSS/Tailwind elements still bake via the panel's Copy Tailwind (className).
+    const CANDLE_IDS = ['opener.candle.fact.0', 'opener.candle.fact.1', 'opener.candle.fact.2', 'opener.candle.crash'];
     try {
-      if (!pendingText.size) { save.textContent = 'No text edits'; return; }
-      const textRes = await fetch('/__i18n', {
+      // Per candle plate: offset delta (vh), scale multiplier, absolute width (px) — the
+      // endpoint folds each into its source constant (FACT_/CRASH_ OFFSET/SCALE/WIDTH).
+      const candleEdits: Record<string, { d?: [number, number]; s?: number; w?: number | null }> = {};
+      for (const id of CANDLE_IDS) {
+        const [x, y] = tuneStore.get(id);
+        const s = tuneStore.getScale(id);
+        const ov = styleOv.get(id);
+        const e: { d?: [number, number]; s?: number; w?: number | null } = {};
+        if (x || y) e.d = [x, y];
+        if (s !== 1) e.s = s;
+        if (ov && ov.maxW != null) e.w = ov.maxW;
+        if (Object.keys(e).length) candleEdits[id] = e;
+      }
+      const hasCandle = Object.keys(candleEdits).length > 0;
+      const hasText = pendingText.size > 0;
+      if (!hasCandle && !hasText) { save.textContent = 'No changes'; return; }
+      const reqs: Promise<Response>[] = [];
+      if (hasCandle) reqs.push(fetch('/__bake', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(candleEdits),
+      }));
+      if (hasText) reqs.push(fetch('/__i18n', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.fromEntries(pendingText)),
-      });
-      if (textRes.ok) pendingText.clear();
-      save.textContent = textRes.ok ? 'Saved ✓' : 'Failed';
+      }));
+      const ok = (await Promise.all(reqs)).every((r) => r.ok);
+      if (ok) {
+        // folded into source → zero the runtime delta so it isn't double-applied (HMR
+        // reloads CandleIntro with the new constants; the live inline width already matches)
+        for (const id of Object.keys(candleEdits)) {
+          tuneStore.set(id, [0, 0]);
+          tuneStore.setScale(id, 1);
+          const ov = styleOv.get(id); if (ov) delete ov.maxW;
+        }
+        pendingText.clear();
+      }
+      save.textContent = ok ? 'Saved ✓' : 'Failed';
     } catch {
       save.textContent = 'Failed';
     } finally {
