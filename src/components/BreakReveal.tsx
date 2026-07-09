@@ -86,7 +86,7 @@ export function BreakReveal({
           <p
             ref={bodyRef}
             style={{ fontFamily: 'var(--font-struve)' }}
-            className={`mx-auto max-w-[480px] text-[clamp(16px,1.5vw,20px)] leading-[1.3] text-fg/80 ${bodyClassName}`}
+            className={`mx-auto max-w-[480px] text-[clamp(16px,1.5vw,20px)] leading-[1.3] text-fg ${bodyClassName}`}
           />
         </div>
       </div>

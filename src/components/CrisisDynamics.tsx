@@ -11,7 +11,7 @@ export function CrisisDynamics() {
     <section className="lg:px-6 py-24 md:py-32 bg-black">
       <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start gap-y-14 gap-x-[clamp(32px,5vw,88px)]">
         <aside
-          className="xpl-aside lg:w-[348px] lg:shrink-0 text-right text-[clamp(14px,1.1vw,18px)] leading-[1.55] text-white/90"
+          className="xpl-aside lg:w-[348px] lg:shrink-0 text-right text-[clamp(14px,1.1vw,18px)] leading-[1.55]"
           style={{ fontFamily: 'var(--font-struve)' }}
         >
           Building the next generation of AI could cost about $7.6&nbsp;trillion between

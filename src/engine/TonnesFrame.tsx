@@ -50,25 +50,24 @@ export default function TonnesFrame() {
     if (!progress) return;
     const root = rootRef.current;
     if (!root) return;
-    let raf = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
+    // Static transforms (off/scale are baked constants) — set ONCE, not every frame.
+    for (const pc of pieces) {
+      const el = pc.ref.current;
+      if (el) el.style.transform = `translate(${pc.x}vh, ${pc.y}vh) scale(${pc.s}) translate(-50%, -50%)`;
+    }
+    // Only opacity is scroll-driven → recompute on smoothed-scroll change (idles otherwise,
+    // instead of a 60fps loop that ran for the whole page life re-writing constant transforms).
+    // 3.2 TONNES frame runs f9 → f10: rise 0.667→0.697, hold, dissolve 0.715→0.75.
+    const apply = () => {
       const p = progress.get();
-      // 3.2 TONNES frame runs f9 → f10: rise 0.667→0.697, hold, dissolve 0.715→0.75.
       const rise = smoothstep(clamp01((p - 0.667) / 0.03));
       const fall = 1 - smoothstep(clamp01((p - 0.715) / 0.035));
       const op = rise * fall;
       root.style.opacity = op.toFixed(3);
       root.style.visibility = op < 0.004 ? 'hidden' : 'visible';
-      for (const pc of pieces) {
-        const el = pc.ref.current;
-        if (!el) continue;
-        // off (vh) → scale → centre on the anchor point (baked, no runtime layer)
-        el.style.transform = `translate(${pc.x}vh, ${pc.y}vh) scale(${pc.s}) translate(-50%, -50%)`;
-      }
     };
-    tick();
-    return () => cancelAnimationFrame(raf);
+    apply();
+    return progress.on('change', apply);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress]);
 

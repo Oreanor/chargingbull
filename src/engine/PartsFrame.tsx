@@ -101,25 +101,24 @@ export default function PartsFrame() {
     if (!progress) return;
     const root = rootRef.current;
     if (!root) return;
-    let raf = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
+    // Static transforms (off/scale baked; depend on isMobile) — set ONCE per (re)render.
+    for (const pc of pieces) {
+      const el = pc.ref.current;
+      if (el) el.style.transform = `translate(${pc.x.toFixed(2)}vh, ${pc.y.toFixed(2)}vh) scale(${pc.s}) translate(-50%, -50%)`;
+    }
+    // Only opacity is scroll-driven → update on smoothed-scroll change (no forever loop).
+    // visible around the explode (cam stop @ f10.6 / 0.80): rise 0.80→0.835, hold,
+    // then «5 cm» + the rest START disappearing at f11.1 (0.842 → 0.877).
+    const apply = () => {
       const p = progress.get();
-      // visible around the explode (cam stop @ f10.6 / 0.80): rise 0.80→0.835, hold,
-      // then «5 cm» + the rest START disappearing at f11.1 (0.842 → 0.877).
       const rise = smoothstep(clamp01((p - 0.80) / 0.035));
       const fall = 1 - smoothstep(clamp01((p - 0.842) / 0.035));
       const op = rise * fall;
       root.style.opacity = op.toFixed(3);
       root.style.visibility = op < 0.004 ? 'hidden' : 'visible';
-      for (const pc of pieces) {
-        const el = pc.ref.current;
-        if (!el) continue;
-        el.style.transform = `translate(${pc.x.toFixed(2)}vh, ${pc.y.toFixed(2)}vh) scale(${pc.s}) translate(-50%, -50%)`;
-      }
     };
-    tick();
-    return () => cancelAnimationFrame(raf);
+    apply();
+    return progress.on('change', apply);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, isMobile]);
 

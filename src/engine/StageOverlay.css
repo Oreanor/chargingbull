@@ -21,7 +21,7 @@
   padding: 40px 50px 46px 50px;
   /* body text matches the map/chart cards (second part): clamp(17,1.65vw,24)/1.33 */
   font: 400 clamp(17px, 1.65vw, 24px) / 1.33 var(--font-struve);
-  color: rgba(245, 243, 238, 0.82);
+  color: #fff;
   transform-origin: left bottom;
   will-change: opacity, transform;
 }
@@ -36,7 +36,7 @@
 .so-text .so-kicker {
   display: block; margin-bottom: 12px;
   font: 500 11px / 1.45 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase;
-  color: rgba(245, 243, 238, 0.5);
+  color: #fff;
 }
 .so-text .so-eyebrow {
   display: block; margin-bottom: 16px;

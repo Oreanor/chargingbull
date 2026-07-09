@@ -240,9 +240,22 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     }
 
     // --- scroll-driven loop ---
+    // Visibility gate: once the opener is scrolled off-screen, keep the rAF alive (so it
+    // resumes instantly) but skip ALL per-frame work + renderer.render. The scene is
+    // stateless per frame (every position derives from the scroll `sp`), so it redraws
+    // correctly on return — no accumulation to lose. rootMargin opens the gate slightly
+    // early so there's never a stale flash. (DatumSplat gates the same way; its SDK
+    // self-idles, ours doesn't, so we gate the render call itself.)
+    let sceneVisible = true;
+    const visIO = new IntersectionObserver(
+      ([e]) => { sceneVisible = e.isIntersecting; },
+      { rootMargin: '15% 0px' },
+    );
+    visIO.observe(host);
     let raf = 0;
     const tick = () => {
       raf = requestAnimationFrame(tick);
+      if (!sceneVisible) return; // off-screen → skip compute + render, keep the loop alive
       const [s0, s1] = spanRef.current;
       const raw = clamp01(progress.get());
       const sp = clamp01(s1 > s0 ? (raw - s0) / (s1 - s0) : raw);
@@ -262,7 +275,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // so a width-constrained (narrow) frame stays full-width instead of shifting right.
       const vwNow = 2 * tan2 * aspect * camZNow;
       const camX = Math.max(0, vwNow / 2 - chartW / 2 - COLW);
-      camera.position.set(camX, 0, camZNow); camera.lookAt(camX, 0, 0); camera.updateProjectionMatrix();
+      // Only the VIEW changes per frame (position/lookAt) — fov/aspect are set in resize(),
+      // so no per-frame updateProjectionMatrix() is needed.
+      camera.position.set(camX, 0, camZNow); camera.lookAt(camX, 0, 0);
       const revealEdge = (chartT / 0.92) * (N + 0.5) - 0.5;
       const scatter = smootherstep(clamp01((sp - PH.scatterStart) / PH.scatterDur));
       const chartOn = sp < PH.chartStart ? 0 : 1;
@@ -423,6 +438,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       ro.disconnect();
+      visIO.disconnect();
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.geometry) m.geometry.dispose();
@@ -503,7 +519,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}
           <p
             ref={subtitleRef}
-            className="mt-6 max-w-[760px] text-[clamp(19.2px,2.4vw,33.6px)] text-white/95 will-change-transform leading-[1.35] translate-x-[-1.82vh] translate-y-[1.25vh] max-[800px]:translate-x-[-0.61vh] max-[800px]:translate-y-[5.6vh]"
+            className="mt-6 max-w-[760px] text-[clamp(19.2px,2.4vw,33.6px)] text-white will-change-transform leading-[1.35] translate-x-[-1.82vh] translate-y-[1.25vh] max-[800px]:translate-x-[-0.61vh] max-[800px]:translate-y-[5.6vh]"
             style={{ fontFamily: 'var(--font-struve)', fontWeight: 400 }}
           />
         </div>

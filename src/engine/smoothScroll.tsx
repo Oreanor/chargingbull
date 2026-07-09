@@ -125,9 +125,12 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
     let last = performance.now();
     let raf = 0;
 
+    let running = false;
+
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
+      if (dt <= 0) { raf = requestAnimationFrame(tick); return; } // shared-timestamp guard (no /0)
       const target = window.scrollY;
 
       // Unity-style SmoothDamp: eases in (gentle start) AND out (soft brake) toward
@@ -144,16 +147,32 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
         vel = (output - target) / dt;
       }
       pos = output;
+      // Settled → snap, emit once, and PARK the loop. Re-armed by the scroll/resize
+      // listener, so the whole page no longer runs a 60fps chase loop while idle.
       if (Math.abs(target - pos) < 0.1 && Math.abs(vel) < 1) {
-        pos = target;
-        vel = 0;
+        pos = target; vel = 0;
+        smoothed.set(pos);
+        running = false;
+        return;
       }
-
       smoothed.set(pos);
       raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const start = () => {
+      if (running) return;
+      running = true;
+      last = performance.now();
+      raf = requestAnimationFrame(tick);
+    };
+    const onScroll = () => start();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    start(); // settle to the current scrollY, then park
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
   }, [smoothed]);
 
   return <SmoothCtx.Provider value={smoothed}>{children}</SmoothCtx.Provider>;

@@ -327,10 +327,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   function setupCtx() {
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    // Resetting canvas.width invalidates any CanvasPattern built from this context, so the
-    // cached hatch would draw blank on every frame after the first — rebuild it per frame.
-    for (const k in hatchCache) delete hatchCache[k];
+    const needW = Math.round(W * dpr), needH = Math.round(H * dpr);
+    // Only resize the backing store when the size actually changed. Reassigning
+    // canvas.width every frame reallocated the buffer AND invalidated every CanvasPattern
+    // (so the hatch cache had to be rebuilt each frame). Guarded, the cache now survives.
+    if (canvas.width !== needW || canvas.height !== needH) {
+      canvas.width = needW; canvas.height = needH;
+      for (const k in hatchCache) delete hatchCache[k];
+    }
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);

@@ -6,7 +6,7 @@ const config: Config = {
     extend: {
       colors: {
         bg: '#000000',
-        fg: '#f5f3ee',
+        fg: '#ffffff',
         gold: '#c9a961',
         accent: '#e8c87c',
         // chart colours lifted straight from the Figma export

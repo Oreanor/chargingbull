@@ -498,10 +498,13 @@ export default function MapChapter({
       if (cancelled || !mapRef.current) return;
       overlay = new DL.MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(DL, 0, steps, routes) });
       map.addControl(overlay);
+      let lastProg = -1;
       const loop = () => {
         if (visible) {
           const prog = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
-          overlay!.setProps({ layers: buildMarkerLayers(DL, prog, steps, routes) });
+          // Only rebuild deck.gl layers when the playhead actually moved — a reader parked
+          // on the map otherwise reconstructs every Scatterplot/Path/Scenegraph each frame.
+          if (prog !== lastProg) { lastProg = prog; overlay!.setProps({ layers: buildMarkerLayers(DL, prog, steps, routes) }); }
         }
         raf = requestAnimationFrame(loop);
       };
@@ -814,27 +817,8 @@ export default function MapChapter({
     if (introTitleRef.current) introTitleRef.current.style.opacity = '1';
   }, [introTitle, introBody]);
 
-  // Position "The Bull's ROUTE" title pieces + the paragraph — offset (vh) + scale baked
-  // per piece from the old layout editor, no runtime layer. A short rAF loop applies them
-  // until every ref is mounted (the intro card renders on scroll), then they stay put.
-  useEffect(() => {
-    const pieces: { ref: React.RefObject<HTMLElement>; t: string }[] = [
-      { ref: theRef, t: 'translate(-14.57vh, -6.75vh) scale(1.301)' },
-      { ref: bullsRef, t: 'translate(-20.92vh, -10.3vh) scale(1.297)' },
-      { ref: routeRef, t: 'translate(13.56vh, -6.61vh) scale(1.305)' },
-      { ref: introBodyRef, t: 'translate(-1.8vh, 8.32vh) scale(1.676)' },
-    ];
-    let raf = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      for (const { ref, t } of pieces) {
-        const el = ref.current;
-        if (el) el.style.transform = t;
-      }
-    };
-    tick();
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  // "The Bull's ROUTE" title pieces + the paragraph carry their baked offset(vh)+scale
+  // transforms inline in the JSX (see the route-title block below) — no runtime loop.
 
   const N = steps.length || STEP_CAMERAS.length;
   return (
@@ -908,7 +892,7 @@ export default function MapChapter({
                   data-tune="route.bulls"
                   data-tune-mode="store"
                   className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-                  style={{ left: '2%', top: '18%', width: 'min(560px, 52vw)' }}
+                  style={{ left: '2%', top: '18%', width: 'min(560px, 52vw)', transform: 'translate(-20.92vh, -10.3vh) scale(1.297)' }}
                   dangerouslySetInnerHTML={{ __html: ROUTE_BULLS }}
                 />
                 <div
@@ -916,7 +900,7 @@ export default function MapChapter({
                   data-tune="route.the"
                   data-tune-mode="store"
                   className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-                  style={{ left: '24%', top: '0%', width: 'min(96px, 9vw)' }}
+                  style={{ left: '24%', top: '0%', width: 'min(96px, 9vw)', transform: 'translate(-14.57vh, -6.75vh) scale(1.301)' }}
                   dangerouslySetInnerHTML={{ __html: ROUTE_THE }}
                 />
                 <div
@@ -924,15 +908,13 @@ export default function MapChapter({
                   data-tune="route.route"
                   data-tune-mode="store"
                   className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-                  style={{ left: '52%', top: '16%', width: 'min(428px, 40vw)' }}
+                  style={{ left: '52%', top: '16%', width: 'min(428px, 40vw)', transform: 'translate(13.56vh, -6.61vh) scale(1.305)' }}
                   dangerouslySetInnerHTML={{ __html: ROUTE_ROUTE }}
                 />
               </div>
               <p
                 ref={introBodyRef}
-                data-tune="route.body"
-                data-tune-mode="store"
-                style={{ fontFamily: 'var(--font-struve)', color: '#FBC75F' }}
+                style={{ fontFamily: 'var(--font-struve)', color: '#FBC75F', transform: 'translate(-1.8vh, 8.32vh) scale(1.676)' }}
                 className="mx-auto max-w-[480px] text-center text-[clamp(16px,1.5vw,20px)] leading-[1.3]"
               />
             </div>

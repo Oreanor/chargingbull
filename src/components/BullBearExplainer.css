@@ -1,6 +1,9 @@
 /* Bull/Bear explainer — two columns: narrow struve aside (left) + wide martina
    serif body (right) with highlighted "bull/bear market" pills and inline links. */
 
+/* Plaque/aside body copy is pure white (no transparency) — one rule for all asides. */
+.xpl-aside { color: #fff; }
+
 .xpl-aside a,
 .xpl-main a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 

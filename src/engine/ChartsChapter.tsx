@@ -65,7 +65,10 @@ export default function ChartsChapter({
     // (possibly wrong) size it was first measured at.
     const ro = new ResizeObserver(() => eng.resize());
     if (canvasRef.current) ro.observe(canvasRef.current);
-    return () => { alive = false; window.removeEventListener('resize', onResize); ro.disconnect(); };
+    // Null the engine on teardown so the morph effect (deps [engine]) re-runs, early-returns
+    // and drops its progress subscription — otherwise the off-screen chart keeps redrawing
+    // (full 2D repaint) on every scroll frame for the rest of the session.
+    return () => { alive = false; window.removeEventListener('resize', onResize); ro.disconnect(); setEngine(null); };
   }, [mounted, dataUrl]);
 
   // Stage CROSSFADE — driven by RAW scroll (not the section-clamped progress, which

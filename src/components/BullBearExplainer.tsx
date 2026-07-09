@@ -75,7 +75,7 @@ export function BullBearExplainer() {
         <div ref={contentRef} className="absolute inset-0 flex items-center">
           <div className="mx-auto max-w-[1160px] w-full lg:px-[clamp(24px,5vw,80px)] flex flex-col lg:flex-row lg:items-start gap-y-10 gap-x-[clamp(40px,8vw,130px)]">
             <aside
-              className="xpl-aside lg:w-[352px] lg:shrink-0 text-[clamp(14px,1.1vw,18px)] leading-[1.55] text-white/90"
+              className="xpl-aside lg:w-[352px] lg:shrink-0 text-[clamp(14px,1.1vw,18px)] leading-[1.55]"
               style={{ fontFamily: 'var(--font-struve)' }}
               dangerouslySetInnerHTML={{ __html: t('explainer.aside') }}
             />

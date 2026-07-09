@@ -672,8 +672,9 @@ export function initTuneEditor() {
   const num = (v: string): number => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
   const rgbToHex = (c: string): string => {
     const m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return /^#/.test(c) ? c : '#000000';
-    const [r, g, b] = m[1].split(',').map((n) => parseInt(n.trim(), 10));
+    if (!m) return /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#000000';
+    // handle both comma ("rgb(0, 0, 0)") and modern space ("rgb(0 0 0 / .5)") syntaxes
+    const [r, g, b] = m[1].split(/[\s,/]+/).filter(Boolean).map((n) => parseInt(n, 10));
     return '#' + [r, g, b].map((n) => (n || 0).toString(16).padStart(2, '0')).join('');
   };
   const ALIGN_CLS: Record<string, string> = { left: 'text-left', center: 'text-center', right: 'text-right', justify: 'text-justify' };
