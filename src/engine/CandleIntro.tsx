@@ -147,7 +147,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     host.appendChild(renderer.domElement);
-    renderer.domElement.style.display = 'block';
+    // CSS holds the canvas at 100% of the host so a stale mobile size measurement can't
+    // letterbox it (black bars); only the render buffer lags a frame until resize() corrects.
+    renderer.domElement.style.cssText = 'display:block;width:100%;height:100%';
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(PARAMS.fov, 1, 0.1, 20000);
     // No lights: candles use a flat (unlit) MeshBasicMaterial so they read as the
@@ -181,7 +183,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const resize = () => {
       const W = host.clientWidth, H = host.clientHeight;
       if (W <= 0 || H <= 0) return;
-      renderer.setSize(W, H); aspect = W / H;
+      renderer.setSize(W, H, false); aspect = W / H; // buffer only; CSS keeps the canvas full-bleed
       camera.fov = PARAMS.fov; tan2 = Math.tan((camera.fov * Math.PI) / 360);
       camera.aspect = aspect; camera.updateProjectionMatrix();
     };

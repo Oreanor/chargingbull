@@ -114,12 +114,16 @@ export class GlbScene {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: bg[3] < 1 });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.setSize(w, h);
+    renderer.setSize(w, h, false); // buffer only — CSS holds the canvas at 100% of the host
     renderer.setClearColor(new THREE.Color(bg[0], bg[1], bg[2]), bg[3]);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
+    // The canvas fills the host via CSS (not fixed px from setSize) so a stale/early size
+    // measurement on mobile can't letterbox it (black bars right/bottom) — only the render
+    // buffer resolution lags for a frame until the ResizeObserver corrects it.
+    renderer.domElement.style.cssText = 'display:block;width:100%;height:100%';
     this.renderer = renderer;
 
     const scene = new THREE.Scene();
@@ -258,7 +262,7 @@ export class GlbScene {
       const W = host.clientWidth;
       const H = host.clientHeight;
       if (!W || !H) return;
-      renderer.setSize(W, H);
+      renderer.setSize(W, H, false); // buffer only; CSS keeps the canvas full-bleed
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
     };

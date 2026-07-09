@@ -256,7 +256,7 @@ export function CalculatorSlide({
   }, [dataUrl]);
 
   return (
-    <section ref={sectionRef} className="calc-section" style={{ height: '240vh' }}>
+    <section ref={sectionRef} className="calc-section" style={{ height: '150vh' }}>
       <div className="calc-sticky">
       <div className="calc-wrap">
         <div className="calc-top">

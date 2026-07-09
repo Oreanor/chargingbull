@@ -5,9 +5,12 @@
 @tailwind utilities;
 
 @layer base {
-  html, body { background: #000; }
+  /* Clip horizontal overflow at BOTH the root and body — on mobile the scroll container
+     is <html>, so a body-only clip lets a stray wide element (e.g. a full-bleed wordmark)
+     push the document sideways: content shifts left, fixed UI stays put. `clip` (not
+     `hidden`) creates no scroll container, so position:sticky is unaffected. */
+  html, body { background: #000; overflow-x: clip; }
   body {
-    overflow-x: clip;
     font-family: var(--font-struve);
     color: #f5f3ee;
     -webkit-font-smoothing: antialiased;
