@@ -68,11 +68,13 @@ export function BreakReveal({
   return (
     <section ref={sectionRef} className="relative h-[160vh] w-full bg-black">
       <div className="sticky top-0 h-[100dvh] flex items-center justify-center px-6">
-        <div className="text-center max-w-[820px]">
+        {/* wide enough for the desktop wordmark (1211px at the 1440px design width) */}
+        <div className="text-center max-w-[1215px]">
           <div
             ref={titleRef}
             style={{ opacity: 0 }}
-            className={`mb-7 ${titleClassName}`}
+            /* 72px below the mark at 1440 — the Figma slide's logo→caption gap */
+            className={`mb-[min(72px,5vw)] max-sm:mb-7 ${titleClassName}`}
           >
             {titleNode ?? (
               <span
@@ -83,10 +85,12 @@ export function BreakReveal({
               </span>
             )}
           </div>
+          {/* Desktop type is the design's: 30px / 1.2 at the 1440px frame. max-w is in em
+              so the caption keeps the design's line breaks at every viewport width. */}
           <p
             ref={bodyRef}
             style={{ fontFamily: 'var(--font-struve)' }}
-            className={`mx-auto max-w-[480px] text-[clamp(16px,1.5vw,20px)] leading-[1.3] text-fg ${bodyClassName}`}
+            className={`mx-auto text-fg max-w-[23.33em] text-[clamp(16px,2.083vw,30px)] leading-[1.2] max-sm:max-w-[480px] max-sm:text-[clamp(16px,1.5vw,20px)] max-sm:leading-[1.3] ${bodyClassName}`}
           />
         </div>
       </div>

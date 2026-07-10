@@ -5,10 +5,10 @@ import { useSmoothProgress } from './smoothScroll';
 import { t, localizeAssetUrl } from '../i18n';
 import './MapChapter.css';
 // Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
-import ROUTE_THE from '../assets/route/the.svg?raw';
-import ROUTE_BULLS from '../assets/route/bulls.svg?raw';
-import ROUTE_ROUTE from '../assets/route/route.svg?raw';
-// Single clean chapter logo used on MOBILE in place of the 3-piece composition above.
+// Desktop: the designer's one-line "The Bull's ROUTE" lockup, outlined straight from
+// the Figma intro slide (docs/intros/Desktop - 46.svg).
+import THE_BULLS_ROUTE_DESKTOP from '../assets/logos/the-bulls-route-desktop.svg?url';
+// Mobile keeps the STACKED lockup (the wide one is unreadable on a phone).
 import THE_BULLS_ROUTE from '../assets/logos/the-bulls-route.svg?url';
 
 // deck.gl is imported DYNAMICALLY (in the overlay effect) — it touches browser
@@ -167,6 +167,10 @@ const REVEAL_DIVE_SPAN = 0.54;
 // many extra zoom levels and eases out to the stop-0 framing over INTRO_MS.
 const INTRO_ZOOM = 3;
 const INTRO_MS = 500;
+
+// Zoom band over which street/district/POI labels fade out: full at the wide journey
+// stops, gone by the time the 3D buildings read as buildings rather than specks.
+const LABEL_FADE: [number, number] = [13.8, 14.8];
 const journeyOf = (sp: number) => Math.min(1, sp / (1 - DIVE_FRAC));
 const diveOf = (sp: number) => clamp((sp - (1 - DIVE_FRAC)) / DIVE_FRAC, 0, 1);
 
@@ -246,7 +250,7 @@ function geomCentroid(geometry: GeoJSON.Geometry): LngLat | null {
 }
 
 /** Recolour the base to navy, hide the style's own building layers (they z-fight our
- *  building-3d), and cap street/district/POI labels at zoom 12. Idempotent, so it can
+ *  building-3d), and fade street/district/POI labels out as we zoom in. Idempotent, so it can
  *  re-run on the live map (e.g. HMR) — not just once at load. */
 function customizeBaseStyle(map: MapboxMap): void {
   try {
@@ -271,7 +275,15 @@ function customizeBaseStyle(map: MapboxMap): void {
         if (road) map.setPaintProperty(id, 'line-color', '#2b3444');
       } else if (l.type === 'symbol') {
         if (/road|street|settlement|neighb|place|locality|district|subdivision|poi/i.test(id)) {
-          map.setLayerZoomRange(id, l.minzoom ?? 0, 12);
+          // Labels belong to the wide journey stops (z 12.65–13.4), where the buildings are
+          // specks. They fade out across LABEL_FADE, before the close stops (15.46 NYSE-
+          // adjacent, 17.11 the raid) where the extrusions carry the frame on their own.
+          map.setLayerZoomRange(id, l.minzoom ?? 0, 24);
+          const fade: ExpressionSpecification = [
+            'interpolate', ['linear'], ['zoom'], LABEL_FADE[0], 1, LABEL_FADE[1], 0,
+          ];
+          try { map.setPaintProperty(id, 'text-opacity', fade); } catch { /* no text */ }
+          try { map.setPaintProperty(id, 'icon-opacity', fade); } catch { /* no icon */ }
         }
       }
     }
@@ -323,10 +335,6 @@ export default function MapChapter({
   const introRef = useRef<HTMLDivElement>(null);
   const introTitleRef = useRef<HTMLDivElement>(null);
   const introBodyRef = useRef<HTMLParagraphElement>(null);
-  // outlined "The Bull's ROUTE" title pieces — draggable via the ✎ editor.
-  const theRef = useRef<HTMLDivElement>(null);
-  const bullsRef = useRef<HTMLDivElement>(null);
-  const routeRef = useRef<HTMLDivElement>(null);
   const outroRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -440,7 +448,7 @@ export default function MapChapter({
         }
       } catch (e) { console.warn('building-3d layer failed', e); }
 
-      // Navy base + hide the style's own buildings + cap street/district/POI labels.
+      // Navy base + hide the style's own buildings + fade labels out on zoom-in.
       customizeBaseStyle(map);
       setMapReady(true);
 
@@ -888,48 +896,30 @@ export default function MapChapter({
             className="absolute inset-0 z-30 bg-black flex items-center justify-center px-6 pointer-events-none"
             style={{ opacity: 1 }}
           >
-            <div className="max-w-[920px]">
-              {/* mobile: one big logo, ~30px side padding (desktop uses the 3-piece below) */}
+            {/* wide enough for the desktop wordmark (1177px at the 1440px design width) */}
+            <div className="max-w-[1180px]">
+              {/* mobile: the stacked lockup, ~30px side padding */}
               <img
                 src={THE_BULLS_ROUTE}
                 alt="The Bull's Route"
                 className="hidden max-sm:block mx-auto mb-6 w-[calc(100vw-60px)] h-auto"
               />
-              {/* outlined "The Bull's ROUTE" title — each piece draggable (store-mode). */}
+              {/* desktop: the designer's one-line lockup, outlined from the Figma slide.
+                  Width + gap are the design's share of its 1440px frame (1177/1440 = 81.77vw,
+                  69px gap), capped so the mark never scales past 1:1. */}
               <div
                 ref={introTitleRef}
-                className="max-sm:hidden"
-                style={{ opacity: 0, position: 'relative', width: 'min(880px, 92vw)', height: 'min(330px, 35vw)', margin: '0 auto 24px' }}
+                className="max-sm:hidden mx-auto w-[min(1177px,81.77vw)] mb-[min(69px,4.79vw)]"
+                style={{ opacity: 0 }}
               >
-                <div
-                  ref={bullsRef}
-                  data-tune="route.bulls"
-                  data-tune-mode="store"
-                  className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-                  style={{ left: '2%', top: '18%', width: 'min(560px, 52vw)', transform: 'translate(-20.92vh, -10.3vh) scale(1.297)' }}
-                  dangerouslySetInnerHTML={{ __html: ROUTE_BULLS }}
-                />
-                <div
-                  ref={theRef}
-                  data-tune="route.the"
-                  data-tune-mode="store"
-                  className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-                  style={{ left: '24%', top: '0%', width: 'min(96px, 9vw)', transform: 'translate(-14.57vh, -6.75vh) scale(1.301)' }}
-                  dangerouslySetInnerHTML={{ __html: ROUTE_THE }}
-                />
-                <div
-                  ref={routeRef}
-                  data-tune="route.route"
-                  data-tune-mode="store"
-                  className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-                  style={{ left: '52%', top: '16%', width: 'min(428px, 40vw)', transform: 'translate(13.56vh, -6.61vh) scale(1.305)' }}
-                  dangerouslySetInnerHTML={{ __html: ROUTE_ROUTE }}
-                />
+                <img src={THE_BULLS_ROUTE_DESKTOP} alt="The Bull's Route" className="block w-full h-auto" />
               </div>
+              {/* Desktop type is the design's: 30px / 1.2 at the 1440px frame; max-w in em
+                  keeps the design's line breaks at every viewport width. */}
               <p
                 ref={introBodyRef}
-                style={{ fontFamily: 'var(--font-struve)', color: '#FBC75F', transform: 'translate(-1.8vh, 8.32vh) scale(1.676)' }}
-                className="mx-auto max-w-[480px] text-center text-[clamp(16px,1.5vw,20px)] leading-[1.3]"
+                style={{ fontFamily: 'var(--font-struve)', color: '#FBC75F' }}
+                className="mx-auto text-center max-w-[24em] text-[clamp(16px,2.083vw,30px)] leading-[1.2] max-sm:max-w-[480px] max-sm:text-[clamp(16px,1.5vw,20px)] max-sm:leading-[1.3] max-sm:translate-x-[-1.8vh] max-sm:translate-y-[8.32vh] max-sm:scale-[1.676]"
               />
             </div>
           </div>

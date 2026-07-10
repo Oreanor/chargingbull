@@ -1,36 +1,31 @@
 import { t } from '../i18n';
-// Single clean chapter logo used on MOBILE in place of the 3-piece BEARS/vs/Bulls
-// composition (which is tuned for wide screens and gets cramped on a phone).
+// Desktop: the designer's one-line "BEARS vs Bulls" lockup, outlined straight from
+// the Figma intro slide (docs/intros/Desktop - 51.svg) — one path per word, so the
+// spacing and overlap are the design's, not a re-typesetting of three loose pieces.
+import BEARS_VS_BULLS_DESKTOP from '../assets/logos/bears-vs-bulls-desktop.svg?url';
+// Mobile keeps the STACKED lockup (the wide one is unreadable on a phone).
 import BEARS_VS_BULLS from '../assets/logos/bears-vs-bulls.svg?url';
 
 /**
- * BearsBullsTitle — the "BEARS vs Bulls" wordmark (three outlined SVGs) for the
- * chapter-divider reveal. Desktop shows the 3-piece composition; each piece's
- * position + scale is baked straight into its Tailwind classes (no runtime tune
- * layer). Mobile swaps to one clean logo. Heights keep the SVGs' native ratio
- * (339 : 120 : 368) to match the Figma export.
+ * BearsBullsTitle — the "BEARS vs Bulls" wordmark for the chapter-divider reveal.
+ * Both breakpoints are one outlined SVG; only the lockup differs. The desktop width
+ * is the design's share of its 1440px frame (1211/1440 = 84.1vw), capped at the mark's
+ * native size so it never scales past 1:1.
  */
-const PIECES = [
-  { id: 'bears', src: '/chapters/bears-bulls/BEARS.svg', altKey: 'bearsBulls.altBears', imgCls: 'h-[clamp(74px,15.6vw,210px)] max-sm:h-[12vw] w-auto block', wrapCls: 'translate-x-[-16.13vh] translate-y-[-8.38vh] scale-[1.831]' },
-  { id: 'vs', src: '/chapters/bears-bulls/vs.svg', altKey: 'bearsBulls.altVs', imgCls: 'h-[clamp(26px,5.5vw,74px)] max-sm:h-[4.3vw] w-auto block', wrapCls: 'mb-[0.28em] mx-[0.1em] translate-x-[2.3vh] translate-y-[-10.21vh] scale-[1.828]' },
-  { id: 'bulls', src: '/chapters/bears-bulls/Bulls.svg', altKey: 'bearsBulls.altBulls', imgCls: 'h-[clamp(80px,16.9vw,228px)] max-sm:h-[12.8vw] w-auto block', wrapCls: 'translate-x-[18.61vh] translate-y-[-9.16vh] scale-[1.832]' },
-] as const;
-
 export function BearsBullsTitle() {
+  const alt = `${t('bearsBulls.altBears')} ${t('bearsBulls.altVs')} ${t('bearsBulls.altBulls')}`;
   return (
     <>
-      {/* desktop: the 3-piece wordmark, positions baked per piece */}
-      <div className="flex items-end justify-center gap-[0.04em] max-sm:hidden">
-        {PIECES.map((p) => (
-          <div key={p.id} className={`relative inline-block ${p.wrapCls}`}>
-            <img src={p.src} alt={t(p.altKey)} className={p.imgCls} />
-          </div>
-        ))}
-      </div>
-      {/* mobile: one big logo, ~30px side padding */}
+      {/* desktop: wide one-line lockup */}
+      <img
+        src={BEARS_VS_BULLS_DESKTOP}
+        alt={alt}
+        className="max-sm:hidden mx-auto w-[min(1211px,84.1vw)] h-auto"
+      />
+      {/* mobile: stacked lockup, ~30px side padding */}
       <img
         src={BEARS_VS_BULLS}
-        alt={t('bearsBulls.altBulls')}
+        alt={alt}
         className="hidden max-sm:block mx-auto w-[calc(100vw-60px)] h-auto"
       />
     </>
