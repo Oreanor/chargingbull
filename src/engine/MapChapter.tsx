@@ -981,12 +981,12 @@ export default function MapChapter({
               >
                 <img src={THE_BULLS_ROUTE_DESKTOP} alt="The Bull's Route" className="block w-full h-auto" />
               </div>
-              {/* Desktop type is the design's: 30px / 1.2 at the 1440px frame; max-w in em
-                  keeps the design's line breaks at every viewport width. */}
+              {/* Desktop type is the design's: 34px / 40px-leading (1.176) at the 1440px frame;
+                  max-w in em keeps the design's line breaks at every viewport width. */}
               <p
                 ref={introBodyRef}
                 style={{ fontFamily: 'var(--font-struve)', color: '#FBC75F' }}
-                className="mx-auto text-center max-w-[24em] text-[clamp(16px,2.083vw,30px)] leading-[1.2] max-sm:max-w-[480px] max-sm:text-[clamp(16px,1.5vw,20px)] max-sm:leading-[1.3] max-sm:translate-x-[-1.8vh] max-sm:translate-y-[8.32vh] max-sm:scale-[1.676]"
+                className="mx-auto text-center max-w-[24em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:max-w-[480px] max-sm:text-[clamp(16px,1.5vw,20px)] max-sm:leading-[1.3] max-sm:translate-x-[-1.8vh] max-sm:translate-y-[8.32vh] max-sm:scale-[1.676]"
               />
             </div>
           </div>

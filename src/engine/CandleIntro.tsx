@@ -90,10 +90,10 @@ const INDEX_LABEL = t('opener.candles.indexLabel');
 
 // Placement nudges for the fact callouts + crash block — offset (vh) from each block's
 // canvas anchor + scale. Baked from the old layout editor; no runtime layer.
-const FACT_OFFSET: [number, number][] = [[-19.52, 28.74], [2.32, 5.91], [2.28, -0.39]];
+const FACT_OFFSET: [number, number][] = [[-23.06, 28.74], [2.32, 5.91], [2.28, -0.39]];
 const FACT_SCALE = [1, 0.999, 0.996];
 const FACT_WIDTH: (number | null)[] = [null, null, null]; // px max-width per fact plate (null = CSS default)
-const CRASH_OFFSET: [number, number] = [3.79, -2.1];
+const CRASH_OFFSET: [number, number] = [3.79, 1.17];
 const CRASH_SCALE: number = 0.965;
 const CRASH_WIDTH: number | null = null; // px max-width of the crash block (null = CSS default)
 
@@ -534,7 +534,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}
           <p
             ref={subtitleRef}
-            className="mt-6 max-w-[760px] text-[clamp(19.2px,2.4vw,33.6px)] text-white will-change-transform leading-[1.35] translate-x-[-1.82vh] translate-y-[1.25vh] max-[800px]:translate-x-[-0.61vh] max-[800px]:translate-y-[5.6vh]"
+            className="mt-6 max-w-[760px] text-[clamp(19.2px,2.361vw,34px)] text-white will-change-transform leading-[1.176] translate-x-[-1.82vh] translate-y-[1.25vh] max-[800px]:translate-x-[-0.61vh] max-[800px]:translate-y-[5.6vh]"
             style={{ fontFamily: 'var(--font-struve)', fontWeight: 400 }}
           />
         </div>
