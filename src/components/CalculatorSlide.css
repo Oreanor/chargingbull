@@ -60,20 +60,24 @@
 .calc-flag .yr {
   position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); cursor: ew-resize;
   font: 700 12px var(--font-mono); color: #06210b; background: #61E26B;
-  padding: 3px 9px; border-radius: 7px; white-space: nowrap;
+  padding: 5px 11px; border-radius: 8px; white-space: nowrap;
 }
-.calc-flag .yr::before { content: '\21C4  '; opacity: 0.6; }
 /* flags are inert during the scripted intro (no .active on the viz) */
 .calc-viz:not(.active) .calc-flag .grab { cursor: default; }
 
-/* Hint — overlays the lower-left of the chart, fades in from transparency (opacity in JS). */
+/* Hint — sits just above the year axis at the lower-left of the chart, fades in (opacity in JS).
+   Width is the mockup's 348px, which is what makes it wrap onto three lines the same way. */
 .calc-hint {
-  position: absolute; left: clamp(6px, 2.5%, 34px); top: 60%; transform: translateY(-50%);
-  max-width: min(300px, 42%); opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
+  position: absolute; left: clamp(6px, 2.5%, 34px); bottom: 44px;
+  max-width: min(352px, 46%); opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
   font: 400 clamp(17px, 1.9vw, 24px)/1.32 var(--font-struve); color: #61E26B;
 }
-.calc-hint .ar { display: block; font-size: 1.15em; line-height: 1; margin-bottom: 6px; }
-.calc-note { font: 400 clamp(13px, 1.15vw, 16px)/1.5 var(--font-struve); color: #fff; margin-top: 20px; }
+/* White ↔ is the first character of the text — inline on the same line, with a space after it */
+.calc-hint .ar { display: inline-block; vertical-align: -0.02em; width: 1.15em; height: 0.66em; margin-right: 0.3em; fill: #fff; }
+/* Green curved arrow hangs off the text's right edge and dives at the year flag below.
+   Absolute, so it can overhang the hint's max-width and drop past its bottom. */
+.calc-hint .arc { position: absolute; left: calc(100% + 4px); bottom: -32px; width: 2.9em; height: 3.07em; fill: #61E26B; }
+.calc-note { font: 400 clamp(13px, 1.15vw, 16px)/1.5 var(--font-struve); color: rgba(255, 255, 255, 0.5); margin-top: 20px; }
 @media (max-width: 560px) { .calc-top { align-items: flex-start; } .calc-result { text-align: left; } }
 
 /* Mobile: the calculator is vertically centred in a 100vh sticky, so when the tall chart +

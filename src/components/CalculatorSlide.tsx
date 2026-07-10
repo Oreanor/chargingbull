@@ -156,29 +156,63 @@ export function CalculatorSlide({
     const onB = (e: PointerEvent) => startDrag('B', e);
     flagA.addEventListener('pointerdown', onA);
     flagB.addEventListener('pointerdown', onB);
-    // Amount field: starts at 100, ±100 step via the spinner; the DOWN arrow is disabled at
-    // the 100 minimum, and the $ brightens (dim → full green) once the value is changed.
-    const MIN = 100, STEP = 100;
+    // Amount field: starts at 100, ±100 step via the spinner; the arrows are disabled at the
+    // 100 minimum / $1M ceiling, and the $ brightens (dim → full green) once the value is changed.
+    const MIN = 100, MAX = 1_000_000, STEP = 100;
     // Field width tracks the value's length (ch scales with the font, so it follows resize too).
     const sizeInput = () => { amountEl!.style.width = ((amountEl!.value || '0').length - 0.1) + 'ch'; };
     const refreshField = () => {
       const v = +amountEl!.value || 0;
-      // BOTH arrows are dead while the scene is inactive (scripted intro); once active, only
-      // DOWN is disabled at the 100 minimum.
-      if (upRef.current) upRef.current.disabled = !sceneActive;
+      // BOTH arrows are dead while the scene is inactive (scripted intro); once active, each
+      // one dies at its end of the 100 … 1M range.
+      if (upRef.current) upRef.current.disabled = !sceneActive || v >= MAX;
       if (downRef.current) downRef.current.disabled = !sceneActive || v <= MIN;
       fieldRef.current?.classList.toggle('inactive', !sceneActive); // whole field dims with the scene
       fieldRef.current?.classList.toggle('changed', v !== MIN);
     };
-    const bump = (dir: 1 | -1) => {
-      amountEl!.value = String(Math.max(MIN, (+amountEl!.value || MIN) + dir * STEP));
+    const stepBy = (dir: 1 | -1, step: number) => {
+      amountEl!.value = String(Math.min(MAX, Math.max(MIN, (+amountEl!.value || MIN) + dir * step)));
       sizeInput(); refreshField(); render();
     };
-    const onUp = () => bump(1);
-    const onDown = () => bump(-1);
+    const bump = (dir: 1 | -1) => stepBy(dir, STEP); // a single click always nudges ±100
+    // Press-and-hold accelerates by order of magnitude: the step is 100 up to 1,000, then
+    // 1,000 up to 10k, 10k up to 100k, 100k up to 1M — so each decade flies by in ~9 ticks.
+    // (When decrementing we band on the value just below, so the boundary steps down cleanly.)
+    const HOLD_DELAY = 320, HOLD_INT = 90;
+    const stepFor = (v: number, dir: 1 | -1) => {
+      const ref = dir < 0 ? v - 1 : v;
+      return ref < 1000 ? 100 : ref < 10000 ? 1000 : ref < 100000 ? 10000 : 100000;
+    };
+    let holdTO = 0, didHold = false;
+    const stopHold = () => { if (holdTO) { clearTimeout(holdTO); holdTO = 0; } };
+    const startHold = (dir: 1 | -1) => {
+      didHold = false;
+      const tick = () => {
+        const v = +amountEl!.value || MIN;
+        if (dir > 0 ? v >= MAX : v <= MIN) { stopHold(); return; } // rest at the range end
+        didHold = true;                                            // suppress the trailing click
+        stepBy(dir, stepFor(v, dir));
+        holdTO = window.setTimeout(tick, HOLD_INT);
+      };
+      holdTO = window.setTimeout(tick, HOLD_DELAY);
+    };
+    // click fires the single ±100 (also covers keyboard) — unless a hold already ran on this press.
+    const onUp = () => { if (!didHold) bump(1); didHold = false; };
+    const onDown = () => { if (!didHold) bump(-1); didHold = false; };
+    const onUpHold = (e: PointerEvent) => { if (sceneActive) { e.preventDefault(); startHold(1); } };
+    const onDownHold = (e: PointerEvent) => { if (sceneActive) { e.preventDefault(); startHold(-1); } };
     upRef.current?.addEventListener('click', onUp);
     downRef.current?.addEventListener('click', onDown);
-    const onInput = () => { sizeInput(); refreshField(); render(); };
+    upRef.current?.addEventListener('pointerdown', onUpHold);
+    downRef.current?.addEventListener('pointerdown', onDownHold);
+    window.addEventListener('pointerup', stopHold);
+    window.addEventListener('pointercancel', stopHold);
+    const onInput = () => {
+      // Typing/pasting past the ceiling snaps back to $1M; an empty field stays empty so it
+      // can be cleared and retyped.
+      if (amountEl!.value !== '' && +amountEl!.value > MAX) amountEl!.value = String(MAX);
+      sizeInput(); refreshField(); render();
+    };
     amountEl.addEventListener('input', onInput);
     sizeInput(); refreshField(); // initial: size to "100", both arrows off (scene inactive)
     const onResize = () => { if (rows.length) render(); };
@@ -249,6 +283,11 @@ export function CalculatorSlide({
       amountEl.removeEventListener('input', onInput);
       upRef.current?.removeEventListener('click', onUp);
       downRef.current?.removeEventListener('click', onDown);
+      upRef.current?.removeEventListener('pointerdown', onUpHold);
+      downRef.current?.removeEventListener('pointerdown', onDownHold);
+      window.removeEventListener('pointerup', stopHold);
+      window.removeEventListener('pointercancel', stopHold);
+      stopHold();
       introIO.disconnect();
       cancelAnimationFrame(introRaf);
       window.removeEventListener('resize', onResize);
@@ -272,7 +311,7 @@ export function CalculatorSlide({
                   <button ref={downRef} type="button" className="calc-step calc-down" aria-label="Decrease amount" />
                 </span>
                 <span className="cur">$</span>
-                <input ref={amountRef} type="number" min={100} step={100} defaultValue={100} inputMode="numeric" />
+                <input ref={amountRef} type="number" min={100} max={1000000} step={100} defaultValue={100} inputMode="numeric" />
               </span>{' '}
               in the index
             </div>
@@ -284,8 +323,16 @@ export function CalculatorSlide({
           <div ref={flagARef} className="calc-flag"><div className="line" /><div className="grab" /><div className="yr" /></div>
           <div ref={flagBRef} className="calc-flag"><div className="line" /><div className="grab" /><div className="yr" /></div>
           <div ref={hintRef} className="calc-hint">
-            <span className="ar">&#8596;</span>
-            Drag the year flags on the axis to choose the holding period
+            {/* White double-headed ↔ above the text (Struve has no U+2194 glyph, so it must be
+                traced). NBSP keeps "the axis" from splitting across the wrap. */}
+            <svg className="ar" viewBox="0 0 31 17" aria-hidden="true">
+              <path d="M8.184 16.8965L1.248 9.86448V7.00848L8.832 0.000483036H12.384L5.256 7.00848H25.968L18.648 0.000483036H22.2L29.784 7.00848V9.86448L22.848 16.8965H19.296L25.992 9.86448H5.04L11.736 16.8965H8.184Z" />
+            </svg>
+            {/* Green curved arrow (Figma "Group 159") sweeping from the text down to the flag. */}
+            <svg className="arc" viewBox="0 0 70 74" aria-hidden="true">
+              <path d="M68.2073 69.8835C68.7222 69.6838 68.9777 69.1045 68.778 68.5896L65.5235 60.1986C65.3238 59.6837 64.7445 59.4282 64.2296 59.6279C63.7147 59.8276 63.4591 60.4069 63.6589 60.9218L66.5518 68.3805L59.0931 71.2734C58.5782 71.4731 58.3227 72.0524 58.5224 72.5673C58.7221 73.0822 59.3014 73.3377 59.8164 73.138L68.2073 69.8835ZM2.8457 0.951172L1.89724 1.26807C9.97878 25.4558 29.1628 52.9824 67.4421 69.8661L67.8457 68.9512L68.2493 68.0362C30.5286 51.3988 11.7126 24.3339 3.79416 0.634275L2.8457 0.951172Z" />
+            </svg>
+            Drag the year flags on the{' '}axis to choose the holding period
           </div>
         </div>
         <div ref={noteRef} className="calc-note" />
