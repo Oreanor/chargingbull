@@ -80,7 +80,7 @@ function computeTrailCoords(progress: number, steps: { lng: number; lat: number 
 }
 
 /** deck.gl layers: stop dots · trail · bull head (3D model). */
-function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: number; lat: number }[], routes: LngLat[][]): Layer[] {
+function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: number; lat: number }[], routes: LngLat[][], headings: (number | null)[] = [], bullScale = 1.3): Layer[] {
   const { ScatterplotLayer, PathLayer, ScenegraphLayer } = DL;
   const layers: Layer[] = [];
   const activeStop = Math.round(progress);
@@ -100,15 +100,19 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: numbe
     const head = trail[trail.length - 1];
     let heading = 0;
     if (trail.length >= 2) { const p1 = trail[trail.length - 2]; heading = (Math.atan2(head[0] - p1[0], head[1] - p1[1]) * 180) / Math.PI; }
-    // The bull walks FACING ALONG the path; only at the very END of the journey does
-    // it smoothly turn ~135° to face back the other way (tight window at the stop).
-    const lastStop = steps.length - 1;
-    const u = Math.max(0, Math.min(1, (progress - (lastStop - 0.22)) / 0.22));
-    const turnBack = u * u * (3 - 2 * u); // smoothstep — eased turn
-    heading += turnBack * 135;
+    // The bull walks FACING ALONG the route between stops. As it SETTLES on a stop that
+    // carries a heading override (mapConfig.bull.headings), it eases from the road tangent
+    // to that exact facing — so it can stand parallel to the street, not skewed to the
+    // approach angle. A null override keeps the tangent (e.g. the Queens impound).
+    const k = Math.round(progress);
+    const override = headings[k];
+    if (override != null) {
+      const settle = 1 - Math.min(1, Math.abs(progress - k) / 0.5); // 1 at the stop → 0 half a leg away
+      heading = lerpBearing(heading, override, smoothstep(settle));
+    }
     layers.push(new ScenegraphLayer({
       id: 'bull-3d', data: [{ position: head, heading }], scenegraph: BULL_3D_MODEL_URL,
-      getPosition: (d) => d.position, getOrientation: (d) => [0, -d.heading + 180, 90], getScale: [1.3, 1.3, 1.3],
+      getPosition: (d) => d.position, getOrientation: (d) => [0, -d.heading + 180, 90], getScale: [bullScale, bullScale, bullScale],
       getColor: [251, 199, 95, 255], sizeScale: 1, sizeMinPixels: 40, sizeMaxPixels: 105, _lighting: 'flat',
       parameters: NO_DEPTH, updateTriggers: { getPosition: head, getOrientation: heading },
     }));
@@ -133,15 +137,49 @@ interface Step {
   lng: number; lat: number; image?: string; imageCaption?: string; comment: string;
 }
 interface CamStop { center: [number, number]; zoom: number; pitch: number; bearing: number }
+interface SubCam { at: number; camera: CamStop }
+// The camera choreography now lives in data.json's `mapConfig` (authored in the
+// wallst-rodeo tuning tool) — cameras (stops), subCams (mid-leg flyover waypoints),
+// weights (per-leg scroll room) and bull headings/scale. We read the pieces our
+// smooth-chase engine can drive; dwellPx/follow/flightEase belong to a different
+// (dwell-based) timing model and are intentionally NOT consumed.
+interface MapCfg {
+  cameras: CamStop[];
+  weights: number[];
+  subCams: SubCam[][];   // subCams[k] = waypoints for the leg ARRIVING at cameras[k]
+  headings: (number | null)[];
+  bullScale: number;
+}
 
-// Five chained framings (ported from the iframe's STEP_CAMERAS).
-const STEP_CAMERAS: CamStop[] = [
-  { center: [-73.9863, 40.7187], zoom: 13.36, pitch: 53, bearing: 13 },   // Studio, SoHo
-  { center: [-73.97, 40.7295], zoom: 13.2, pitch: 55, bearing: -22 },     // Foundry, Greenpoint
+// Fallback framings, used only until data.json's mapConfig loads (or if it's absent).
+// Four chained stops: Foundry → NYSE → Queens impound → Bowling Green. (The Crosby
+// Street studio is a map landmark now, not a stop.)
+const DEFAULT_CAMERAS: CamStop[] = [
+  { center: [-73.979, 40.7214], zoom: 13.2, pitch: 54, bearing: 8.4 },    // Foundry / opener wide
   { center: [-74.0111, 40.7067], zoom: 17.11, pitch: 46, bearing: -9 },   // NYSE night raid
   { center: [-73.9601, 40.7161], zoom: 12.65, pitch: 61, bearing: 68 },   // Queens impound
   { center: [-74.0096, 40.7066], zoom: 15.46, pitch: 36, bearing: 9 },    // Bowling Green
 ];
+const DEFAULT_WEIGHTS = [2, 5, 5, 5];
+const DEFAULT_HEADINGS: (number | null)[] = [118, 21, null, 15];
+const DEFAULT_BULL_SCALE = 1.3;
+const DEFAULT_CFG: MapCfg = {
+  cameras: DEFAULT_CAMERAS, weights: DEFAULT_WEIGHTS,
+  subCams: [], headings: DEFAULT_HEADINGS, bullScale: DEFAULT_BULL_SCALE,
+};
+
+/** Read the drivable subset of data.json's mapConfig, falling back per-field. */
+function readMapCfg(d: unknown): MapCfg {
+  const mc = (d as { mapConfig?: Record<string, unknown> })?.mapConfig;
+  if (!mc) return DEFAULT_CFG;
+  const cameras = Array.isArray(mc.cameras) && mc.cameras.length ? (mc.cameras as CamStop[]) : DEFAULT_CAMERAS;
+  const weights = Array.isArray(mc.weights) && mc.weights.length ? (mc.weights as number[]) : cameras.map(() => 1);
+  const subCams = Array.isArray(mc.subCams) ? (mc.subCams as SubCam[][]) : [];
+  const bull = mc.bull as { scale?: number; headings?: (number | null)[] } | undefined;
+  const headings = Array.isArray(bull?.headings) ? bull!.headings! : cameras.map(() => null);
+  const bullScale = typeof bull?.scale === 'number' ? bull!.scale! : DEFAULT_BULL_SCALE;
+  return { cameras, weights, subCams, headings, bullScale };
+}
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerpBearing = (a: number, b: number, t: number) => a + (((b - a + 540) % 360) - 180) * t;
@@ -174,47 +212,66 @@ const LABEL_FADE: [number, number] = [13.8, 14.8];
 const journeyOf = (sp: number) => Math.min(1, sp / (1 - DIVE_FRAC));
 const diveOf = (sp: number) => clamp((sp - (1 - DIVE_FRAC)) / DIVE_FRAC, 0, 1);
 
-function stopAt(i: number) {
-  return STEP_CAMERAS[Math.max(0, Math.min(STEP_CAMERAS.length - 1, i))];
+function stopAt(cameras: CamStop[], i: number) {
+  return cameras[Math.max(0, Math.min(cameras.length - 1, i))];
 }
-/** Camera for a continuous progress 0..(N-1); eases the fractional segment. */
-function lerpCamera(progress: number) {
-  if (progress <= 0) return stopAt(0);
-  const last = STEP_CAMERAS.length - 1;
-  if (progress >= last) return stopAt(last);
-  const i = Math.floor(progress);
-  const t = easeInOutCubic(progress - i);
-  const a = stopAt(i), b = stopAt(i + 1);
+/** Interpolate two camera keyframes at an already-eased t. */
+function blendCam(a: CamStop, b: CamStop, t: number): CamStop {
   return {
-    center: [lerp(a.center[0], b.center[0], t), lerp(a.center[1], b.center[1], t)] as [number, number],
+    center: [lerp(a.center[0], b.center[0], t), lerp(a.center[1], b.center[1], t)],
     zoom: lerp(a.zoom, b.zoom, t),
     pitch: lerp(a.pitch, b.pitch, t),
     bearing: lerpBearing(a.bearing, b.bearing, t),
   };
 }
+/** Camera for a continuous location progress 0..(N-1). Each segment cameras[i]→
+ *  cameras[i+1] may carry mid-leg flyover waypoints (subCams keyed by the ARRIVING
+ *  camera index i+1), so the camera follows the route instead of holding then
+ *  snapping. Anchors [stop_i, …vias sorted by `at`, stop_{i+1}] are eased pairwise. */
+function cameraAt(progress: number, cameras: CamStop[], subCams: SubCam[][]): CamStop {
+  if (progress <= 0) return stopAt(cameras, 0);
+  const last = cameras.length - 1;
+  if (progress >= last) return stopAt(cameras, last);
+  const i = Math.floor(progress);
+  const raw = progress - i; // 0..1 across this segment
+  const a = stopAt(cameras, i), b = stopAt(cameras, i + 1);
+  const vias = (subCams[i + 1] ?? [])
+    .filter((v) => v && v.camera)
+    .map((v) => ({ at: clamp(v.at, 0, 1), cam: v.camera }))
+    .sort((x, y) => x.at - y.at);
+  if (!vias.length) return blendCam(a, b, easeInOutCubic(raw));
+  const anchors = [{ at: 0, cam: a }, ...vias, { at: 1, cam: b }];
+  for (let k = 0; k < anchors.length - 1; k++) {
+    const a0 = anchors[k], a1 = anchors[k + 1];
+    if (raw <= a1.at || k === anchors.length - 2) {
+      const span = a1.at - a0.at || 1;
+      return blendCam(a0.cam, a1.cam, easeInOutCubic(clamp((raw - a0.at) / span, 0, 1)));
+    }
+  }
+  return blendCam(a, b, easeInOutCubic(raw));
+}
 
-// Per-segment journey weights, ported from the source chapter (chapters/bull):
-// the long inter-borough flights — NYSE→Queens impound and Queens→Bowling Green —
-// get 1.8× the scroll room (180vh vs 100vh) so they aren't skipped two-at-a-time.
-const SEG_WEIGHTS = [1, 1, 1, 1.8, 1.8]; // title→Studio, →Foundry, →NYSE, →Impound, →Bowling Green
-// journey-space (0..1) position of each stop, from the cumulative weights.
-const STOP_BOUNDS = (() => {
-  const total = SEG_WEIGHTS.reduce((a, b) => a + b, 0);
+// Per-leg journey weights come from mapConfig.weights: the first weight is the
+// title→stop-0 intro dwell, the rest the scroll room of each inter-stop flight (the
+// long inter-borough legs get more so they aren't skipped). journey-space (0..1)
+// position of each stop, from the cumulative weights.
+function boundsOf(weights: number[]): number[] {
+  const total = weights.reduce((a, b) => a + b, 0) || 1;
   const b = [0];
   let acc = 0;
-  for (const w of SEG_WEIGHTS) { acc += w; b.push(acc / total); }
+  for (const w of weights) { acc += w; b.push(acc / total); }
   return b;
-})();
+}
 
 // journey 0..1 → continuous stop progress 0..N over WEIGHTED bands. Linear: there
 // are no stop frames any more — the smooth chase carries the flight, so this is a
 // plain weighted map (no dwell magnetism).
-function stopProgress(jv: number) {
-  const N = SEG_WEIGHTS.length;
+function stopProgressWith(jv: number, bounds: number[]): number {
+  const N = bounds.length - 1;
   let k = 0;
-  while (k < N - 1 && jv > STOP_BOUNDS[k + 1]) k++;
-  const span = STOP_BOUNDS[k + 1] - STOP_BOUNDS[k] || 1;
-  return k + clamp((jv - STOP_BOUNDS[k]) / span, 0, 1);
+  while (k < N - 1 && jv > bounds[k + 1]) k++;
+  const span = bounds[k + 1] - bounds[k] || 1;
+  return k + clamp((jv - bounds[k]) / span, 0, 1);
 }
 
 // ── Building x-ray (ported from wallst-rodeo/map) ─────────────────────────────
@@ -338,6 +395,12 @@ export default function MapChapter({
   const outroRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
+  // Camera choreography (stops / flyover waypoints / leg weights / bull facing) read
+  // from data.json's mapConfig. Defaults hold until the JSON lands. cfgRef mirrors it
+  // for the map-init effect, which runs once ([] deps) and can't re-capture state.
+  const [cfg, setCfg] = useState<MapCfg>(DEFAULT_CFG);
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
   const [err, setErr] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -361,7 +424,7 @@ export default function MapChapter({
       ? getJson(dataUrl)
       : getJson(localized).catch(() => getJson(dataUrl));
     load
-      .then((d) => { if (!cancelled) setSteps(d.steps ?? []); })
+      .then((d) => { if (!cancelled) { setSteps(d.steps ?? []); setCfg(readMapCfg(d)); } })
       .catch((e) => { if (!cancelled) setErr(String(e)); });
     return () => { cancelled = true; };
   }, [dataUrl]);
@@ -393,7 +456,7 @@ export default function MapChapter({
     const padding = isNarrow
       ? { top: 60, right: 30, bottom: 40, left: 30 }
       : { top: 80, right: 60, bottom: 80, left: 480 };
-    const v0 = stopAt(0);
+    const v0 = stopAt(cfgRef.current.cameras, 0);
     const map = new mapboxgl.Map({
       container: host,
       style: 'mapbox://styles/mapbox/dark-v11',
@@ -477,6 +540,7 @@ export default function MapChapter({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || steps.length < 2) return;
+    const bounds = boundsOf(cfg.weights);
     let cancelled = false;
     let raf = 0;
     let overlay: InstanceType<DeckLayers['MapboxOverlay']> | null = null;
@@ -504,15 +568,15 @@ export default function MapChapter({
       };
       const routes = await fetchAllRoutes(steps);
       if (cancelled || !mapRef.current) return;
-      overlay = new DL.MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(DL, 0, steps, routes) });
+      overlay = new DL.MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(DL, 0, steps, routes, cfg.headings, cfg.bullScale) });
       map.addControl(overlay);
       let lastProg = -1;
       const loop = () => {
         if (visible) {
-          const prog = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
+          const prog = Math.max(0, stopProgressWith(journeyOf(playhead.get()), bounds) - 1);
           // Only rebuild deck.gl layers when the playhead actually moved — a reader parked
           // on the map otherwise reconstructs every Scatterplot/Path/Scenegraph each frame.
-          if (prog !== lastProg) { lastProg = prog; overlay!.setProps({ layers: buildMarkerLayers(DL, prog, steps, routes) }); }
+          if (prog !== lastProg) { lastProg = prog; overlay!.setProps({ layers: buildMarkerLayers(DL, prog, steps, routes, cfg.headings, cfg.bullScale) }); }
         }
         raf = requestAnimationFrame(loop);
       };
@@ -524,7 +588,7 @@ export default function MapChapter({
       visIO?.disconnect();
       if (overlay && mapRef.current) map.removeControl(overlay);
     };
-  }, [mapReady, steps, playhead]);
+  }, [mapReady, steps, playhead, cfg]);
 
   // building x-ray: foreground structures near the NYSE close-up fade to a
   // translucent sister layer, revealing the bronze-highlighted exchange behind
@@ -533,6 +597,7 @@ export default function MapChapter({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !map.getLayer('building-3d')) return;
+    const bounds = boundsOf(cfg.weights);
 
     // Clear any stale nyse/faded feature-state from a previous run/HMR so we don't keep
     // a wrongly-tagged fragment (e.g. a yellow growth on a neighbouring building).
@@ -574,8 +639,8 @@ export default function MapChapter({
 
     const nyseIds = new Set<string | number>();
     const fadedIds = new Set<string | number>();
-    // location-progress (Studio=0…Bowling=4): stop 0 is the title, so subtract 1.
-    let cachedProgress = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
+    // location-progress (Foundry=0…Bowling=3): stop 0 is the title dwell, so subtract 1.
+    let cachedProgress = Math.max(0, stopProgressWith(journeyOf(playhead.get()), bounds) - 1);
 
     // Only re-apply the layer filters when the fade state or the tagged-id set actually
     // changes — NOT every scroll frame. Calling setFilter each frame forces Mapbox to
@@ -658,7 +723,7 @@ export default function MapChapter({
     map.on('sourcedata', onSourceData);
 
     const onPlayhead = () => {
-      cachedProgress = Math.max(0, stopProgress(journeyOf(playhead.get())) - 1);
+      cachedProgress = Math.max(0, stopProgressWith(journeyOf(playhead.get()), bounds) - 1);
       updateFilters();
     };
     onPlayhead();
@@ -673,7 +738,7 @@ export default function MapChapter({
       try { if (map.getLayer('building-3d')) map.setFilter('building-3d', ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']] as FilterSpecification); } catch { /* map gone */ }
       try { if (map.getLayer('building-3d-fade')) map.removeLayer('building-3d-fade'); } catch { /* map gone */ }
     };
-  }, [mapReady, playhead]);
+  }, [mapReady, playhead, cfg]);
 
   // scroll-driven camera
   useEffect(() => {
@@ -683,6 +748,7 @@ export default function MapChapter({
     let punchT0 = -1;
     let punchFired = false;
     let punchRaf = 0;
+    const bounds = boundsOf(cfg.weights);
     const apply = () => {
       const map = mapRef.current;
       if (!map) return;
@@ -696,13 +762,13 @@ export default function MapChapter({
       // completes (no slide-up), and docks the reveal home when you pause.
       const sj = playhead.get();
       // stop 0 is the title; locations are stops 1..N → location progress = stop − 1.
-      const cam = lerpCamera(Math.max(0, stopProgress(journeyOf(sj)) - 1));
+      const cam = cameraAt(Math.max(0, stopProgressWith(journeyOf(sj), bounds) - 1), cfg.cameras, cfg.subCams);
       // dive: zoom into the last stop (where the bull stands), rotate CCW and tilt
       // up toward the horizon so the framing lands on the bull-scene viewpoint.
       const dive = easeInOutCubic(diveOf(sj));
 
       // Fire the intro punch once, when the title starts dissolving into the map.
-      const revealProg = stopProgress(journeyOf(sj));
+      const revealProg = stopProgressWith(journeyOf(sj), bounds);
       if (!punchFired && diveOf(sj) === 0 && revealProg > 0.45) {
         punchFired = true;
         punchT0 = performance.now();
@@ -759,14 +825,15 @@ export default function MapChapter({
     // frame-throttled — no coalescing needed, and one jumpTo per frame.
     const unsub = playhead.on('change', apply);
     return () => { unsub(); cancelAnimationFrame(punchRaf); };
-  }, [playhead, steps, onDive]);
+  }, [playhead, steps, onDive, cfg]);
 
   // step cards: only the active stop's card is shown; it fades in from the left
   // (~45px) and out the same way as the stop changes (no scroll-from-below).
   useEffect(() => {
+    const bounds = boundsOf(cfg.weights);
     const apply = () => {
       const sj = playhead.get(); // everything on the playhead so cards/fades dock too
-      const prog = stopProgress(journeyOf(sj));
+      const prog = stopProgressWith(journeyOf(sj), bounds);
       // title card is a STOP: the black HOLDS solid through stop 0 (title types on
       // a clean black screen) and only dissolves over stop 0→1, revealing the map.
       if (introRef.current) {
@@ -806,7 +873,7 @@ export default function MapChapter({
     apply();
     const unsub = playhead.on('change', apply);
     return () => { unsub(); };
-  }, [playhead, steps, revealUnderlay]);
+  }, [playhead, steps, revealUnderlay, cfg]);
 
   // Title + body just APPEAR — the per-character typing effect was removed. Populate
   // the paragraph with line breaks and show both; the intro slide itself dissolves
@@ -828,7 +895,7 @@ export default function MapChapter({
   // "The Bull's ROUTE" title pieces + the paragraph carry their baked offset(vh)+scale
   // transforms inline in the JSX (see the route-title block below) — no runtime loop.
 
-  const N = steps.length || STEP_CAMERAS.length;
+  const N = steps.length || cfg.cameras.length;
   return (
     <section
       ref={sectionRef}

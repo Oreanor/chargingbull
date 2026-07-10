@@ -39,7 +39,7 @@
   color: #fff;
 }
 .so-text .so-eyebrow {
-  display: block; margin-bottom: 16px;
+  display: block; margin-bottom: 28px;
   font: 700 clamp(28px, 3.1vw, 40px) / 1.0 var(--font-struve);
   letter-spacing: 0.01em; text-transform: none;
   color: #61e26b;

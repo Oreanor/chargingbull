@@ -21,6 +21,8 @@
   background: #1A1A1A; border: 1px solid rgba(97, 226, 107, 0.5); border-radius: 12px;
   padding: 4px 16px 4px 10px; margin: 0 4px;
 }
+/* once the value is changed the field lights up — brighter $ and a full-green border */
+.calc-field.changed { border-color: #61E26B; }
 .calc-field.changed .cur { color: #61E26B; }
 /* while the scene is inactive the field reads dead — dim border/digit, no interaction */
 .calc-field.inactive { border-color: rgba(97, 226, 107, 0.25); pointer-events: none; }

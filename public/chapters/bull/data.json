@@ -3,25 +3,13 @@
   "subtitle": "How a 3-ton bronze beast ended up in Lower Manhattan",
   "steps": [
     {
-      "id": 1,
-      "date": "1987–1989",
-      "title": "A workshop on Crosby Street",
-      "location": "54 Crosby Street",
-      "address": "SoHo, Manhattan",
-      "lng": -73.9985,
-      "lat": 40.7222,
-      "image": "./images/studio.jpg",
-      "imageCaption": "Di Modica's SoHo studio, late 1980s",
-      "comment": "Di Modica <a href=\"https://arturodimodica.com/works/charging-bull/\" target=\"_blank\" rel=\"noopener noreferrer\">built</a> the bull in a cramped, semi-legal loft on Crosby Street. For almost two years, the sculpture was formed in clay, plaster and wax. The bronze was cast across the river at Bedi-Makky Art Foundry in Brooklyn, the family-run shop that <a href=\"https://www.bklynlibrary.org/blog/2012/02/24/greenpoint-iwo-jima\" target=\"_blank\" rel=\"noopener noreferrer\">had cast</a> the Iwo Jima Memorial decades earlier."
-    },
-    {
       "id": 2,
       "date": "1988–1989",
       "title": "Bedi-Makky Art Foundry",
       "location": "227 India Street",
       "address": "Greenpoint, Brooklyn",
-      "lng": -73.9576,
-      "lat": 40.7373,
+      "lng": -73.9507258,
+      "lat": 40.7327859,
       "image": "./images/foundry.jpg",
       "imageCaption": "Bedi-Makky foundry yard, Greenpoint",
       "comment": "Across the East River, in a Greenpoint foundry the Makky family had run since the 1940s, the bull came into being one section at a time. Using the French sand-casting technique Istvan Makky brought from Hungary, his sons cast roughly <b>thirty bronze sections</b> — head, horns, neck, ribs, haunches, hooves — each one poured into a sand mould reused since the Iwo Jima Memorial was cast in the same yard in 1954. The sections were welded together in the foundry yard under an overhead crane. <b>This is where the bull was actually assembled — not at Crosby Street.</b> And it was from this yard, on the night of 14/15 December 1989, that the truck rolled out toward Wall Street."
@@ -36,22 +24,14 @@
       "lat": 40.706754,
       "approachVia": [
         [
-          -73.9907,
-          40.7026
-        ],
-        [
-          -74.00788,
-          40.711
-        ],
-        [
-          -74.0091,
-          40.7072
+          -73.9906,
+          40.7075
         ]
       ],
-      "routeProfile": "walking",
+      "routeProfile": "driving",
       "image": "./images/install.jpg",
       "imageCaption": "Broad Street at dawn, 15 December 1989",
-      "comment": "At about 1.30 am, Di Modica and a few friends <a href=\"https://italiantribune.com/the-true-story-of-charging-bull/\" target=\"_blank\" rel=\"noopener noreferrer\">drove</a> the bull into the Financial District. He <a href=\"https://www.phillips.com/article/37187333/arturo-di-modica-charging-bull\" target=\"_blank\" rel=\"noopener noreferrer\">had spent</a> the previous nights studying the security routine and knew the guard would be gone for 4.5 minutes. They left the bull under the Christmas tree on Broad Street, outside the NYSE. No commission. No permit. By morning, brokers, tourists and journalists had gathered around it, while Di Modica handed out leaflets nearby."
+      "comment": "At about 1.30 am, Di Modica and a few friends <a href=\"https://italiantribune.com/the-true-story-of-charging-bull/\" target=\"_blank\" rel=\"noopener noreferrer\">drove</a> the bull into the Financial District. He <a href=\"https://www.phillips.com/article/37187333/arturo-di-modica-charging-bull\" target=\"_blank\" rel=\"noopener noreferrer\">had spent</a> the previous nights studying the security routine and knew the guard would be gone for 4.5 minutes. They left the bull under the Christmas tree on Broad Street, outside the NYSE. No commission. No permit. By morning, brokers, tourists and journalists had gathered around it, while Di Modica handed out leaflets nearby."
     },
     {
       "id": 4,
@@ -85,6 +65,7 @@
       "sublabel": "Di Modica's",
       "lng": -73.9985,
       "lat": 40.7222,
+      "markerOnly": true,
       "visibleOnSteps": [
         0,
         1
@@ -94,8 +75,8 @@
       "id": "foundry",
       "label": "Foundry",
       "sublabel": "Bedi-Makky",
-      "lng": -73.9576,
-      "lat": 40.7373,
+      "lng": -73.9507258,
+      "lat": 40.7327859,
       "visibleOnSteps": [
         0,
         1,
@@ -133,5 +114,196 @@
         4
       ]
     }
-  ]
+  ],
+  "mapConfig": {
+    "cameras": [
+      {
+        "center": [
+          -73.979,
+          40.7214
+        ],
+        "zoom": 13.2,
+        "pitch": 54,
+        "bearing": 8.4
+      },
+      {
+        "center": [
+          -74.0111,
+          40.7067
+        ],
+        "zoom": 17.11,
+        "pitch": 46,
+        "bearing": -9
+      },
+      {
+        "center": [
+          -73.9601,
+          40.7161
+        ],
+        "zoom": 12.65,
+        "pitch": 61,
+        "bearing": 68
+      },
+      {
+        "center": [
+          -74.0096,
+          40.7066
+        ],
+        "zoom": 15.46,
+        "pitch": 36,
+        "bearing": 9
+      }
+    ],
+    "weights": [
+      2,
+      5,
+      5,
+      5
+    ],
+    "follow": [
+      0,
+      0.7,
+      0.4,
+      0
+    ],
+    "diveFollow": 1,
+    "dwellPx": [
+      600,
+      600,
+      600,
+      600
+    ],
+    "subCams": [
+      [],
+      [
+        {
+          "at": 0.9,
+          "camera": {
+            "center": [
+              -74.0111,
+              40.7067
+            ],
+            "zoom": 13.8,
+            "pitch": 50,
+            "bearing": 0
+          }
+        }
+      ],
+      [
+        {
+          "at": 0.02,
+          "camera": {
+            "center": [
+              -74.0116,
+              40.707
+            ],
+            "zoom": 16.5,
+            "pitch": 46,
+            "bearing": -9
+          }
+        },
+        {
+          "at": 0.02,
+          "camera": {
+            "center": [
+              -74.0115,
+              40.7066
+            ],
+            "zoom": 16.82,
+            "pitch": 46,
+            "bearing": -9
+          }
+        },
+        {
+          "at": 0.03,
+          "camera": {
+            "center": [
+              -74.0153,
+              40.7078
+            ],
+            "zoom": 15.14,
+            "pitch": 46,
+            "bearing": -9
+          }
+        },
+        {
+          "at": 0.03,
+          "camera": {
+            "center": [
+              -74.015,
+              40.7079
+            ],
+            "zoom": 15.03,
+            "pitch": 46,
+            "bearing": -9
+          }
+        },
+        {
+          "at": 0.05,
+          "camera": {
+            "center": [
+              -74.0025,
+              40.7103
+            ],
+            "zoom": 15.02,
+            "pitch": 49,
+            "bearing": 0
+          }
+        }
+      ],
+      [
+        {
+          "at": 0.42,
+          "camera": {
+            "center": [
+              -73.9614,
+              40.7159
+            ],
+            "zoom": 12.72,
+            "pitch": 59.4,
+            "bearing": 52.1
+          }
+        },
+        {
+          "at": 0.78,
+          "camera": {
+            "center": [
+              -73.9786,
+              40.709
+            ],
+            "zoom": 13.78,
+            "pitch": 49.7,
+            "bearing": 32.7
+          }
+        }
+      ]
+    ],
+    "flightEase": [
+      null,
+      {
+        "e0": 0.1,
+        "e1": 0.2,
+        "slowEnd": 0.1
+      },
+      {
+        "s0": 0.1,
+        "s1": 0.2,
+        "slow": 0.1
+      },
+      {
+        "e0": 0.1,
+        "e1": 0.2,
+        "slowEnd": 0.1
+      }
+    ],
+    "bull": {
+      "scale": 1.3,
+      "headings": [
+        118,
+        21,
+        null,
+        15
+      ]
+    }
+  }
 }

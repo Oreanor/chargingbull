@@ -30,7 +30,7 @@
 
 .mc-date { font: 500 clamp(19px, 1.7vw, 24px)/1.2 var(--font-grotesk); letter-spacing: -0.02em; color: #fff; margin-bottom: 6px; }
 .mc-loc { font: 400 clamp(14px, 1.25vw, 18px)/1.35 var(--font-mono); text-transform: uppercase; color: #fff; letter-spacing: 0; margin-bottom: 20px; }
-.mc-title { font: 700 clamp(28px, 3.1vw, 40px)/1.0 var(--font-struve); letter-spacing: 0.01em; color: #61e26b; margin-bottom: 16px; }
+.mc-title { font: 700 clamp(28px, 3.1vw, 40px)/1.0 var(--font-struve); letter-spacing: 0.01em; color: #61e26b; margin-bottom: 28px; }
 .mc-comment { font: inherit; color: #fff; }
 .mc-comment a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 

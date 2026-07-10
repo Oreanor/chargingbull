@@ -41,14 +41,20 @@ const AZ_START = -184;     // start angle: ~half-turn + 20° more CW (was 164). 
 const POLAR_START = -50;   // starts looking almost straight down at it…
 const DIST_START_MUL = 6;   // …from far out (small, ≈ the map bull's on-screen size), zooming to full
 // The map bull is projected from its GROUND coord, which lands at its feet — nudge the iris
-// up (vh) so it sits on the bull's body, and left (vw) so the splat body isn't offset right.
-const GLUE_UP_VH = 5;
-const GLUE_LEFT_VW = 0.5;
+// up (vh) so it sits low on the bull's body, and horizontally so the disc lands right on it.
+// Negative LEFT_VW = a touch to the RIGHT.
+const GLUE_UP_VH = 1.75;
+const GLUE_LEFT_VW = 0;
+// The splat bull renders a head too low in its own framing. Lift ONLY the bull layer
+// (scaleRef, inside the mask) up by ~a head — the mask sits on the parent clipRef, so it
+// stays exactly put while the bull rises through it.
+const BULL_RAISE_VH = 2.5;
+const BULL_LEFT_VW = 0.4; // a touch left, same layer as the raise (mask untouched)
 // Iris in two phases: (1) a round disc grows from a small dot to radius = half the
 // viewport HEIGHT (diameter = height, so it never gets wider-than-tall while round);
 // (2) it then opens past the corners, so the rectangle "spreads out". The radius is
 // driven linearly so the round phase is clearly visible (scale/opacity stay sharp).
-const IRIS_START_FRAC = 0.09; // disc radius at reveal start, as a fraction of half-height
+const IRIS_START_FRAC = 0.045; // disc radius at reveal start, as a fraction of half-height (2× smaller than before)
 const IRIS_SPLIT = 0.42;      // portion of the reveal spent on the round (disc) phase — lower = opens to full screen more assertively
 const IRIS_OVERSHOOT = 1.03;  // ×corner distance at the end (clears the corners)
 
@@ -103,7 +109,7 @@ export default function MapBullHandoff({
     const raw = clamp01((dive - REVEAL_FROM) / REVEAL_SPAN);
     const e = easeOutCubic(raw); // scale arrives with deceleration
     const i = easeInCubic(clamp01(raw / 0.82)); // iris grows with acceleration, hitting full screen sooner (~82% of the reveal) — shorter disc phase
-    const op = smoothstep(clamp01(raw / 0.55)); // fade in from transparent over the first ~55% (at least half the reveal)
+    const op = smoothstep(clamp01(raw / 0.12)); // fade in almost immediately (opaque by ~12% of the reveal)
     if (clipRef.current) {
       const halfH = window.innerHeight / 2;
       const cornerPx = Math.hypot(window.innerWidth, window.innerHeight) / 2;
@@ -112,7 +118,7 @@ export default function MapBullHandoff({
         i <= IRIS_SPLIT
           ? halfH * (IRIS_START_FRAC + (1 - IRIS_START_FRAC) * (i / IRIS_SPLIT))
           : halfH + (cornerPx * IRIS_OVERSHOOT - halfH) * ((i - IRIS_SPLIT) / (1 - IRIS_SPLIT));
-      const mask = circleMask(r);
+      const mask = circleMask(r * 1.35); // radius 35% larger
       clipRef.current.style.webkitMaskImage = mask;
       clipRef.current.style.maskImage = mask;
       clipRef.current.style.opacity = op.toFixed(3);
@@ -129,7 +135,7 @@ export default function MapBullHandoff({
       clipRef.current.style.transform = `translate(${ox.toFixed(1)}px, ${oy.toFixed(1)}px)`;
     }
     if (scaleRef.current) {
-      scaleRef.current.style.transform = `scale(${(START_SCALE + (1 - START_SCALE) * e).toFixed(4)})`;
+      scaleRef.current.style.transform = `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}vh) scale(${(START_SCALE + (1 - START_SCALE) * e).toFixed(4)})`;
     }
     // Scripted 2-keyframe handoff: the bull starts turned 90° CW with the camera
     // RAISED above it, and both settle to the resting pose as it scales up. Driven by
@@ -175,7 +181,7 @@ export default function MapBullHandoff({
           the bull is orbitable; while it's still pointer-events:none the cursor is moot. */}
       <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none cursor-grab active:cursor-grabbing">
         <div ref={clipRef} className="h-full w-full" style={{ opacity: 0 }}>
-          <div ref={scaleRef} className="h-full w-full will-change-transform" style={{ transform: `scale(${START_SCALE})` }}>
+          <div ref={scaleRef} className="h-full w-full will-change-transform" style={{ transform: `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}vh) scale(${START_SCALE})` }}>
             {armed ? <DatumSplat ref={bullRef} {...splatProps} /> : null}
           </div>
         </div>
