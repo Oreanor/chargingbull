@@ -140,8 +140,8 @@ export default function TonnesFrame() {
           width: '100vh', // line 1 ends at «…When the sculpture appeared»
           color: '#FDBA31',
           fontFamily: 'var(--font-struve)',
-          fontSize: '2.8vh',
-          lineHeight: 1.5,
+          fontSize: '2.8vh', // ×0.801 scale ⇒ ≈18px at the 800px design frame (kept in vh so it tracks the 3D bull)
+          lineHeight: 1.333, // 18/24 — matches the mockup's 24px baseline step
         }}
       >
         Compare it with the Checker Marathon taxi. When the sculpture appeared in New

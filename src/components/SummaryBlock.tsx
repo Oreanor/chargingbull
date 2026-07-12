@@ -26,7 +26,7 @@ export function SummaryBlock() {
       <div className="max-w-[1160px] mx-auto flex flex-col lg:flex-row lg:items-start gap-y-10 gap-x-[clamp(40px,8vw,130px)]">
         {/* empty first column (desktop only) — copy lives in the second column */}
         <div className="hidden lg:block lg:w-[348px] lg:shrink-0" aria-hidden />
-        <div className="lg:flex-1 lg:max-w-[760px] text-[clamp(14px,1.1vw,18px)] leading-[1.55] space-y-6">
+        <div className="lg:flex-1 lg:max-w-[760px] text-[clamp(14px,1.1vw,18px)] leading-[1.333] space-y-6">
           <p>
             <b className="font-semibold">Credits</b>: Research, editing, design,
             illustrations, visualisations and layout by M&eacute;ridien. 3D Gaussian

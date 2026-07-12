@@ -44,19 +44,22 @@
    carries the bold date heading + body (struve 18, white) — matching Frame 78. */
 .ci-overlay .ci-fact { position: absolute; opacity: 0; width: 300px; max-width: 90vw; }
 /* per-callout width tweaks (so lines wrap where the reference does) */
-.ci-overlay .ci-fact[data-tune="candle.fact0"] { width: 285px; }
-.ci-overlay .ci-fact[data-tune="candle.fact1"] { width: 315px; }
-.ci-overlay .ci-fact[data-tune="candle.fact2"] { width: 315px; }
-.ci-overlay .ci-icon { display: block; width: 40px; height: 40px; margin-bottom: 0; }
+/* plate widths = the Frame 184 / 183 / 182 mockup widths (fact0=25 Aug, 1=4 Sep, 2=16 Oct) */
+.ci-overlay .ci-fact[data-tune="candle.fact0"] { width: 270px; }
+.ci-overlay .ci-fact[data-tune="candle.fact1"] { width: 305px; }
+.ci-overlay .ci-fact[data-tune="candle.fact2"] { width: 310px; }
+/* icon sits 6px above the plate (mockup: 40px icon, plate top at y=46). */
+.ci-overlay .ci-icon { display: block; width: 40px; height: 40px; margin-bottom: 6px; }
 .ci-overlay .ci-icon svg { display: block; width: 100%; height: 100%; }
-/* tight left padding so the text sits ~2px right of the circle's left edge (the
-   icon's circle is inset ~3px in its 40px box), not flush with it. */
-.ci-overlay .ci-plate { background: rgba(0, 0, 0, 0.7); padding: 8px 12px 8px 2px; }
+/* Matches Frame 182–184: text x=8 (8px left, ~5px right of the circle's left edge);
+   2px top drops the first (date) baseline onto the 24px grid, 6px below the icon. */
+.ci-overlay .ci-plate { background: rgba(0, 0, 0, 0.7); padding: 2px 12px 6px 8px; }
 .ci-overlay .ci-fh {
-  font: 700 18px var(--font-struve); color: #fff; margin-bottom: 8px;
+  /* date is the first line of the 24px baseline grid — no extra gap to the body */
+  font: 700 18px / 1.333 var(--font-struve); color: #fff; margin-bottom: 0;
 }
 .ci-overlay .ci-fb {
-  font: 400 18px / 1.55 var(--font-struve); color: #fff;
+  font: 400 18px / 1.333 var(--font-struve); color: #fff;
 }
 
 /* Black Monday crash block: skull, date + headline, and the giant −20.5% figure. */

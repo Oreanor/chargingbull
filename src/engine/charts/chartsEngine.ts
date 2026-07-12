@@ -677,12 +677,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       const pLabelY = y0 + (y1 - y0) * 0.62;
       ctx.font = FONT_BOLD; ctx.fillText(LBL.investArrow, xP + 10, pLabelY);
-      ctx.font = FONT; ctx.fillText(LBL.buyDate, xP + 10, pLabelY + 20);
+      ctx.font = FONT; ctx.fillText(LBL.buyDate, xP + 10, pLabelY + 22);
       // End: "$4.85M" bold over "February 2021", right-aligned, just above the end dot.
       const inv = getInvest();
       const endVal = inv ? (cfg.isReal ? fmtMln(inv.realVal) : fmtMln(inv.nomVal)) : '—';
       ctx.textAlign = 'right';
-      ctx.font = FONT_BIG; ctx.fillText(endVal, xC - 10, yC - 24);
+      ctx.font = FONT_BIG; ctx.fillText(endVal, xC - 10, yC - 28);
       ctx.font = FONT; ctx.fillText(LBL.compareDate, xC - 10, yC - 6);
       ctx.restore();
     }

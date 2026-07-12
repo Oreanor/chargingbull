@@ -33,7 +33,7 @@ const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); 
 // not crammed into the last moment while it's still transparent (that read as only ~90°).
 const REVEAL_FROM = 0.26;
 const REVEAL_SPAN = 0.54;
-const START_SCALE = 1; // size/zoom-out is driven by the camera dolly (distMul), not CSS scale
+const START_SCALE = 1.02; // model is 2% bigger under the mask at the reveal START, easing to 1.0 at rest (main zoom-out is the camera dolly / distMul)
 // Reveal START pose, as an offset from the resting (nose-to-us) pose — tuned so the splat
 // bull enters roughly matching the MAP bull (small, seen from above, backed to us) for a
 // seamless swap, then orbits down-and-around to rest. Knobs to eyeball the match:
@@ -43,13 +43,13 @@ const DIST_START_MUL = 6;   // …from far out (small, ≈ the map bull's on-scr
 // The map bull is projected from its GROUND coord, which lands at its feet — nudge the iris
 // up (vh) so it sits low on the bull's body, and horizontally so the disc lands right on it.
 // Negative LEFT_VW = a touch to the RIGHT.
-const GLUE_UP_VH = 1.75;
+const GLUE_UP_VH = 2.7; // lift onto the bull's body at the reveal start (raised ~7–8px total vs the original 1.75)
 const GLUE_LEFT_VW = 0;
 // The splat bull renders a head too low in its own framing. Lift ONLY the bull layer
 // (scaleRef, inside the mask) up by ~a head — the mask sits on the parent clipRef, so it
 // stays exactly put while the bull rises through it.
 const BULL_RAISE_VH = 2.5;
-const BULL_LEFT_VW = 0.4; // a touch left, same layer as the raise (mask untouched)
+const BULL_LEFT_VW = 0; // horizontal nudge of the bull layer (mask untouched). Was 0.4 (a touch left), but the layer is exactly 100vw wide so that left nudge left a ~6px strip uncovered on the RIGHT at full zoom — 0 = flush to both edges. The «Rotate» hint shares this axis, so both move together.
 // Iris in two phases: (1) a round disc grows from a small dot to radius = half the
 // viewport HEIGHT (diameter = height, so it never gets wider-than-tall while round);
 // (2) it then opens past the corners, so the rectangle "spreads out". The radius is
@@ -181,7 +181,10 @@ export default function MapBullHandoff({
           the bull is orbitable; while it's still pointer-events:none the cursor is moot. */}
       <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none cursor-grab active:cursor-grabbing">
         <div ref={clipRef} className="h-full w-full" style={{ opacity: 0 }}>
-          <div ref={scaleRef} className="h-full w-full will-change-transform" style={{ transform: `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}vh) scale(${START_SCALE})` }}>
+          {/* Height overshoots by the raise so translating the layer UP (to lift the bull's
+              head into frame) doesn't uncover a strip at the bottom — the scene still fills
+              to 100vh. overlayRef's overflow-hidden clips the extra at the top. */}
+          <div ref={scaleRef} className="w-full will-change-transform" style={{ height: `calc(100% + ${BULL_RAISE_VH}vh)`, transform: `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}vh) scale(${START_SCALE})` }}>
             {armed ? <DatumSplat ref={bullRef} {...splatProps} /> : null}
           </div>
         </div>
@@ -189,8 +192,11 @@ export default function MapBullHandoff({
             out on rotate/exit (opacity driven via labelRef). */}
         <div
           ref={labelRef}
-          className="pointer-events-none absolute left-1/2 bottom-[9%] -translate-x-1/2 flex items-center gap-2"
-          style={{ opacity: 0, transition: 'opacity 0.5s ease' }}
+          className="pointer-events-none absolute left-1/2 bottom-[9%] flex items-center gap-2"
+          /* Centered on the BULL, not the raw viewport: the bull layer rests
+             translateX(-BULL_LEFT_VW vw); the extra -30px nudges the hint left to
+             sit under the bull's visual centre, and +26px drops it down. */
+          style={{ opacity: 0, transition: 'opacity 0.5s ease', transform: `translate(calc(-50% - ${BULL_LEFT_VW}vw - 30px), 26px)` }}
         >
           <span className="[&>svg]:block [&>svg]:h-9 [&>svg]:w-auto" dangerouslySetInnerHTML={{ __html: ROTATE_ICON }} />
           <span style={{ fontFamily: 'var(--font-struve)', fontWeight: 700, fontSize: '24px', lineHeight: 1, color: '#61E26B' }}>Rotate</span>
