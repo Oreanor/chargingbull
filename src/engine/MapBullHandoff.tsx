@@ -37,19 +37,22 @@ const START_SCALE = 1.02; // model is 2% bigger under the mask at the reveal STA
 // Reveal START pose, as an offset from the resting (nose-to-us) pose — tuned so the splat
 // bull enters roughly matching the MAP bull (small, seen from above, backed to us) for a
 // seamless swap, then orbits down-and-around to rest. Knobs to eyeball the match:
-const AZ_START = -184;     // start angle: ~half-turn + 20° more CW (was 164). Keep DIVE_BEARING in MapChapter equal so the map spins in lockstep.
+const AZ_START = -187;     // start angle: ~half-turn, turned 3° further CW than -184. (Map DIVE_BEARING left as-is; only the splat bull nudged.)
 const POLAR_START = -50;   // starts looking almost straight down at it…
 const DIST_START_MUL = 6;   // …from far out (small, ≈ the map bull's on-screen size), zooming to full
 // The map bull is projected from its GROUND coord, which lands at its feet — nudge the iris
 // up (vh) so it sits low on the bull's body, and horizontally so the disc lands right on it.
 // Negative LEFT_VW = a touch to the RIGHT.
-const GLUE_UP_VH = 2.7; // lift onto the bull's body at the reveal start (raised ~7–8px total vs the original 1.75)
+const GLUE_UP_VH = 2.25; // lift onto the bull's body at the reveal start (lowered ~3–4px from 2.7)
 const GLUE_LEFT_VW = 0;
 // The splat bull renders a head too low in its own framing. Lift ONLY the bull layer
 // (scaleRef, inside the mask) up by ~a head — the mask sits on the parent clipRef, so it
 // stays exactly put while the bull rises through it.
 const BULL_RAISE_VH = 2.5;
 const BULL_LEFT_VW = 0; // horizontal nudge of the bull layer (mask untouched). Was 0.4 (a touch left), but the layer is exactly 100vw wide so that left nudge left a ~6px strip uncovered on the RIGHT at full zoom — 0 = flush to both edges. The «Rotate» hint shares this axis, so both move together.
+// Reveal START only: nudge the bull UNDER the mask (relative to the mask), easing to 0 at rest via posF.
+const BULL_START_LEFT_PX = 5; // px left at the start
+const BULL_START_UP_PX = 3;   // px up at the start
 // Iris in two phases: (1) a round disc grows from a small dot to radius = half the
 // viewport HEIGHT (diameter = height, so it never gets wider-than-tall while round);
 // (2) it then opens past the corners, so the rectangle "spreads out". The radius is
@@ -110,6 +113,9 @@ export default function MapBullHandoff({
     const e = easeOutCubic(raw); // scale arrives with deceleration
     const i = easeInCubic(clamp01(raw / 0.82)); // iris grows with acceleration, hitting full screen sooner (~82% of the reveal) — shorter disc phase
     const op = smoothstep(clamp01(raw / 0.12)); // fade in almost immediately (opaque by ~12% of the reveal)
+    // 1 at the reveal START → 0 at rest; drives BOTH the glue (mask+bull together) and the
+    // bull's start-only nudge under the mask.
+    const posF = 1 - smoothstep(clamp01((raw - 0.38) / 0.2));
     if (clipRef.current) {
       const halfH = window.innerHeight / 2;
       const cornerPx = Math.hypot(window.innerWidth, window.innerHeight) / 2;
@@ -127,7 +133,6 @@ export default function MapBullHandoff({
       // with the map pan. The offset MUST be gone before the iris grows past its disc phase
       // (~raw 0.61): while the container is still shifted up, a large circle spills past its
       // (now off-centre) bottom edge and shows the map. So settle it to centre by ~0.58.
-      const posF = 1 - smoothstep(clamp01((raw - 0.38) / 0.2));
       const upPx = (GLUE_UP_VH / 100) * window.innerHeight; // lift onto the bull's body (proj lands at its feet)
       const leftPx = (GLUE_LEFT_VW / 100) * window.innerWidth; // nudge left so the body sits over the map bull, not right of it
       const ox = ((bullOffset?.x ?? 0) - leftPx) * posF;
@@ -135,7 +140,10 @@ export default function MapBullHandoff({
       clipRef.current.style.transform = `translate(${ox.toFixed(1)}px, ${oy.toFixed(1)}px)`;
     }
     if (scaleRef.current) {
-      scaleRef.current.style.transform = `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}vh) scale(${(START_SCALE + (1 - START_SCALE) * e).toFixed(4)})`;
+      // Start-only nudge of the bull UNDER the mask (left/up), easing to 0 by rest via posF.
+      const nudgeX = (BULL_START_LEFT_PX * posF).toFixed(1);
+      const nudgeY = (BULL_START_UP_PX * posF).toFixed(1);
+      scaleRef.current.style.transform = `translate(calc(-${BULL_LEFT_VW}vw - ${nudgeX}px), calc(-${BULL_RAISE_VH}vh - ${nudgeY}px)) scale(${(START_SCALE + (1 - START_SCALE) * e).toFixed(4)})`;
     }
     // Scripted 2-keyframe handoff: the bull starts turned 90° CW with the camera
     // RAISED above it, and both settle to the resting pose as it scales up. Driven by

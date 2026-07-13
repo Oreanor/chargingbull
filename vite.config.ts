@@ -2,7 +2,8 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import mdx from '@mdx-js/rollup';
 import { fileURLToPath } from 'node:url';
-import { writeFile, readFile } from 'node:fs/promises';
+import { writeFile, readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 
 // Dev-only endpoint backing the in-page layout editor (src/engine/tuneEditor.ts):
 // its "Save" button POSTs the {id: [x,y]} offset map here and we persist it into
@@ -142,6 +143,64 @@ function tuneBakePlugin(): Plugin {
   };
 }
 
+// Dev-only endpoint: bake the layout editor's per-element class edits straight into
+// SOURCE (no runtime delta layer). The editor computes each touched element's CURRENT
+// class string and the NEW one (its tuned width/font/color/offset arbitrary-value
+// classes substituted in) and POSTs { edits: [{ old, new }] }. We do an EXACT, UNIQUE
+// substring replace across src/**, so the tuned value becomes the source className.
+// An edit whose `old` isn't found exactly once (dynamic / template-literal classNames)
+// is refused and reported — never a partial/ambiguous write. Disabled in any build.
+function classBakePlugin(): Plugin {
+  const root = fileURLToPath(new URL('./src', import.meta.url));
+  return {
+    name: 'class-bake',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/__class', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        req.on('end', async () => {
+          try {
+            const { edits } = JSON.parse(body) as { edits: { old: string; new: string }[] };
+            const files: string[] = [];
+            const walk = async (dir: string) => {
+              for (const ent of await readdir(dir, { withFileTypes: true })) {
+                if (ent.name === 'node_modules' || ent.name.startsWith('.')) continue;
+                const p = join(dir, ent.name);
+                if (ent.isDirectory()) await walk(p);
+                else if (/\.(tsx|jsx|mdx)$/.test(ent.name)) files.push(p);
+              }
+            };
+            await walk(root);
+            const src = new Map<string, string>();
+            for (const f of files) src.set(f, await readFile(f, 'utf8'));
+            const dirty = new Set<string>();
+            const countIn = (s: string, sub: string) => { let n = 0, i = s.indexOf(sub); while (i !== -1) { n++; i = s.indexOf(sub, i + sub.length); } return n; };
+            const results = edits.map((e) => {
+              if (e.old === e.new) return { ok: true, reason: 'unchanged' };
+              let total = 0, hit = '';
+              for (const [f, s] of src) { const n = countIn(s, e.old); total += n; if (n) hit = f; }
+              if (total === 0) return { ok: false, reason: 'not found (dynamic className?)', old: e.old };
+              if (total > 1) return { ok: false, reason: `ambiguous (${total} matches)`, old: e.old };
+              src.set(hit, src.get(hit)!.replace(e.old, e.new));
+              dirty.add(hit);
+              return { ok: true, file: hit.slice(root.length + 1) };
+            });
+            for (const f of dirty) await writeFile(f, src.get(f)!, 'utf8');
+            const okAll = results.every((r) => r.ok);
+            res.statusCode = okAll ? 200 : 409;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: okAll, results }));
+          } catch (e) {
+            res.statusCode = 500; res.end(String(e));
+          }
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
     { enforce: 'pre', ...mdx() },
@@ -149,6 +208,7 @@ export default defineConfig(({ isSsrBuild }) => ({
     tuneSavePlugin(),
     i18nSavePlugin(),
     tuneBakePlugin(),
+    classBakePlugin(),
   ],
   // Datum SDK — CJS/ESM-смесь + WASM (spark-форк). Пре-бандлим в dev, иначе HMR ругается.
   optimizeDeps: {

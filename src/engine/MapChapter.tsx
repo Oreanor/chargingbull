@@ -11,6 +11,35 @@ import THE_BULLS_ROUTE_DESKTOP from '../assets/logos/the-bulls-route-desktop.svg
 // Mobile keeps the STACKED lockup (the wide one is unreadable on a phone).
 import THE_BULLS_ROUTE from '../assets/logos/the-bulls-route.svg?url';
 
+// POI badges — inlined as raw SVG so the icon draws as vector inside the marker
+// pill. One 53×53 white disc + black glyph per landmark (see data.json `landmarks`).
+import BADGE_STUDIO from '../assets/map/badge-studio.svg?raw';
+import BADGE_FOUNDRY from '../assets/map/badge-foundry.svg?raw';
+import BADGE_NYSE from '../assets/map/badge-nyse.svg?raw';
+import BADGE_NYPD from '../assets/map/badge-nypd.svg?raw';
+import BADGE_PARK from '../assets/map/badge-park.svg?raw';
+
+// id → badge markup + which side of the anchor the text pill sits on.
+// Studio's pill hangs to the LEFT (it lives at the top-left of the route); the
+// rest read left-to-right with the badge first.
+const POI_BADGE: Record<string, string> = {
+  studio: BADGE_STUDIO,
+  foundry: BADGE_FOUNDRY,
+  nyse: BADGE_NYSE,
+  impound: BADGE_NYPD,
+  park: BADGE_PARK,
+};
+const POI_PILL_SIDE: Record<string, 'left' | 'right'> = { studio: 'left' };
+
+type Landmark = {
+  id: string;
+  label: string;
+  sublabel: string;
+  lng: number;
+  lat: number;
+  visibleOnSteps: number[];
+};
+
 // deck.gl is imported DYNAMICALLY (in the overlay effect) — it touches browser
 // globals at module load and would crash the SSR prerender. Type-only imports
 // above are erased, so this module stays server-safe; the classes arrive here.
@@ -395,6 +424,7 @@ export default function MapChapter({
   const outroRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   // Camera choreography (stops / flyover waypoints / leg weights / bull facing) read
   // from data.json's mapConfig. Defaults hold until the JSON lands. cfgRef mirrors it
   // for the map-init effect, which runs once ([] deps) and can't re-capture state.
@@ -424,7 +454,7 @@ export default function MapChapter({
       ? getJson(dataUrl)
       : getJson(localized).catch(() => getJson(dataUrl));
     load
-      .then((d) => { if (!cancelled) { setSteps(d.steps ?? []); setCfg(readMapCfg(d)); } })
+      .then((d) => { if (!cancelled) { setSteps(d.steps ?? []); setLandmarks(d.landmarks ?? []); setCfg(readMapCfg(d)); } })
       .catch((e) => { if (!cancelled) setErr(String(e)); });
     return () => { cancelled = true; };
   }, [dataUrl]);
@@ -589,6 +619,72 @@ export default function MapChapter({
       if (overlay && mapRef.current) map.removeControl(overlay);
     };
   }, [mapReady, steps, playhead, cfg]);
+
+  // POI markers ("пупки") — native DOM overlays pinned to real lng/lat and
+  // re-projected every time the camera moves, so they ride along as the map is
+  // panned/zoomed through the journey. Each is an SVG badge + a text pill
+  // (bold place • grey descriptor). Visibility fades in/out around the stop
+  // indices listed in each landmark's `visibleOnSteps` (raw stop space: the
+  // opening title dwell is 0, Foundry 1, NYSE 2, Impound 3, Bowling 4).
+  useEffect(() => {
+    const map = mapRef.current;
+    const host = mapHostRef.current;
+    if (!map || !mapReady || !host || !landmarks.length) return;
+    const bounds = boundsOf(cfg.weights);
+
+    const layer = document.createElement('div');
+    layer.className = 'mc-poi-layer';
+    host.appendChild(layer);
+
+    const items = landmarks
+      .filter((lm) => POI_BADGE[lm.id])
+      .map((lm) => {
+        const side = POI_PILL_SIDE[lm.id] ?? 'right';
+        const el = document.createElement('div');
+        el.className = `mc-poi mc-poi--${side}`;
+
+        const badge = document.createElement('span');
+        badge.className = 'mc-poi-badge';
+        badge.innerHTML = POI_BADGE[lm.id];
+
+        const pill = document.createElement('span');
+        pill.className = 'mc-poi-pill';
+        const strong = document.createElement('b');
+        strong.textContent = `${lm.label} • `;
+        pill.appendChild(strong);
+        pill.appendChild(document.createTextNode(lm.sublabel));
+
+        el.appendChild(badge);
+        el.appendChild(pill);
+        layer.appendChild(el);
+        return { lm, el };
+      });
+
+    // fade radius in stop-units: a landmark is fully lit on its listed steps and
+    // ramps out over ~0.65 of a step on either side (so e.g. NYSE [2,4] shows at
+    // both downtown stops but hides at the Impound detour in between).
+    const RADIUS = 0.65;
+    const ss = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
+
+    const update = () => {
+      const sp = stopProgressWith(journeyOf(playhead.get()), bounds);
+      for (const { lm, el } of items) {
+        const p = map.project([lm.lng, lm.lat]);
+        el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
+        let vis = 0;
+        for (const s of lm.visibleOnSteps) vis = Math.max(vis, ss(1 - Math.abs(sp - s) / RADIUS));
+        el.style.opacity = vis.toFixed(3);
+      }
+    };
+    update();
+    map.on('move', update);
+    map.on('render', update);
+    return () => {
+      map.off('move', update);
+      map.off('render', update);
+      layer.remove();
+    };
+  }, [mapReady, landmarks, playhead, cfg]);
 
   // building x-ray: foreground structures near the NYSE close-up fade to a
   // translucent sister layer, revealing the bronze-highlighted exchange behind

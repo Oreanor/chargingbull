@@ -22,6 +22,21 @@ const EXIT_VH = 70;
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
+// Non-uniform scroll per transition. Transition k (step k → k+1) normally gets 1 unit of
+// scroll; the 0a→0b move (k=1) is a long reveal→hold→compress and gets ~2.4× so it doesn't
+// feel rushed. warpIdx maps chartRaw 0..1 → fractional step index through these weights;
+// SEG_EXTRA extra units are added to the section height so every OTHER step keeps its pace.
+const SEG_W = Array.from({ length: Math.max(1, N - 1) }, (_, k) => (k === 1 ? 2.4 : 1));
+const SEG_CUM = SEG_W.reduce<number[]>((a, w) => (a.push(a[a.length - 1] + w), a), [0]);
+const SEG_TOTAL = SEG_CUM[SEG_CUM.length - 1];
+const SEG_EXTRA = SEG_TOTAL - (N - 1);
+function warpIdx(chartRaw: number): number {
+  const u = clamp01(chartRaw) * SEG_TOTAL;
+  let k = 0;
+  while (k < SEG_W.length - 1 && u >= SEG_CUM[k + 1]) k++;
+  return k + (u - SEG_CUM[k]) / SEG_W[k];
+}
+
 /** Candle close-up + the drawdown slides before the Dotcom bust show no card. */
 const CARDLESS_VIEWS = new Set(['bm', '0a', '0b', '0c', '0d']);
 
@@ -154,7 +169,7 @@ export default function ChartsChapter({
       const rangePx = secEl ? Math.max(1, secEl.offsetHeight - vhPx) : 1;
       const rEnd = clamp01((rangePx - (EXIT_VH / 100) * vhPx) / rangePx);
       const chartRaw = rEnd > 0 ? clamp01(raw / rEnd) : raw;
-      const idx = chartRaw * (N - 1);
+      const idx = warpIdx(chartRaw);
       // 0 while the chart still morphs → 1 across the tail: drives the last card off.
       const exitProg = rEnd < 1 ? clamp01((raw - rEnd) / (1 - rEnd)) : 0;
       engine.draw(idx); // caption string is unused — the white per-frame caption was dropped
@@ -197,7 +212,7 @@ export default function ChartsChapter({
   }, [engine, progress]);
 
   return (
-    <section ref={ref} style={{ height: `${N * 100 + EXIT_VH}dvh` }} className="cc-section relative w-full">
+    <section ref={ref} style={{ height: `${N * 100 + SEG_EXTRA * 100 + EXIT_VH}dvh` }} className="cc-section relative w-full">
       <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100dvh] w-full overflow-hidden" style={{ opacity: 0, visibility: 'hidden', pointerEvents: 'none' }}>
         <canvas ref={canvasRef} className="cc-canvas" />
         <div className="cc-gradient" aria-hidden />

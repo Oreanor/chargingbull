@@ -77,7 +77,7 @@ export function BullBearExplainer() {
               as FutureSlide + SummaryBlock so the second column lands on one vertical. */}
           <div className="mx-auto max-w-[1160px] w-full flex flex-col lg:flex-row lg:items-start gap-y-10 gap-x-[clamp(40px,8vw,130px)]">
             <aside
-              className="xpl-aside lg:w-[348px] lg:shrink-0 text-[clamp(14px,1.1vw,18px)] leading-[1.333]"
+              className="xpl-aside lg:w-[348px] lg:shrink-0 text-[clamp(14px,1.25vw,18px)] leading-[1.333] max-w-[329px]"
               style={{ fontFamily: 'var(--font-struve)' }}
               dangerouslySetInnerHTML={{ __html: t('explainer.aside') }}
             />

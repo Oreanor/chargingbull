@@ -43,7 +43,9 @@ const LINE_DIM = 'rgba(245,243,238,0.5)'; // de-emphasized (unfocused) line — 
 // via fonts.css). Canvas falls back silently if a face isn't ready yet.
 const FONT = "14px 'Space Mono', ui-monospace, monospace";
 const FONT_BOLD = "bold 14px 'Struve', system-ui, sans-serif";
-const FONT_BIG = "bold 15px 'Struve', system-ui, sans-serif";
+// Green invest labels (mockups Percent 1–3): both lines Struve 18, 22px baseline step.
+const FONT_INVEST = "18px 'Struve', system-ui, sans-serif";
+const FONT_INVEST_BOLD = "bold 18px 'Struve', system-ui, sans-serif";
 let BG = '#000000';
 
 type YM = [number, number];
@@ -154,7 +156,10 @@ function viewConfig(key: string): Cfg {
       isReal, bullAlpha: 0, investAlpha: 1 };
   }
   const s = SLIDE_DATA[key];
-  return { kind: 'slide', xMin: 0, xMax: s.xMax, yMin: s.yMin, yMax: 105,
+  // yMax = 100 puts the peak (0% drawdown) line at the very top of the plot, exactly like
+  // the exact single-1987 drawdown (BM_DD: 0% at y≈box-top) — so the 0% line and the −10/
+  // −20/−30 ticks DON'T jump between drawCandleStage and the slide, nor between slides.
+  return { kind: 'slide', xMin: 0, xMax: s.xMax, yMin: s.yMin, yMax: 100,
     visibleYears: s.years, focusYear: s.focus, focusAll: false };
 }
 
@@ -210,6 +215,28 @@ export interface ChartsEngine {
 /** Fraction of each step's travel spent dwelling (held) on the view, per end. Higher =
  *  the chart stands still longer after it finishes drawing before morphing on. */
 const DWELL_HOLD_FRAC = 0.4;
+// On-graph labels wait for the line to finish building: they stay hidden through the morph
+// and slide in a beat AFTER the view settles (LABEL_DELAY into the end-dwell), so a label
+// never sits on a still-moving line. The leaving label fades over the first slice of the morph.
+const LABEL_DELAY = 0.28;     // fraction of the end-dwell held before the label enters (~half a wheel notch)
+const LABEL_FADE_OUT = 0.35;  // fraction of the morph over which the leaving label fades out
+const smoothstep = (x: number) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
+
+// 0a → 0b is a TWO-BEAT move, not one squash. We hand off from the exact single-1987
+// drawdown (drawCandleStage) to the data slide EARLY (at A0_HANDOFF of the morph) and at
+// the tight xMax, so the 1987 axis doesn't snap; then beat 1 reveals the COVID line at
+// that same wide scale, and only beat 2 widens xMax so BOTH crises compress to the left.
+const A0_HANDOFF = 0.16;      // morph fraction at which 0a's static drawdown yields to the slide
+// The two beats must NOT overlap: the COVID line finishes drawing (REVEAL) with the axis
+// still wide, THEN — after a short hold — the squash (START→1) begins. If START < REVEAL the
+// compression grabs the second line while it's still growing ("прилипает" on the way in).
+const COMPRESS_REVEAL = 0.44;  // sub-progress by which the COVID line has FULLY drawn
+const COMPRESS_START = 0.66;   // sub-progress at which the xMax widening (compression) begins
+// Tight xMax for the reveal beat. NOT 4 (=SLIDE_DATA['0a']): the exact 1987 drawdown puts its
+// trough (month 3) at 93.5% of the plot width, so the slide must too — 3 / 0.935 ≈ 3.2 — or the
+// switch from drawCandleStage to the slide snaps the line inward (reads as an early compression).
+const COMPRESS_XTIGHT = 3.2;
+const COMPRESS_XWIDE = 24;    // = SLIDE_DATA['0b'].xMax — the two-crisis comparison scale
 
 export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   const xs: number[] = [], yNom: number[] = [], yReal: number[] = [];
@@ -219,6 +246,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   let lastBull = 0; // 0..1 bull-phase factor for the React topbar, set each draw
   let lastCandle = 0; // 0..1 — 1 on the Black Monday candle frame (drives the HTML plate)
   let entryFade = 1;  // 0..1 — the very first frame's content fades IN over the pink ground
+  let labelReveal = 1; // 0..1 — gates on-graph labels: hidden while the line morphs, delayed slide-in on dwell
   let bmPaths: { p: Path2D; up: boolean }[] | null = null; // cached candle Path2Ds
   let bullPath: Path2D | null = null; // cached Charging Bull figurine
 
@@ -371,8 +399,23 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       drawState2(cfgB.kind === 'state2' ? cfgB : cfgA);
       return;
     }
+    // 0a ↔ 0b two-beat: `compressToB` is the slide's own sub-progress toward the wide,
+    // two-crisis 0b end (0 = just handed off from the tight single-1987 drawdown, 1 =
+    // settled 0b). `revealK` draws the COVID line in FIRST (at the tight scale); `widen`
+    // then squashes xMax so both crises slide left. null on every other slide morph.
+    let compressToB: number | null = null;
+    if (fromKey === '0a' && toKey === '0b') compressToB = (t - A0_HANDOFF) / (1 - A0_HANDOFF);
+    else if (fromKey === '0b' && toKey === '0a') compressToB = 1 - t / (1 - A0_HANDOFF);
+    let revealK: number | null = null, widen = t;
+    if (compressToB !== null) {
+      const q = compressToB < 0 ? 0 : compressToB > 1 ? 1 : compressToB;
+      revealK = smoothstep(q / COMPRESS_REVEAL);
+      widen = smoothstep((q - COMPRESS_START) / (1 - COMPRESS_START));
+    }
     const xMin = lerp(cfgA.xMin as number, cfgB.xMin as number, t);
-    const xMax = lerp(cfgA.xMax as number, cfgB.xMax as number, t);
+    const xMax = compressToB !== null
+      ? lerp(COMPRESS_XTIGHT, COMPRESS_XWIDE, widen)
+      : lerp(cfgA.xMax as number, cfgB.xMax as number, t);
     const yMin = lerp(cfgA.yMin as number, cfgB.yMin as number, t);
     const yMax = lerp(cfgA.yMax as number, cfgB.yMax as number, t);
     const Y = ys();
@@ -462,6 +505,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       let alpha = 1;
       if (inA && !inB) alpha = 1 - t;
       else if (!inA && inB) alpha = t;
+      // 0a↔0b: the COVID line (the one crisis that differs between the two views) reveals
+      // on its OWN early beat, at the tight scale, before the compression starts.
+      if (revealK !== null && inA !== inB) alpha = revealK;
       if (alpha <= 0) continue;
       ctx.globalAlpha = alpha;
 
@@ -513,13 +559,17 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       let alpha = 1;
       if (inA && !inB) alpha = 1 - t;
       else if (!inA && inB) alpha = t;
+      if (revealK !== null && inA !== inB) alpha = revealK;
       if (alpha <= 0) continue;
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = alpha * labelReveal; // hold the label until the line settles
 
       ctx.fillStyle = CRISIS; // uniform dark ink — the focus moves between slides, so the old
                               // focused/non-focused split made a label flip black↔white for no reason
-      if (px >= x0 - 2 && px <= x1 + 80 && py >= y0 && py <= y1) {
-        ctx.fillText(c.troughLbl, px + 6, py);
+      // Mockup: the date sits UNDER the line, its right edge flush with the line's right
+      // edge (the trough endpoint) — not floated out to the right at mid-height.
+      if (px >= x0 + 30 && px <= x1 + 4 && py >= y0 && py <= y1) {
+        ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+        ctx.fillText(c.troughLbl, px, py + 9);
       }
     }
     ctx.globalAlpha = 1;
@@ -655,8 +705,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         ctx.fillStyle = CRISIS;
         ctx.textAlign = 'left'; ctx.textBaseline = 'top';
         const lx = sx(xs[iT]) + 6, ly = sy(Y[iT]) + 4;
+        ctx.save(); ctx.globalAlpha *= labelReveal; // label waits for its segment to finish drawing
         ctx.font = FONT_BOLD; ctx.fillText(`${drop.toFixed(0)}%`, lx, ly);
         ctx.font = FONT; ctx.fillText(c.label, lx, ly + 18);
+        ctx.restore();
       }
     }
 
@@ -672,18 +724,21 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.fillStyle = GROWTH;
       ctx.beginPath(); ctx.arc(xP, yP, 5, 0, 2 * Math.PI); ctx.fill();
       ctx.beginPath(); ctx.arc(xC, yC, 5, 0, 2 * Math.PI); ctx.fill();
+      // Labels wait for the line to finish building (marker line + dots above stay at full
+      // investAlpha; only the text is gated by labelReveal so it slides in a beat later).
+      ctx.globalAlpha = investAlpha * labelReveal;
       // Purchase: "$350K →" bold over "October 1987" (mockup 46/47), green, by the line.
       ctx.fillStyle = GROWTH;
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       const pLabelY = y0 + (y1 - y0) * 0.62;
-      ctx.font = FONT_BOLD; ctx.fillText(LBL.investArrow, xP + 10, pLabelY);
-      ctx.font = FONT; ctx.fillText(LBL.buyDate, xP + 10, pLabelY + 22);
+      ctx.font = FONT_INVEST_BOLD; ctx.fillText(LBL.investArrow, xP + 10, pLabelY);
+      ctx.font = FONT_INVEST; ctx.fillText(LBL.buyDate, xP + 10, pLabelY + 22);
       // End: "$4.85M" bold over "February 2021", right-aligned, just above the end dot.
       const inv = getInvest();
       const endVal = inv ? (cfg.isReal ? fmtMln(inv.realVal) : fmtMln(inv.nomVal)) : '—';
       ctx.textAlign = 'right';
-      ctx.font = FONT_BIG; ctx.fillText(endVal, xC - 10, yC - 28);
-      ctx.font = FONT; ctx.fillText(LBL.compareDate, xC - 10, yC - 6);
+      ctx.font = FONT_INVEST_BOLD; ctx.fillText(endVal, xC - 10, yC - 28);
+      ctx.font = FONT_INVEST; ctx.fillText(LBL.compareDate, xC - 10, yC - 6);
       ctx.restore();
     }
 
@@ -834,7 +889,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // Crisis date labels — fade out with a1Alpha as the growth chart arrives, instead of
     // popping the instant drawNow hands the '1' overview off to drawMixed (which drew none).
     if (a1Alpha > 0.02) {
-      ctx.save(); ctx.globalAlpha = a1Alpha;
+      ctx.save(); ctx.globalAlpha = a1Alpha * labelReveal; // wait for the line to build before the label
       ctx.fillStyle = CRISIS; ctx.font = FONT;
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       for (const c of CRISES) {
@@ -942,9 +997,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.stroke();
       const [ex, ey] = [mapX(BM_DD.end[0]), mapY(BM_DD.end[1])];
       ctx.fillStyle = LINE; ctx.beginPath(); ctx.arc(ex, ey, 6, 0, 2 * Math.PI); ctx.fill();
-      ctx.fillStyle = AXIS; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.font = FONT; ctx.fillText(BM_DD.label.line1, mapX(BM_DD.label.x), mapY(BM_DD.label.y1));
-      ctx.font = FONT_BOLD; ctx.fillText(BM_DD.label.line2, mapX(BM_DD.label.x), mapY(BM_DD.label.y2));
+      // Same trough label as the slide (CRISES[1].troughLbl "Nov 1987"): identical text,
+      // font, colour and placement (under the endpoint, right edge flush with the line's
+      // right edge) so the wording/style doesn't jump when this frame hands off to the slide.
+      ctx.fillStyle = CRISIS; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.font = FONT; ctx.fillText(CRISES[1].troughLbl, ex, ey + 9);
       ctx.restore();
     }
   }
@@ -958,11 +1015,29 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     entryFade = 1;
     const i = Math.floor(clamped);
     const frac = clamped - i;
-    // per-step dwell: hold the view for the first/last DWELL_HOLD_FRAC of the travel.
+    // per-step dwell: hold the view for the first/last <dwell> of the travel. The 0a→0b move
+    // is a long TWO-BEAT sequence (reveal COVID → hold → compress both), so it claims a much
+    // bigger slice of its step for the morph (tiny end-dwell) — otherwise the whole thing is
+    // crammed into the tail 20% and the compression reads as abrupt/rushed.
+    const isCompressStep = CHART_STEPS[i]?.view === '0a' && CHART_STEPS[i + 1]?.view === '0b';
+    // This step is given ~2.4× the scroll (ChartsChapter warp); spend that budget on the
+    // MORPH (reveal→hold→compress), not on fat static dwells, so both the pause and the
+    // squash get real screen-space instead of standing still on 1987 for a whole viewport.
+    const startDwell = isCompressStep ? 0.12 : DWELL_HOLD_FRAC;
+    const endDwell = isCompressStep ? 0.05 : DWELL_HOLD_FRAC;
     let p: number;
-    if (frac < DWELL_HOLD_FRAC) p = 0;
-    else if (frac > 1 - DWELL_HOLD_FRAC) p = 1;
-    else p = (frac - DWELL_HOLD_FRAC) / (1 - 2 * DWELL_HOLD_FRAC);
+    if (frac < startDwell) p = 0;
+    else if (frac > 1 - endDwell) p = 1;
+    else p = (frac - startDwell) / (1 - startDwell - endDwell);
+    // On-graph labels: shown while settled, fade out early in the morph, then slide back
+    // in only AFTER the line has finished building — LABEL_DELAY into the end-dwell.
+    if (frac < startDwell) labelReveal = 1;                                        // start-dwell: already settled
+    else if (frac < 1 - endDwell) {                                                // morphing: line is (re)building
+      labelReveal = 1 - smoothstep((frac - startDwell) / (1 - startDwell - endDwell) / LABEL_FADE_OUT);
+    } else {                                                                        // end-dwell: delayed slide-in
+      const d = (frac - (1 - endDwell)) / endDwell;
+      labelReveal = smoothstep((d - LABEL_DELAY) / (1 - LABEL_DELAY));
+    }
     const fromIdx = Math.min(i, N - 1);
     const toIdx = Math.min(i + 1, N - 1);
     fromKey = CHART_STEPS[fromIdx].view;
@@ -978,7 +1053,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       lastCandle = 1 - animT;
       return CAPTION[animT < 0.5 ? 'bm' : '0a'] || '';
     }
-    if (dominantKey === '0a') { // 0a dwell + first half of 0a→0b: full drawdown
+    // The exact single-1987 drawdown (drawCandleStage) is 0a's resting view. Yield to the
+    // data slide EARLY in the 0a→0b morph (and re-take it late on the way back) so the
+    // reveal-then-compress choreography in drawNow owns most of the travel; the old p=0.5
+    // handoff snapped 1987 straight to a third of the width.
+    let showStaticA0 = dominantKey === '0a';
+    if (fromKey === '0a' && toKey === '0b') showStaticA0 = animT < A0_HANDOFF;
+    else if (fromKey === '0b' && toKey === '0a') showStaticA0 = animT > 1 - A0_HANDOFF;
+    if (showStaticA0) {
       applyTheme(0); lastBull = 0;
       drawCandleStage(1);
       lastCandle = 0;

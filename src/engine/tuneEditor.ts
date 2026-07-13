@@ -155,6 +155,9 @@ export function initTuneEditor() {
   // Untagged elements get a stable selector-based id so their transform persists.
   const autoIds = new WeakMap<HTMLElement, string>();
   const baseTransforms = new WeakMap<HTMLElement, string>();
+  // Every element selected (⇒ possibly edited) this session — Save walks these to bake
+  // their tuned classes into source (those with an actual change; see the Save handler).
+  const seenEls = new Set<HTMLElement>();
 
   const cssPath = (el: HTMLElement): string => {
     const parts: string[] = [];
@@ -322,6 +325,7 @@ export function initTuneEditor() {
 
   const select = (el: HTMLElement) => {
     selected = el;
+    seenEls.add(el);
     frame.style.display = 'block';
     updateFrame();
     syncPanel();
@@ -514,7 +518,7 @@ export function initTuneEditor() {
   // ---- UI: toggle (always) + save (while editing) --------------------------
   const toggle = document.createElement('button');
   toggle.dataset.tuneUi = '';
-  toggle.title = 'Toggle inspect/edit mode — click any element to select (drag / arrows / corner-resize); the panel shows its size, offset, type props + a "Copy Tailwind" button for the current breakpoint. Double-click text to edit copy; Save writes text edits to en.json (positions go via Copy Tailwind → className).';
+  toggle.title = 'Toggle inspect/edit mode — click any element to select (drag / arrows / corner-resize); the panel shows its size, offset, type props + a "Copy Tailwind" button for the current breakpoint. Double-click text to edit copy; Save bakes everything into source — text → en.json, and each element\'s tuned classes → its className.';
   toggle.textContent = '✎';
   css(toggle, {
     position: 'fixed', top: '12px', right: '12px', width: '34px', height: '34px',
@@ -524,7 +528,7 @@ export function initTuneEditor() {
 
   const save = document.createElement('button');
   save.dataset.tuneUi = '';
-  save.title = 'Save: bakes candle-plate drag positions into their source constants (FACT_OFFSET/CRASH_OFFSET) and writes double-click text edits to en.json. Other elements: bake position/props via Copy Tailwind → className.';
+  save.title = 'Save: bakes every touched element into SOURCE — candle plates fold into their constants (FACT_/CRASH_OFFSET), text edits go to en.json, and any OTHER element gets its tuned width/font/color/offset substituted straight into its className (arbitrary-value classes). Elements with a dynamic/template-literal className can\'t be matched in source and are logged to the console instead.';
   save.textContent = 'Save';
   css(save, {
     position: 'fixed', top: '12px', right: '54px', height: '34px', padding: '0 14px',
@@ -739,6 +743,29 @@ export function initTuneEditor() {
     ].filter(Boolean).join(' ') || '(no changes — drag/resize/edit first)';
   };
 
+  // ---- bake helpers: substitute the tuned arbitrary-value classes INTO the element's
+  // existing className, replacing any same-KIND class at this breakpoint — so Save writes
+  // the merged string straight to source, no runtime delta layer.
+  // KIND groups classes we own (translate-x/y, scale, min/max-w, text font/color, align)
+  // at a breakpoint; null = a class we never touch. `max-sm:` (a different mobile prefix)
+  // stays untouched, so editing desktop never clobbers a hand-authored mobile class.
+  const classKind = (tok: string): string | null => {
+    const pm = tok.match(/^((?:max-\[800px\]:)?)(.+)$/);
+    const pfx = pm ? pm[1] : '', rest = pm ? pm[2] : tok;
+    if (/^text-(left|center|right|justify)$/.test(rest)) return pfx + 'align';
+    const am = rest.match(/^([a-z-]+)-\[(.*)\]$/);
+    if (!am) return null;
+    if (am[1] === 'text') return pfx + (/^#|^rgb/i.test(am[2]) ? 'text-color' : 'text-font');
+    return pfx + am[1] + '-[]';
+  };
+  const mergeClasses = (current: string, additions: string): string => {
+    const adds = additions.split(/\s+/).filter((t) => t && t[0] !== '(');
+    if (!adds.length) return current;
+    const drop = new Set(adds.map(classKind).filter(Boolean) as string[]);
+    const kept = current.split(/\s+/).filter((t) => { const k = classKind(t); return !(k && drop.has(k)); });
+    return [...kept, ...adds].join(' ');
+  };
+
   // ---- input wiring (each edits live) ----
   // pos px: set the offset so the element's on-screen rect.left/top hits the typed value.
   // (delta from the CURRENT rect → converges as you type, same math as a drag.)
@@ -921,7 +948,23 @@ export function initTuneEditor() {
       }
       const hasCandle = Object.keys(candleEdits).length > 0;
       const hasText = pendingText.size > 0;
-      if (!hasCandle && !hasText) { save.textContent = 'No changes'; return; }
+      // Every OTHER touched element: substitute its tuned classes into the source
+      // className (width/font/color/offset/scale) and bake via /__class. The candle
+      // plates keep their constant-bake path above, so exclude them here.
+      const classEdits: { old: string; new: string }[] = [];
+      const bakedEls: { el: HTMLElement; id: string }[] = [];
+      for (const el of seenEls) {
+        if (!el.isConnected) continue;
+        const { id } = idOf(el);
+        if (CANDLE_IDS.includes(id)) continue;
+        const tw = tailwindFor(id);
+        if (tw[0] === '(') continue; // no changes on this element
+        const oldCls = el.className;
+        const newCls = mergeClasses(oldCls, tw);
+        if (newCls !== oldCls) { classEdits.push({ old: oldCls, new: newCls }); bakedEls.push({ el, id }); }
+      }
+      const hasClass = classEdits.length > 0;
+      if (!hasCandle && !hasText && !hasClass) { save.textContent = 'No changes'; return; }
       const reqs: Promise<Response>[] = [];
       if (hasCandle) reqs.push(fetch('/__bake', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -931,14 +974,36 @@ export function initTuneEditor() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.fromEntries(pendingText)),
       }));
-      const ok = (await Promise.all(reqs)).every((r) => r.ok);
+      // Class bake runs on its own so we can read back WHICH elements couldn't be matched
+      // in source (dynamic/template-literal classNames) and log them for the user.
+      let classOk = true;
+      if (hasClass) {
+        const cr = await fetch('/__class', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ edits: classEdits }),
+        });
+        classOk = cr.ok;
+        try {
+          const j = await cr.json() as { results?: { ok: boolean; reason?: string }[] };
+          (j.results || []).forEach((r, i) => { if (!r.ok) console.warn('[tune] class bake skipped:', r.reason, '\n  ', classEdits[i]?.old); });
+        } catch { /* non-JSON error body */ }
+      }
+      const ok = (await Promise.all(reqs)).every((r) => r.ok) && classOk;
       if (ok) {
         // folded into source → zero the runtime delta so it isn't double-applied (HMR
-        // reloads CandleIntro with the new constants; the live inline width already matches)
+        // reloads the module with the new constants/classes; the live inline width matches)
         for (const id of Object.keys(candleEdits)) {
           tuneStore.set(id, [0, 0]);
           tuneStore.setScale(id, 1);
           const ov = styleOv.get(id); if (ov) delete ov.maxW;
+        }
+        // baked class elements: drop the runtime delta + inline overrides (the source
+        // className now carries the tuned values; HMR re-renders them).
+        for (const { el, id } of bakedEls) {
+          tuneStore.set(id, [0, 0]); tuneStore.setScale(id, 1);
+          styleOv.delete(id);
+          el.style.maxWidth = ''; el.style.minWidth = ''; el.style.fontSize = ''; el.style.color = ''; el.style.textAlign = '';
+          el.style.transform = baseTransforms.get(el) || '';
         }
         pendingText.clear();
       }
