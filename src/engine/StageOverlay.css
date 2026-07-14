@@ -3,8 +3,8 @@
    Opacity/position are driven from JS; these are base styles to be hand-tuned. */
 
 /* Lift the whole narrative layer (plaques + annotations) ABOVE every sibling
-   overlay riding the same scroll (PartsFrame/TonnesFrame/SelfieFrame dots, the
-   RearFrame photo). Those are z-index:auto siblings inside ModelChapter's shared
+   overlay riding the same scroll (PartsFrame/TonnesFrame/SelfieFrame dots).
+   Those are z-index:auto siblings inside ModelChapter's shared
    children wrapper, so plain DOM order would let e.g. the PartsFrame «horns» dots
    paint over the «Selfie magnet» plaque. Any positive value wins; keep the whole
    overlay one layer so plaques always sit on top of the bull's scene overlays. */

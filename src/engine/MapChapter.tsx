@@ -88,6 +88,32 @@ async function fetchAllRoutes(steps: { lng: number; lat: number }[]): Promise<Ln
   return segments;
 }
 
+/** Full coords for one leg (stop k → stop k+1). frac=1 → whole leg; 0<frac<1 → partial. */
+function computeLegCoords(legIndex: number, steps: { lng: number; lat: number }[], routes: LngLat[][], frac = 1): LngLat[] {
+  if (legIndex < 0 || legIndex >= routes.length) return [];
+  const seg = routes[legIndex];
+  if (!seg || seg.length < 2) return [];
+  const pts: LngLat[] = [[steps[legIndex].lng, steps[legIndex].lat]];
+  if (frac >= 0.999) {
+    for (let j = 1; j < seg.length; j++) pts.push(seg[j]);
+    return pts;
+  }
+  if (frac <= 0.001) return pts;
+  const target = segLength(seg) * frac;
+  let acc = 0;
+  for (let j = 1; j < seg.length; j++) {
+    const d = haversine(seg[j - 1], seg[j]);
+    if (acc + d >= target) {
+      const t = (target - acc) / d;
+      pts.push([seg[j - 1][0] + (seg[j][0] - seg[j - 1][0]) * t, seg[j - 1][1] + (seg[j][1] - seg[j - 1][1]) * t]);
+      break;
+    }
+    pts.push(seg[j]);
+    acc += d;
+  }
+  return pts;
+}
+
 /** Path from stop 0 to the current fractional progress, along the fetched roads. */
 function computeTrailCoords(progress: number, steps: { lng: number; lat: number }[], routes: LngLat[][]): LngLat[] {
   if (progress < 0 || !steps.length) return [];
@@ -95,18 +121,32 @@ function computeTrailCoords(progress: number, steps: { lng: number; lat: number 
   const pts: LngLat[] = [[steps[0].lng, steps[0].lat]];
   for (let k = 0; k < Math.min(i, routes.length); k++) for (let j = 1; j < routes[k].length; j++) pts.push(routes[k][j]);
   if (frac > 0.001 && i < routes.length) {
-    const seg = routes[i];
-    if (seg && seg.length >= 2) {
-      const target = segLength(seg) * frac; let acc = 0;
-      for (let j = 1; j < seg.length; j++) {
-        const d = haversine(seg[j - 1], seg[j]);
-        if (acc + d >= target) { const t = (target - acc) / d; pts.push([seg[j - 1][0] + (seg[j][0] - seg[j - 1][0]) * t, seg[j - 1][1] + (seg[j][1] - seg[j - 1][1]) * t]); break; }
-        pts.push(seg[j]); acc += d;
-      }
-    }
+    const tail = computeLegCoords(i, steps, routes, frac);
+    for (let j = 1; j < tail.length; j++) pts.push(tail[j]);
   }
   return pts;
 }
+
+/** Bearing along the route at progress — look-ahead/behind so dense road vertices
+ *  don't flip the bull sideways on tight polyline corners. */
+function pathHeadingAt(progress: number, steps: { lng: number; lat: number }[], routes: LngLat[][], span = 0.04): number {
+  const back = computeTrailCoords(Math.max(0, progress - span), steps, routes);
+  const fwd = computeTrailCoords(progress + span, steps, routes);
+  const a = back[back.length - 1];
+  const b = fwd[fwd.length - 1];
+  if (haversine(a, b) < 0.3) {
+    const trail = computeTrailCoords(progress, steps, routes);
+    if (trail.length < 2) return 0;
+    const p1 = trail[trail.length - 2];
+    const head = trail[trail.length - 1];
+    return (Math.atan2(head[0] - p1[0], head[1] - p1[1]) * 180) / Math.PI;
+  }
+  return (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180) / Math.PI;
+}
+
+const TRAIL_RGB = [251, 199, 95] as const;
+const TRAIL_ALPHA = 204;
+const TRAIL_ALPHA_DONE = 102; // 50% of full opacity — completed legs
 
 /** deck.gl layers: stop dots · trail · bull head (3D model). */
 function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: number; lat: number }[], routes: LngLat[][], headings: (number | null)[] = [], bullScale = 1.3): Layer[] {
@@ -121,23 +161,35 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: numbe
     stroked: true, getLineColor: [10, 10, 16, 200], getLineWidth: 1.2, lineWidthUnits: 'pixels',
     parameters: NO_DEPTH, updateTriggers: { getRadius: activeStop, getFillColor: activeStop },
   }));
-  const trail = computeTrailCoords(progress, steps, routes);
-  if (trail.length >= 2) {
-    layers.push(new PathLayer({ id: 'trail', data: [{ path: trail }], getPath: (d) => d.path, getColor: [251, 199, 95, 204], getWidth: 3, widthUnits: 'pixels', capRounded: true, jointRounded: true, billboard: true, parameters: NO_DEPTH }));
+  const leg = Math.floor(progress), legFrac = progress - leg;
+  const pathLayer = (id: string, path: LngLat[], alpha: number) => new PathLayer({
+    id, data: [{ path }], getPath: (d) => d.path,
+    getColor: [...TRAIL_RGB, alpha], getWidth: 3, widthUnits: 'pixels',
+    capRounded: true, jointRounded: true, billboard: true, parameters: NO_DEPTH,
+  });
+  for (let k = 0; k < Math.min(leg, routes.length); k++) {
+    const done = computeLegCoords(k, steps, routes);
+    if (done.length >= 2) layers.push(pathLayer(`trail-done-${k}`, done, TRAIL_ALPHA_DONE));
   }
+  if (legFrac > 0.001 && leg < routes.length) {
+    const active = computeLegCoords(leg, steps, routes, legFrac);
+    if (active.length >= 2) layers.push(pathLayer('trail-active', active, TRAIL_ALPHA));
+  }
+  const trail = computeTrailCoords(progress, steps, routes);
   if (trail.length >= 1) {
     const head = trail[trail.length - 1];
-    let heading = 0;
-    if (trail.length >= 2) { const p1 = trail[trail.length - 2]; heading = (Math.atan2(head[0] - p1[0], head[1] - p1[1]) * 180) / Math.PI; }
-    // The bull walks FACING ALONG the route between stops. As it SETTLES on a stop that
-    // carries a heading override (mapConfig.bull.headings), it eases from the road tangent
-    // to that exact facing — so it can stand parallel to the street, not skewed to the
-    // approach angle. A null override keeps the tangent (e.g. the Queens impound).
-    const k = Math.round(progress);
-    const override = headings[k];
-    if (override != null) {
-      const settle = 1 - Math.min(1, Math.abs(progress - k) / 0.5); // 1 at the stop → 0 half a leg away
-      heading = lerpBearing(heading, override, smoothstep(settle));
+    let heading = pathHeadingAt(progress, steps, routes);
+    // Parking headings apply only at the stop (dwell) and in the last ~2% of the
+    // arriving leg — not from halfway through (round(progress) used to pull override
+    // in far too early, turning the bull sideways while still walking).
+    const arrive = leg + 1;
+    if (arrive < headings.length && headings[arrive] != null && legFrac > 0.98) {
+      const t = smoothstep((legFrac - 0.98) / 0.02);
+      heading = lerpBearing(heading, headings[arrive]!, t);
+    }
+    if (leg < headings.length && headings[leg] != null && legFrac < 0.02) {
+      const t = 1 - smoothstep(legFrac / 0.02);
+      heading = lerpBearing(heading, headings[leg]!, t);
     }
     layers.push(new ScenegraphLayer({
       id: 'bull-3d', data: [{ position: head, heading }], scenegraph: BULL_3D_MODEL_URL,
@@ -423,6 +475,7 @@ export default function MapChapter({
   const introBodyRef = useRef<HTMLParagraphElement>(null);
   const outroRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
+  const poiUpdateRef = useRef<(() => void) | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   // Camera choreography (stops / flyover waypoints / leg weights / bull facing) read
@@ -660,7 +713,6 @@ export default function MapChapter({
         return { lm, el };
       });
 
-    // fade radius in stop-units: a landmark is fully lit on its listed steps and
     // ramps out over ~0.65 of a step on either side (so e.g. NYSE [2,4] shows at
     // both downtown stops but hides at the Impound detour in between).
     const RADIUS = 0.65;
@@ -676,12 +728,14 @@ export default function MapChapter({
         el.style.opacity = vis.toFixed(3);
       }
     };
+    poiUpdateRef.current = update;
     update();
     map.on('move', update);
-    map.on('render', update);
+    map.on('resize', update);
     return () => {
+      poiUpdateRef.current = null;
       map.off('move', update);
-      map.off('render', update);
+      map.off('resize', update);
       layer.remove();
     };
   }, [mapReady, landmarks, playhead, cfg]);
@@ -902,6 +956,8 @@ export default function MapChapter({
         pitch: Math.min(85, cam.pitch + DIVE_PITCH * dive),
         bearing: cam.bearing + DIVE_BEARING * rotE,
       });
+      // POI pills ride the same jumpTo — don't wait for a later render tick.
+      poiUpdateRef.current?.();
       // Project the bull's world coord to the (updated) screen and hand its offset from
       // viewport centre to the splat reveal, so the iris + bull start GLUED to the map
       // bull and ride to centre with the pan — not popping in higher/right at a fixed centre.

@@ -1,7 +1,26 @@
-/* CandleIntro overlay — gridlines, facts, the "Black Monday 1987" label.
+/* CandleIntro overlay — gridlines, facts, the "Black Monday 1987" label, and the
+   hero (logo / wordmark / subtitle / coords).
    Ported from wallst-rodeo/candlesticks-v4.html (#grid / #facts / #bmlabel),
    re-pointed onto the longread's font variables. Element opacity is driven from
-   JS (per-frame), except the grid, which shares the container's --ci-grid. */
+   JS (per-frame), except the grid, which shares the container's --ci-grid.
+
+   FIXED-FRAME MODEL: the whole slide is authored at one of two exact pixel frames
+   (landscape 1440×800, portrait 393×852) and the .ci-stage is uniformly scaled to
+   the viewport width, bottom-aligned (see CandleIntro.tsx). NOTHING here uses
+   vw/vh/clamp — every size/offset is fixed px in the frame's coordinates, so the
+   composition scales as ONE unit. Portrait-only differences live under .ci-stage--portrait. */
+
+/* ── fixed design stage ─────────────────────────────────────────────────── */
+/* bottom-anchored, width-fit: scale(k)=vw/frameW from transform-origin bottom
+   center so the chart reaches both side edges without distortion; overflow:hidden
+   on the wrap clips the top if the scaled frame is taller than the viewport. */
+.ci-stage {
+  position: absolute; left: 50%; bottom: 0;
+  transform-origin: bottom center;
+  transform: translateX(-50%);
+  overflow: hidden;
+  will-change: transform;
+}
 
 .ci-overlay { --ci-grid: 0; --ci-pink: #de2053; --ci-coral: #e0655b; }
 
@@ -25,11 +44,10 @@
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-yl {
-  /* Sits ABOVE its price line. JS sets top = the line's y; this lift is baked in CSS
-     (was a dev-only tune delta of -3vh that never shipped to production — the editor
-     re-applies auto/transform offsets only in dev, so prod showed the numbers on the
-     lines). Baked here it renders identically everywhere. */
-  position: absolute; right: 20px; transform: translateY(-3vh); text-align: right; white-space: nowrap;
+  /* Sits ABOVE its price line. JS sets top = the line's y; this fixed lift (was a
+     dev-only -3vh tune delta) keeps the numbers off the lines. Fixed px now — it
+     scales with the frame like everything else. */
+  position: absolute; right: 20px; transform: translateY(-24px); text-align: right; white-space: nowrap;
   font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
@@ -42,12 +60,7 @@
 
 /* pre-crash facts: an arrow-in-circle icon above a translucent black plate that
    carries the bold date heading + body (struve 18, white) — matching Frame 78. */
-.ci-overlay .ci-fact { position: absolute; opacity: 0; width: 300px; max-width: 90vw; }
-/* per-callout width tweaks (so lines wrap where the reference does) */
-/* plate widths = the Frame 184 / 183 / 182 mockup widths (fact0=25 Aug, 1=4 Sep, 2=16 Oct) */
-.ci-overlay .ci-fact[data-tune="candle.fact0"] { width: 270px; }
-.ci-overlay .ci-fact[data-tune="candle.fact1"] { width: 305px; }
-.ci-overlay .ci-fact[data-tune="candle.fact2"] { width: 310px; }
+.ci-overlay .ci-fact { position: absolute; opacity: 0; width: 300px; }
 /* icon sits 6px above the plate (mockup: 40px icon, plate top at y=46). */
 .ci-overlay .ci-icon { display: block; width: 40px; height: 40px; margin-bottom: 6px; }
 .ci-overlay .ci-icon svg { display: block; width: 100%; height: 100%; }
@@ -65,7 +78,7 @@
 /* Black Monday crash block: skull, date + headline, and the giant −20.5% figure. */
 /* whole crash block scaled down (~15% off the reference) — from the top-left so the
    JS-set anchor stays put and it shrinks toward it. */
-.ci-overlay .ci-bm { position: absolute; opacity: 0; width: max-content; max-width: 92vw; transform: scale(0.83); transform-origin: top left; }
+.ci-overlay .ci-bm { position: absolute; opacity: 0; width: max-content; transform: scale(0.83); transform-origin: top left; }
 .ci-overlay .ci-skull {
   display: block; width: 54px; height: 80px; color: var(--ci-pink); margin-bottom: 18px;
 }
@@ -78,9 +91,59 @@
 }
 .ci-overlay .ci-bm-fig {
   position: relative;
-  /* a touch larger than the surrounding block so the figure dominates */
-  font: 900 clamp(95px, 14vw, 204px) / 0.82 var(--font-druk);
+  /* a touch larger than the surrounding block so the figure dominates.
+     Fixed px at the landscape frame (was clamp(95,14vw,204) → 202 at 1440). */
+  font: 900 202px / 0.82 var(--font-druk);
   color: var(--ci-pink); letter-spacing: 0.03em;
 }
 /* leading minus hung into the left margin so the "20" aligns with the date/title */
 .ci-overlay .ci-bm-sign { position: absolute; left: 0; top: 0; transform: translateX(-100%); }
+
+/* ── hero: logo · coords · wordmark · subtitle (landscape frame) ─────────── */
+/* Meridian mark, top-left corner. */
+.ci-logo { position: absolute; left: 25px; top: 27px; height: 68px; width: auto; z-index: 20; }
+
+/* coords line, centred at top */
+.ci-coords-wrap { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); }
+.ci-coords {
+  white-space: nowrap; color: #fff;
+  font: 400 21px var(--font-mono); letter-spacing: 0.12em;
+  transform: translate(38.8px, 7.9px);
+}
+.ci-coords-dot {
+  display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+  background: #de2053; vertical-align: middle; position: relative; top: -2px;
+}
+
+/* wordmark + subtitle stack, nudged 100px below dead-centre per design */
+.ci-hero {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 0 24px; text-align: center;
+  transform: translateY(100px);
+}
+.ci-wordmark { will-change: transform; transform: translate(26.3px, 3.1px) scale(1.123); }
+.ci-wordmark-desktop { display: block; width: 1000px; height: auto; }
+.ci-wordmark-mobile { display: none; }
+.ci-subtitle {
+  margin-top: 24px; max-width: 760px;
+  font: 400 34px / 1.176 var(--font-struve); color: #fff;
+  transform: translate(-14.6px, 10px);
+}
+
+/* ── portrait frame overrides (≤800px viewport) ─────────────────────────── */
+/* Values are the old max-[800px]/mobile design evaluated at the 393×852 frame. */
+.ci-stage--portrait .ci-coords {
+  font-size: 17px; transform: translate(-4.2px, 96.4px);
+}
+.ci-stage--portrait .ci-hero { transform: translateY(0); }
+.ci-stage--portrait .ci-wordmark { transform: none; }
+.ci-stage--portrait .ci-wordmark-desktop { display: none; }
+/* the designer's outlined wordmark, full frame width — «Rodeo» bleeds off and
+   clips at the frame's right edge exactly as drawn (stage overflow:hidden). */
+.ci-stage--portrait .ci-wordmark-mobile { display: block; width: 393px; max-width: none; height: auto; }
+.ci-stage--portrait .ci-subtitle {
+  font-size: 19.2px; max-width: 345px; transform: translate(-5.2px, 47.7px);
+}
+/* crash figure shrinks to the portrait scale (was clamp floor 95 at narrow widths). */
+.ci-stage--portrait .ci-bm-fig { font-size: 95px; }

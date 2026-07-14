@@ -30,16 +30,16 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
   track={OPENER_TRACK}
 >
   <CandleIntro span={[0, 0.5]} />
-  {/* rear bull PHOTO — ordered before StageOverlay so the "Touch for luck" plaque
-      keeps overlaying it; the photo fills the screen (cover) and replaces the 3D bull
-      once it has turned rear (see RearFrame). */}
-  <RearFrame />
+  {/* The opener now ends on the LIVE 3D bull turned rear (no photo). The "Touch for
+      luck" plaque (last stage) rides up over that rear view — in from below at the
+      moment the bull settles rear (~0.92), through centre, and off the top by ~0.99,
+      leaving a clean rear beat before the whole slide scrolls on to the intro. */}
   <StageOverlay
     stagesUrl="/chapters/splash/stages.json"
     range={[0.52, 1]}
     plaques={t('opener.plaques')}
-    plaqueAt={[0.44, 0.54, undefined, 0.838, 0.97]}
-    plaqueReach={[undefined, undefined, undefined, 0.04, 0.02]}
+    plaqueAt={[0.44, 0.54, undefined, 0.838, 0.955]}
+    plaqueReach={[undefined, undefined, undefined, 0.04, 0.035]}
     hidePlaques={[1, 2]}
   />
   <TonnesFrame />

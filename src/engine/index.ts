@@ -5,7 +5,6 @@ export { default as StageOverlay } from './StageOverlay';
 export { default as TonnesFrame } from './TonnesFrame';
 export { default as PartsFrame } from './PartsFrame';
 export { default as SelfieFrame } from './SelfieFrame';
-export { default as RearFrame } from './RearFrame';
 export { default as MapChapter } from './MapChapter';
 export { default as MapBullHandoff } from './MapBullHandoff';
 export type { CameraTrack } from './cameraTrack';

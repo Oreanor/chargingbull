@@ -620,6 +620,13 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     }
     ctx.setLineDash([]);
 
+    // Y-axis title (mockup "S&P 500 INDEX") — these views plot the index/$ value, not a
+    // percentage, so they get the same header as the candle close-up. Top-right, above the
+    // topmost value, right edge flush with the plot's right edge.
+    ctx.fillStyle = AXIS; ctx.font = FONT;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(LBL.indexLabel || 'S&P 500 INDEX', x1, y0 - 3);
+
     // No vertical grid lines in the mockup — a dot under each year label instead.
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = AXIS;
     const xSpan = xMax - xMin;
@@ -815,6 +822,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         ctx.fillStyle = AXIS;
         ctx.fillText(String(v), x1 + 10, y);
       }
+      // Y-axis title fades in with the price grid it belongs to (see drawState2).
+      ctx.fillStyle = AXIS; ctx.font = FONT;
+      ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(LBL.indexLabel || 'S&P 500 INDEX', x1, y0 - 3);
       ctx.restore();
     }
 

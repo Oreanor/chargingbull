@@ -93,7 +93,7 @@ const INDEX_LABEL = t('opener.candles.indexLabel');
 const FACT_OFFSET: [number, number][] = [[-23.06, 28.74], [2.32, 5.91], [2.28, -0.39]];
 const FACT_SCALE = [1, 0.999, 0.996];
 const FACT_WIDTH: (number | null)[] = [null, null, null]; // px max-width per fact plate (null = CSS default)
-const CRASH_OFFSET: [number, number] = [3.79, 1.17];
+const CRASH_OFFSET: [number, number] = [3.79, 1.67];
 const CRASH_SCALE: number = 0.965;
 const CRASH_WIDTH: number | null = null; // px max-width of the crash block (null = CSS default)
 
@@ -115,7 +115,19 @@ function niceTicks(min: number, max: number): number[] {
 /** The candle canvas + overlay, driven by a 0..1 progress (its own or the
  *  enclosing chapter's), remapped into the `span` sub-range it occupies. Renders
  *  as an absolute fill — the wrapper below provides the positioned container. */
+// Fixed design frames. The WHOLE slide is authored at one of these exact pixel
+// sizes and then uniformly scaled to the viewport width, bottom-aligned — so the
+// chart reaches both side edges without distortion and the bottom never clips.
+// Landscape
+// is the project's 1440×800 frame; portrait is a reference phone (≈iPhone 15).
+// The breakpoint is the project's 800px.
+const LAND_FRAME = { w: 1440, h: 800 } as const;
+const PORT_FRAME = { w: 393, h: 852 } as const;
+const PORT_BREAK = 800; // viewport width ≤ this → portrait frame
+
 function CandleScene({ progress, span }: { progress: MotionValue<number>; span: [number, number] }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -125,6 +137,31 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
   const coordsRef = useRef<HTMLDivElement>(null);
   const spanRef = useRef(span);
   spanRef.current = span;
+
+  // Fit-scale: size the fixed stage to the active frame and uniformly scale it to
+  // the viewport width, anchored at the bottom. Uniform k preserves aspect ratio;
+  // overflow:hidden on the wrap clips the top when the scaled frame is taller than
+  // the viewport — the bottom (price axis / chart base) always stays visible.
+  useEffect(() => {
+    const wrap = wrapRef.current, stage = stageRef.current;
+    if (!wrap || !stage) return;
+    const fit = () => {
+      const vw = wrap.clientWidth;
+      if (vw <= 0 || wrap.clientHeight <= 0) return;
+      const portrait = vw <= PORT_BREAK;
+      const f = portrait ? PORT_FRAME : LAND_FRAME;
+      stage.style.width = `${f.w}px`;
+      stage.style.height = `${f.h}px`;
+      const k = vw / f.w; // width-fit — chart spans edge to edge, no horizontal letterbox
+      stage.style.transform = `translateX(-50%) scale(${k})`;
+      stage.classList.toggle('ci-stage--portrait', portrait);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(wrap);
+    window.addEventListener('resize', fit);
+    return () => { ro.disconnect(); window.removeEventListener('resize', fit); };
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -467,79 +504,58 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
   }, [progress]);
 
   return (
-    <>
-      {/* grid layer — dashed verticals / price lines / axis labels, BEHIND the
-          candles so the opaque candle bodies paint over it (candles on top of grid). */}
-      <div ref={gridRef} className="ci-overlay absolute inset-0 z-0 pointer-events-none" />
-      {/* candle canvas (transparent — composites over the grid behind it) */}
-      <div ref={hostRef} className="absolute inset-0 z-[5]" />
-      {/* DOM overlay: facts + BM label (above the candles) */}
-      <div ref={overlayRef} className="ci-overlay absolute inset-0 z-10 pointer-events-none" />
-      {/* Meridian mark (corner) — slides UP and out as the charts draw. */}
-      <img
-        ref={logoRef}
-        src="/brand/meridian-logo.svg"
-        alt={t('opener.logoAlt')}
-        className="absolute left-[46px] top-[36px] h-[68px] w-auto z-20 pointer-events-none will-change-transform translate-x-[-2.57vh] translate-y-[-1.1vh]"
-      />
-      {/* hero — each element slides off independently (staggered in the loop). */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
-        {/* coords (upper small) — leaves last */}
-        <div className="absolute top-[40px] left-1/2 -translate-x-1/2">
-          <div
-            ref={coordsRef}
-            className="whitespace-nowrap text-white will-change-transform text-[clamp(13px,4.3vw,21px)] translate-x-[4.85vh] translate-y-[0.99vh] max-[800px]:translate-x-[-0.49vh] max-[800px]:translate-y-[11.31vh]"
-            style={{ fontFamily: 'var(--font-mono)', fontWeight: 400, letterSpacing: '0.12em' }}
-          >
-            {t('opener.hero.coordsCity')}{' '}
-            <span
-              style={{
-                display: 'inline-block',
-                width: '11px',
-                height: '11px',
-                borderRadius: '50%',
-                background: '#DE2053',
-                verticalAlign: 'middle',
-                position: 'relative',
-                top: '-2px',
-              }}
-            />
-            {' '}{t('opener.hero.coordsGeo')}
+    // wrap fills the ModelChapter container; the stage is a fixed-size design frame
+    // width-fit + bottom-aligned inside it (see the fit effect above). Everything
+    // below is authored in fixed px against the active frame — no vw/vh/clamp.
+    <div ref={wrapRef} className="ci-stagewrap absolute inset-0 overflow-hidden pointer-events-none">
+      <div ref={stageRef} className="ci-stage" style={{ width: `${LAND_FRAME.w}px`, height: `${LAND_FRAME.h}px` }}>
+        {/* grid layer — dashed verticals / price lines / axis labels, BEHIND the
+            candles so the opaque candle bodies paint over it (candles on top of grid). */}
+        <div ref={gridRef} className="ci-overlay absolute inset-0 z-0 pointer-events-none" />
+        {/* candle canvas (transparent — composites over the grid behind it) */}
+        <div ref={hostRef} className="absolute inset-0 z-[5]" />
+        {/* DOM overlay: facts + BM label (above the candles) */}
+        <div ref={overlayRef} className="ci-overlay absolute inset-0 z-10 pointer-events-none" />
+        {/* Meridian mark (corner) — fades out as the charts draw. */}
+        <img
+          ref={logoRef}
+          src="/brand/meridian-logo.svg"
+          alt={t('opener.logoAlt')}
+          className="ci-logo pointer-events-none"
+        />
+        {/* hero — each element fades off independently (staggered in the loop). */}
+        <div className="ci-hero-layer absolute inset-0 z-20 pointer-events-none">
+          {/* coords (upper small) — leaves last */}
+          <div className="ci-coords-wrap">
+            <div ref={coordsRef} className="ci-coords">
+              {t('opener.hero.coordsCity')}{' '}
+              <span className="ci-coords-dot" />
+              {' '}{t('opener.hero.coordsGeo')}
+            </div>
           </div>
-        </div>
-        {/* wordmark (biggest, leaves first) + subtitle (leaves second) */}
-        {/* nudged down 100px from dead-center per design */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center translate-y-[100px] max-sm:translate-y-0">
-          {/* wordmark wrapper carries the slide-off transform/opacity/glow (set per-frame).
-              Desktop = the combined "Wall St Rodeo" mark; mobile = the two logos stacked
-              big with ~30px side padding. */}
-          <div
-            ref={wordmarkRef}
-            className="will-change-transform translate-x-[3.29vh] translate-y-[0.39vh] scale-[1.123] max-[800px]:translate-x-0 max-[800px]:translate-y-0 max-[800px]:scale-100"
-          >
-            <img
-              src="/brand/wall-st-rodeo.svg"
-              alt={t('opener.wordmarkAlt')}
-              className="w-[clamp(320px,72vw,1000px)] h-auto max-sm:hidden"
-            />
-            {/* Mobile: the designer's EXACT wordmark (outlined vectors from the mockup).
-                w-screen so the SVG's design-x maps 1:1 to the viewport — «Rodeo» bleeds off
-                and clips at the right edge exactly as drawn, no fonts involved. */}
-            <img
-              src={WORDMARK_MOBILE}
-              alt={t('opener.wordmarkAlt')}
-              className="hidden max-sm:block w-screen max-w-none h-auto"
-            />
+          {/* wordmark (biggest) + subtitle */}
+          <div className="ci-hero">
+            {/* wordmark wrapper carries the fade-off opacity/glow (set per-frame).
+                Desktop = the combined "Wall St Rodeo" mark; portrait = the designer's
+                EXACT outlined wordmark from the mockup. */}
+            <div ref={wordmarkRef} className="ci-wordmark">
+              <img
+                src="/brand/wall-st-rodeo.svg"
+                alt={t('opener.wordmarkAlt')}
+                className="ci-wordmark-desktop"
+              />
+              <img
+                src={WORDMARK_MOBILE}
+                alt={t('opener.wordmarkAlt')}
+                className="ci-wordmark-mobile"
+              />
+            </div>
+            {/* subtitle — built in JS */}
+            <p ref={subtitleRef} className="ci-subtitle" />
           </div>
-          {/* subtitle — typed out letter-by-letter in the loop (built in JS) */}
-          <p
-            ref={subtitleRef}
-            className="mt-6 max-w-[760px] text-[clamp(19.2px,2.361vw,34px)] text-white will-change-transform leading-[1.176] translate-x-[-1.82vh] translate-y-[1.25vh] max-[800px]:translate-x-[-0.61vh] max-[800px]:translate-y-[5.6vh]"
-            style={{ fontFamily: 'var(--font-struve)', fontWeight: 400 }}
-          />
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
