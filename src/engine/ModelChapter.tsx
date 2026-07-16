@@ -902,7 +902,7 @@ function KeyframeEditor({
             title="Растащить секции модели наружу из центра — видно, что бык полый внутри. 0 = собран."
           >
             растаскивание {r2(selKey.explode ?? 0)} <span className="text-fg/35">(секции наружу — «полый»)</span>
-            <input type="range" min={0} max={1.2} step={0.02} value={selKey.explode ?? 0}
+            <input type="range" min={0} max={2} step={0.02} value={selKey.explode ?? 0}
               onChange={(e) => updateSel({ explode: +e.target.value })} className="w-full accent-amber-400" />
           </label>
           <label

@@ -47,7 +47,7 @@
 }
 
 @media (max-width: 1023px) {
-  .mc-card { margin: 0 auto; padding: 28px 28px 32px; width: calc(100vw - 40px); border-radius: 22px; }
+  .mc-card { margin: 0 auto; padding: 28px 28px 32px; width: min(672px, calc(100vw - 40px)); border-radius: 22px; }
   .mc-figure { margin-bottom: 16px; }
   .mc-photo { border-radius: 10px; }
 }

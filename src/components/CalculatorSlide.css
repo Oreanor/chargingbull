@@ -73,12 +73,13 @@
   position: absolute; left: clamp(6px, 2.5%, 34px); bottom: 44px;
   max-width: min(352px, 46%); opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
   font: 400 clamp(17px, 1.9vw, 24px)/1.32 var(--font-struve); color: #61E26B;
+  transform: translate(10.42vh, -1.11vh); /* baked from ✎ editor */
 }
 /* White ↔ is the first character of the text — inline on the same line, with a space after it */
 .calc-hint .ar { display: inline-block; vertical-align: -0.02em; width: 1.15em; height: 0.66em; margin-right: 0.3em; fill: #fff; }
 /* Green curved arrow hangs off the text's right edge and dives at the year flag below.
    Absolute, so it can overhang the hint's max-width and drop past its bottom. */
-.calc-hint .arc { position: absolute; left: calc(100% + 4px); bottom: -32px; width: 2.9em; height: 3.07em; fill: #61E26B; }
+.calc-hint .arc { position: absolute; left: calc(100% + 4px); bottom: -32px; width: 2.9em; height: 3.07em; fill: #61E26B; transform: translate(-11vh, 1.31vh); /* baked from ✎ editor */ }
 .calc-note { font: 400 clamp(13px, 1.15vw, 16px)/1.5 var(--font-struve); color: rgba(255, 255, 255, 0.5); margin-top: 20px; }
 @media (max-width: 560px) { .calc-top { align-items: flex-start; } .calc-result { text-align: left; } }
 

@@ -128,6 +128,7 @@ const PORT_BREAK = 800; // viewport width ≤ this → portrait frame
 function CandleScene({ progress, span }: { progress: MotionValue<number>; span: [number, number] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const heroStageRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -138,23 +139,75 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
   const spanRef = useRef(span);
   spanRef.current = span;
 
-  // Fit-scale: size the fixed stage to the active frame and uniformly scale it to
-  // the viewport width, anchored at the bottom. Uniform k preserves aspect ratio;
-  // overflow:hidden on the wrap clips the top when the scaled frame is taller than
-  // the viewport — the bottom (price axis / chart base) always stays visible.
+  // Fit-scale: TWO layers, two fits, one frame.
+  //  • chart stage (stageRef): width-fit + bottom-anchored — k = vw/frameW, so the
+  //    chart/grid span both side edges without distortion; overflow:hidden clips the
+  //    top when the scaled frame is taller than the viewport (bottom/price axis stays).
+  //  • hero stage (heroStageRef): contain-fit + centered — k = min(vw/fw, vh/fh), so
+  //    the title composition (logo · coords · wordmark · subtitle) ALWAYS fits whole
+  //    and never clips (the top-left logo survived nowhere under width-fit on wide/
+  //    short viewports). Letterboxes at the sides on wide screens — intentional.
   useEffect(() => {
     const wrap = wrapRef.current, stage = stageRef.current;
     if (!wrap || !stage) return;
     const fit = () => {
-      const vw = wrap.clientWidth;
-      if (vw <= 0 || wrap.clientHeight <= 0) return;
+      const vw = wrap.clientWidth, vh = wrap.clientHeight;
+      if (vw <= 0 || vh <= 0) return;
       const portrait = vw <= PORT_BREAK;
-      const f = portrait ? PORT_FRAME : LAND_FRAME;
-      stage.style.width = `${f.w}px`;
-      stage.style.height = `${f.h}px`;
-      const k = vw / f.w; // width-fit — chart spans edge to edge, no horizontal letterbox
-      stage.style.transform = `translateX(-50%) scale(${k})`;
       stage.classList.toggle('ci-stage--portrait', portrait);
+
+      if (portrait) {
+        // PORTRAIT — unchanged: fixed phone frame, width-fit, centred.
+        const f = PORT_FRAME;
+        stage.style.width = `${f.w}px`;
+        stage.style.height = `${f.h}px`;
+        stage.style.left = '50%';
+        stage.style.transformOrigin = 'center center';
+        stage.style.transform = `translate(-50%, -50%) scale(${vw / f.w})`;
+        stage.style.setProperty('--ci-axis-shift', '0px');
+      } else {
+        // LANDSCAPE — fit-height, then reflow-THEN-scale. Everything stays ONE locked
+        // block: the candle camera + grid + plates all live in the fixed 1440×800 frame and
+        // scale together by k, so they never desync (the earlier per-layer fluid reflow slid
+        // the plates — this doesn't). The ONLY thing that moves independently is the price
+        // axis (.ci-yl / .ci-hl / .ci-index via --ci-axis-shift), sliding LEFT to hug the
+        // real right edge and shortening the grid lines — "сначала едут цифры".
+        //  • base scale = FIT HEIGHT (k = vh/800) so the bottom (month labels / 225) never
+        //    clips — the whole thing just gets a touch smaller instead.
+        //  • if the height-fit frame is WIDER than the viewport: hold that scale and ride the
+        //    price axis in over the right slack (up to REFLOW_MAX) — reflow;
+        //  • once the slack is spent: scale the whole frame down — "потом жмётся".
+        // Left-anchored so the oldest candles always hug the left edge.
+        const FW = LAND_FRAME.w, FH = LAND_FRAME.h; // 1440 × 800
+        const REFLOW_MAX = FW * 0.20;               // ← right slack eaten before scaling (~20%)
+        const kHeight = vh / FH;                    // fit-height scale (bottom never clips)
+        const frameW = FW * kHeight;                // its on-screen width
+        const overflow = frameW - vw;               // >0 when that frame is wider than the viewport
+        let k: number, shiftFrame: number;
+        if (overflow <= 0) {
+          k = kHeight; shiftFrame = 0;                          // fits width too: axis at frame right
+        } else if (overflow <= REFLOW_MAX * kHeight) {
+          k = kHeight; shiftFrame = overflow / kHeight;         // reflow band: hold scale, axis rides in
+        } else {
+          k = vw / (FW - REFLOW_MAX); shiftFrame = REFLOW_MAX;  // slack spent: scale the whole frame
+        }
+        stage.style.width = `${FW}px`;
+        stage.style.height = `${FH}px`;
+        stage.style.left = '0';
+        stage.style.transformOrigin = 'left center';
+        stage.style.transform = `translate(0, -50%) scale(${k})`;
+        stage.style.setProperty('--ci-axis-shift', `${shiftFrame}px`);
+      }
+
+      const heroStage = heroStageRef.current;
+      if (heroStage) {
+        const f = portrait ? PORT_FRAME : LAND_FRAME;
+        const kc = Math.min(vw / f.w, vh / f.h); // contain-fit — title never clips
+        heroStage.style.width = `${f.w}px`;
+        heroStage.style.height = `${f.h}px`;
+        heroStage.style.transform = `translate(-50%, -50%) scale(${kc})`;
+        heroStage.classList.toggle('ci-stage--portrait', portrait);
+      }
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -169,6 +222,13 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const gridEl = gridRef.current;
     if (!host || !overlay || !gridEl) return;
     let disposed = false;
+
+    // Nudge the whole PLOT (candles + time gridlines/month labels + callouts) 20px to
+    // the RIGHT, while the price axis stays put. Applied in exactly two places that move
+    // in x: the candle canvas (CSS translateX below) and projX's x (baked in). The price
+    // axis — horizontal price lines (.ci-hl) + their number labels (.ci-yl) + the
+    // "S&P 500 INDEX" caption — is untouched: those read only projX's y (or fixed CSS).
+    const X_SHIFT_PX = 20;
 
     // --- derived chart geometry ---
     const candles = OHLC.map(([date, o, h, l, c]) => ({ date, o, h, l, c, up: c >= o }));
@@ -189,7 +249,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     host.appendChild(renderer.domElement);
     // CSS holds the canvas at 100% of the host so a stale mobile size measurement can't
     // letterbox it (black bars); only the render buffer lags a frame until resize() corrects.
-    renderer.domElement.style.cssText = 'display:block;width:100%;height:100%';
+    renderer.domElement.style.cssText = `display:block;width:100%;height:100%;transform:translateX(${X_SHIFT_PX}px)`;
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(PARAMS.fov, 1, 0.1, 20000);
     // No lights: candles use a flat (unlit) MeshBasicMaterial so they read as the
@@ -238,7 +298,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const _proj = new THREE.Vector3();
     const projX = (i: number, y?: number) => {
       _proj.set(xOfIdx(i), y == null ? 0 : y, 0).project(camera);
-      return { x: (_proj.x * 0.5 + 0.5) * host.clientWidth, y: (-_proj.y * 0.5 + 0.5) * host.clientHeight };
+      // +X_SHIFT_PX on x only — moves the time gridlines/month labels + callouts right
+      // with the candles; consumers that read only .y (price lines/labels) are unaffected.
+      return { x: (_proj.x * 0.5 + 0.5) * host.clientWidth + X_SHIFT_PX, y: (-_proj.y * 0.5 + 0.5) * host.clientHeight };
     };
     const mk = (cls: string, parent: HTMLElement = overlay) => { const el = document.createElement('div'); el.className = cls; parent.appendChild(el); return el; };
     // Grid (dashed verticals, price lines, axis labels, index caption) goes in its
@@ -516,13 +578,11 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         <div ref={hostRef} className="absolute inset-0 z-[5]" />
         {/* DOM overlay: facts + BM label (above the candles) */}
         <div ref={overlayRef} className="ci-overlay absolute inset-0 z-10 pointer-events-none" />
-        {/* Meridian mark (corner) — fades out as the charts draw. */}
-        <img
-          ref={logoRef}
-          src="/brand/meridian-logo.svg"
-          alt={t('opener.logoAlt')}
-          className="ci-logo pointer-events-none"
-        />
+      </div>
+      {/* Hero stage — its OWN contain-fit frame (see the fit effect). Sibling of the
+          width-fit chart stage so the title composition scales independently and is
+          never clipped by the chart's edge-to-edge (top-overflowing) fit. */}
+      <div ref={heroStageRef} className="ci-stage-hero" style={{ width: `${LAND_FRAME.w}px`, height: `${LAND_FRAME.h}px` }}>
         {/* hero — each element fades off independently (staggered in the loop). */}
         <div className="ci-hero-layer absolute inset-0 z-20 pointer-events-none">
           {/* coords (upper small) — leaves last */}
@@ -555,6 +615,15 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           </div>
         </div>
       </div>
+      {/* Meridian mark — pinned to the REAL viewport top-left corner (a direct child of
+          the wrap, OUTSIDE the contain-fit hero frame, which would otherwise inset it by
+          the side letterbox on wide screens). Fades out with the hero as the charts draw. */}
+      <img
+        ref={logoRef}
+        src="/brand/meridian-logo.svg"
+        alt={t('opener.logoAlt')}
+        className="ci-logo pointer-events-none"
+      />
     </div>
   );
 }

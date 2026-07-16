@@ -38,6 +38,10 @@ type Landmark = {
   lng: number;
   lat: number;
   visibleOnSteps: number[];
+  /** Optional screen-space nudge [dx, dy] in px, applied AFTER projection — lets a
+   *  label step off its anchor (e.g. the park pill off the bull, which stands on it)
+   *  without moving the real lng/lat. */
+  offset?: [number, number];
 };
 
 // deck.gl is imported DYNAMICALLY (in the overlay effect) — it touches browser
@@ -268,11 +272,43 @@ const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2
 const clamp = (t: number, lo: number, hi: number) => (t < lo ? lo : t > hi ? hi : t);
 const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 - 2 * x); };
 
+// ── Journey framing ──────────────────────────────────────────────────────────
+// The step card sits at the LEFT, so the map is shifted RIGHT (via the camera's left
+// padding) to keep the bull out in the card-FREE half of the screen instead of jammed
+// against the card. Mapbox centres `cam.center` inside the padding box, so a left
+// padding ≈ the card's right edge lands the framing centre in the open space; BULL_GUTTER
+// pushes it a bit further right so the bull (which frames slightly left of centre) reads
+// as ~mid free-area. Whole map + bull translate together — same principle everywhere.
+const CARD_MAX_W = 672;       // .mc-card width cap
+const CARD_MARGIN_MAX = 80;   // .mc-card margin-left (clamp(24, 5vw, 80)) cap
+const BULL_GUTTER = 260;      // extra px past the card edge — tune to slide the bull left/right
+/** Desktop journey left padding: shift the map right so the bull sits in the free area. */
+function journeyPadLeft(vw: number): number {
+  const cardLeft = clamp(0.05 * vw, 24, CARD_MARGIN_MAX);
+  const cardW = Math.min(CARD_MAX_W, vw - 64);
+  return cardLeft + cardW + BULL_GUTTER;
+}
+
+// ── Journey pacing ───────────────────────────────────────────────────────────
+// Each stop's leg gets STOP_VH of scroll. The bull's race across the map read too
+// fast, so the journey scroll is DOUBLED (BULL_SLOW = 2 → the reader scrolls twice
+// as far to move the bull the same distance = half speed). The step cards keep their
+// ORIGINAL on-screen velocity because REACH is halved in lockstep (see the cards
+// loop): fh/REACH × d(prog)/d(scroll) is invariant, so plaques still whip past at the
+// same speed — only the bull slows, with short "bull drives on alone" gaps mid-leg.
+const BASE_STOP_VH = 150;
+const BULL_SLOW = 2;
+const JOURNEY_STOP_VH = BASE_STOP_VH * BULL_SLOW;
+// Keep the final dive (map → 3D bull handoff) at its ORIGINAL absolute scroll — the
+// handoff shouldn't drag just because the journey slowed. This is the dive's old
+// per-stop vh share (BASE_STOP_VH at the old DIVE_FRAC 0.18).
+const DIVE_STOP_VH = (BASE_STOP_VH * 0.18) / (1 - 0.18);
+
 // The final slice of the chapter's scroll is the "dive": the journey is squeezed
 // into the first (1 − DIVE_FRAC), then the camera zooms hard into the last stop
 // (Bowling Green — where the bull actually stands) while a black veil closes in,
 // handing off to the Datum bull scene that emerges from that darkness.
-const DIVE_FRAC = 0.18;
+const DIVE_FRAC = DIVE_STOP_VH / (JOURNEY_STOP_VH + DIVE_STOP_VH);
 const DIVE_ZOOM = 3.4;    // extra mapbox zoom levels added across the dive (~2× closer)
 const DIVE_BEARING = 184; // rotate the map ~184° as we dive in — MATCHES the splat bull's orbit (AZ_START) so they spin in lockstep (bull turns to face us)
 const DIVE_PITCH = 38;    // tilt up toward the horizon (so the view matches the bull scene)
@@ -538,7 +574,7 @@ export default function MapChapter({
     const isNarrow = window.innerWidth < 720;
     const padding = isNarrow
       ? { top: 60, right: 30, bottom: 40, left: 30 }
-      : { top: 80, right: 60, bottom: 80, left: 480 };
+      : { top: 80, right: 60, bottom: 80, left: journeyPadLeft(window.innerWidth) };
     const v0 = stopAt(cfgRef.current.cameras, 0);
     const map = new mapboxgl.Map({
       container: host,
@@ -718,13 +754,25 @@ export default function MapChapter({
     const RADIUS = 0.65;
     const ss = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
 
+    // px margin: a POI fades to nothing as its anchor nears (or leaves) any screen edge,
+    // so labels never stick to / collide at the edge during wide pans or the dive.
+    const EDGE_M = 64;
     const update = () => {
       const sp = stopProgressWith(journeyOf(playhead.get()), bounds);
+      // POIs belong to the wide journey — fade them ALL out on the dive so none linger or
+      // slide to the edge while the camera zooms into the bull (progress freezes at the
+      // last stop during the dive, which otherwise pins them at full opacity).
+      const diveFade = 1 - smoothstep(clamp(diveOf(playhead.get()) / 0.25, 0, 1));
+      const W = host.clientWidth, H = host.clientHeight;
       for (const { lm, el } of items) {
         const p = map.project([lm.lng, lm.lat]);
-        el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
+        const ox = lm.offset?.[0] ?? 0, oy = lm.offset?.[1] ?? 0;
+        const cx = p.x + ox, cy = p.y + oy;
+        el.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px) translate(-50%, -50%)`;
         let vis = 0;
         for (const s of lm.visibleOnSteps) vis = Math.max(vis, ss(1 - Math.abs(sp - s) / RADIUS));
+        const edge = Math.min(cx, W - cx, cy, H - cy); // px to the nearest screen edge
+        vis *= clamp(edge / EDGE_M, 0, 1) * diveFade;
         el.style.opacity = vis.toFixed(3);
       }
     };
@@ -948,7 +996,7 @@ export default function MapChapter({
       const rotE = easeInOutCubic(clamp((diveOf(sj) - REVEAL_DIVE_FROM) / REVEAL_DIVE_SPAN, 0, 1));
       const center: [number, number] = [lerp(cam.center[0], bull[0], panE), lerp(cam.center[1], bull[1], panE)];
       const isNarrow = window.innerWidth < 720;
-      const padLeft = lerp(isNarrow ? 30 : 480, isNarrow ? 30 : 60, panE);
+      const padLeft = lerp(isNarrow ? 30 : journeyPadLeft(window.innerWidth), isNarrow ? 30 : 60, panE);
       map.setPadding({ top: isNarrow ? 60 : 80, right: isNarrow ? 30 : 60, bottom: isNarrow ? 40 : 80, left: padLeft });
       map.jumpTo({
         center,
@@ -1004,7 +1052,7 @@ export default function MapChapter({
       // i = stop i+1; the damped playhead dwells on stops, so the card sits at rest
       // (ty=0) while the bull is parked and sweeps up/off as the journey moves on.
       const fh = window.innerHeight;
-      const REACH = 0.5;   // journey-progress half-window the card travels on-screen
+      const REACH = 0.5 / BULL_SLOW;   // half-window the card travels; scaled with BULL_SLOW so plaques keep their on-screen speed while the bull slows
       const FADE = 0.15;   // fade only over the outer (off-screen) edges
       const lastCardIdx = steps.length - 1; // card i ↔ stop i+1, so the last card is i = N−1
       const dive = diveOf(sj);
@@ -1052,7 +1100,7 @@ export default function MapChapter({
     <section
       ref={sectionRef}
       className="mc-section relative w-full bg-black"
-      style={{ height: `${(Math.max(N, 2) * 150) / (1 - DIVE_FRAC)}vh` }}
+      style={{ height: `${Math.max(N, 2) * (JOURNEY_STOP_VH + DIVE_STOP_VH)}vh` }}
     >
       <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
         {/* Hidden until the style is recoloured + labels hidden + buildings added

@@ -62,6 +62,7 @@
 .so-anno.so-img img { display: block; opacity: 0.9; }
 
 @media (max-width: 1023px) {
-  /* slide up CENTERED with a 20px margin each side */
-  .so-text { left: 20px; right: 20px; width: auto; }
+  /* slide up CENTERED, but NEVER wider than the desktop cap (672px) — on a narrow/mobile
+     viewport it shrinks to a 20px margin each side, on a wider one it stays 672 centred. */
+  .so-text { left: 20px; right: 20px; width: auto; max-width: 672px; margin-left: auto; margin-right: auto; }
 }

@@ -11,15 +11,31 @@
    composition scales as ONE unit. Portrait-only differences live under .ci-stage--portrait. */
 
 /* ── fixed design stage ─────────────────────────────────────────────────── */
-/* bottom-anchored, width-fit: scale(k)=vw/frameW from transform-origin bottom
-   center so the chart reaches both side edges without distortion; overflow:hidden
-   on the wrap clips the top if the scaled frame is taller than the viewport. */
+/* vertical-CENTERED, width-fit: scale(k)=vw/frameW from a centre transform-origin so
+   the chart reaches both side edges without distortion, and the frame is centred in the
+   viewport. On narrower-than-1.8:1 viewports (16:9 / 4:3) the spare height splits evenly
+   top+bottom rather than piling up at the top; on wider viewports overflow:hidden clips
+   top+bottom symmetrically. */
 .ci-stage {
-  position: absolute; left: 50%; bottom: 0;
-  transform-origin: bottom center;
-  transform: translateX(-50%);
+  position: absolute; left: 50%; top: 50%;
+  transform-origin: center center;
+  transform: translate(-50%, -50%);
   overflow: hidden;
   will-change: transform;
+}
+
+/* Hero stage: same fixed frame as .ci-stage but CONTAIN-fit + centered (see the fit
+   effect — scale = min(vw/fw, vh/fh)). The title composition always fits whole, so
+   the corner logo/coords never get clipped the way width-fit clips the top on wide/
+   short viewports. Letterboxes at the sides on wide screens — intentional. overflow
+   still clips WITHIN the frame (e.g. the portrait wordmark that bleeds off the right). */
+.ci-stage-hero {
+  position: absolute; left: 50%; top: 50%;
+  transform-origin: center center;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  will-change: transform;
+  z-index: 30; /* above the chart stage */
 }
 
 .ci-overlay { --ci-grid: 0; --ci-pink: #de2053; --ci-coral: #e0655b; }
@@ -33,8 +49,10 @@
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-hl {
-  /* flush to the left edge; stop 20px short on the RIGHT (where the price numbers sit). */
-  position: absolute; left: 0; right: 20px; height: 1px;
+  /* flush to the left edge; stop 20px short on the RIGHT (where the price numbers sit).
+     --ci-axis-shift (set per-frame in fit()) slides the RIGHT end in as the viewport
+     narrows — the grid lines shorten from the right while the candles stay put. */
+  position: absolute; left: 0; right: calc(20px + var(--ci-axis-shift, 0px)); height: 1px;
   background: #434343;
   opacity: var(--ci-grid);
 }
@@ -46,14 +64,16 @@
 .ci-overlay .ci-yl {
   /* Sits ABOVE its price line. JS sets top = the line's y; this fixed lift (was a
      dev-only -3vh tune delta) keeps the numbers off the lines. Fixed px now — it
-     scales with the frame like everything else. */
-  position: absolute; right: 20px; transform: translateY(-24px); text-align: right; white-space: nowrap;
+     scales with the frame like everything else. --ci-axis-shift rides the whole price
+     column in from the right edge in lockstep with the grid lines above. */
+  position: absolute; right: calc(20px + var(--ci-axis-shift, 0px)); transform: translateY(-24px); text-align: right; white-space: nowrap;
   font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
-/* "S&P 500 INDEX" caption, top-right corner (above the top price line) */
+/* "S&P 500 INDEX" caption, top-right corner (above the top price line) — rides the
+   same --ci-axis-shift so it stays aligned with the price column. */
 .ci-overlay .ci-index {
-  position: absolute; top: 24px; right: 20px; white-space: nowrap;
+  position: absolute; top: 24px; right: calc(20px + var(--ci-axis-shift, 0px)); white-space: nowrap;
   font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
@@ -100,18 +120,23 @@
 .ci-overlay .ci-bm-sign { position: absolute; left: 0; top: 0; transform: translateX(-100%); }
 
 /* ── hero: logo · coords · wordmark · subtitle (landscape frame) ─────────── */
-/* Meridian mark, top-left corner. */
-.ci-logo { position: absolute; left: 25px; top: 27px; height: 68px; width: auto; z-index: 20; }
+/* Meridian mark — pinned to the real VIEWPORT top-left corner. It's a direct child of
+   .ci-stagewrap (not the contain-fit hero frame), so left/top are viewport offsets and it
+   always hugs the corner regardless of the hero's letterbox. z above the hero stage (30). */
+.ci-logo { position: absolute; left: 25px; top: 27px; height: 68px; width: auto; z-index: 40; }
 
-/* coords line, centred at top */
-.ci-coords-wrap { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); }
+/* coords line, centred at top. The whole line reads at 70% (matches the reference
+   <g opacity="0.7">) — set on the WRAP, not .ci-coords, so it multiplies with the
+   per-frame scroll-fade opacity JS drives on .ci-coords (0.7 at rest → 0 on scroll). */
+.ci-coords-wrap { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); opacity: 0.7; }
 .ci-coords {
   white-space: nowrap; color: #fff;
   font: 400 21px var(--font-mono); letter-spacing: 0.12em;
   transform: translate(38.8px, 7.9px);
 }
+/* dot sized to the reference circle (r=8 → 16px diameter). */
 .ci-coords-dot {
-  display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+  display: inline-block; width: 16px; height: 16px; border-radius: 50%;
   background: #de2053; vertical-align: middle; position: relative; top: -2px;
 }
 

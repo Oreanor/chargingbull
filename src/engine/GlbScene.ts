@@ -99,6 +99,11 @@ export class GlbScene {
   private mainModel: THREE.Object3D | null = null;
   private readonly modelHome = new THREE.Vector3();
   private pushAmount = 0;
+  /** The authored (keyframe) vertical fov — what the camera uses at/above the reference
+   *  aspect. Below that aspect the effective camera.fov is WIDENED (see effectiveFov) so
+   *  the subject stays framed by WIDTH and shrinks as the viewport narrows, instead of
+   *  being locked to height — so the bull resizes together with the fit-height overlays. */
+  private baseFov = 60;
   /** Editor hook: fired on OrbitControls 'start'/'end' (user grab/release). */
   private interactCb: ((phase: 'start' | 'end') => void) | null = null;
 
@@ -142,8 +147,10 @@ export class GlbScene {
       if (ctx) {
         const cx = 0.5 * c.width, cy = 0.38 * c.height;
         const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(c.width, c.height) * 0.92);
-        g.addColorStop(0, '#181b22');
-        g.addColorStop(0.55, '#0b0c10');
+        // Near-black to match the Figma reference (was a grey #181b22 spotlight that
+        // read as «not black»). Keeps a whisper of depth in the centre, edges pure black.
+        g.addColorStop(0, '#0c0d10');
+        g.addColorStop(0.55, '#050608');
         g.addColorStop(1, '#000000');
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, c.width, c.height);
@@ -268,6 +275,7 @@ export class GlbScene {
       if (!W || !H) return;
       renderer.setSize(W, H, false); // buffer only; CSS keeps the canvas full-bleed
       camera.aspect = W / H;
+      camera.fov = this.effectiveFov(); // re-fit: widen fov on narrow viewports so the bull shrinks with the window
       camera.updateProjectionMatrix();
     };
     window.addEventListener('resize', onResize);
@@ -293,6 +301,21 @@ export class GlbScene {
     (this.controls.domElement as HTMLElement).style.touchAction = on ? 'none' : 'pan-y';
   }
 
+  /** Effective vertical fov for the current viewport. At/above the reference aspect it's
+   *  the authored fov (framing unchanged — desktop stays as tuned). Below it, the vertical
+   *  fov is widened so the HORIZONTAL fov stays constant: the subject then fits by WIDTH and
+   *  scales down as the viewport narrows, matching the fit-height overlays. REF is the design
+   *  ~16:9 aspect — tweak if the bull should start shrinking at a different proportion. */
+  private effectiveFov(): number {
+    const host = this.options.container;
+    const W = host.clientWidth, H = host.clientHeight;
+    const aspect = W && H ? W / H : (this.camera?.aspect ?? 1);
+    const REF = 16 / 9;
+    if (aspect >= REF) return this.baseFov;
+    const tanHalfH = REF * Math.tan((this.baseFov * Math.PI) / 360); // horizontal half-fov tan at REF
+    return 2 * Math.atan(tanHalfH / aspect) * (180 / Math.PI);
+  }
+
   /** Drive the camera from a spherical pose (target + az/polar/dist + fov). */
   setCameraSpherical(p: CameraSpherical): void {
     const camera = this.camera;
@@ -308,8 +331,12 @@ export class GlbScene {
       t[2] + r * Math.sin(polar) * Math.cos(az),
     );
     controls.target.set(t[0], t[1], t[2]);
-    if (Math.abs(camera.fov - p.fov) > 1e-3) {
-      camera.fov = p.fov;
+    // Store the authored fov, then apply the aspect-aware effective fov (widened on narrow
+    // viewports so the bull shrinks with the window instead of staying height-locked).
+    this.baseFov = p.fov;
+    const fov = this.effectiveFov();
+    if (Math.abs(camera.fov - fov) > 1e-3) {
+      camera.fov = fov;
       camera.updateProjectionMatrix();
     }
     controls.update();
@@ -330,7 +357,7 @@ export class GlbScene {
       polarDeg: Math.acos(Math.max(-1, Math.min(1, dy / r))) * RAD2DEG,
       distance: r,
       target: [t.x, t.y, t.z],
-      fov: camera.fov,
+      fov: this.baseFov, // report the AUTHORED fov, not the aspect-widened effective one (stable keyframe capture)
     };
   }
 
@@ -370,8 +397,13 @@ export class GlbScene {
 
   private applyExplode(): void {
     const ex = this.explodeAmount;
+    // Per-unit outward push of each section along its home→centroid direction. Raised
+    // 0.6 → 1.1 for a much wider scatter (matching the Figma reference, sections reaching
+    // the frame corners). This is THE scatter-strength knob — the keyframe explode value
+    // (capped at the editor slider max) just scales on top of it.
+    const SPREAD = 1.1;
     for (const [mesh, home] of this.meshHomes) {
-      mesh.position.copy(home.origin).addScaledVector(home.dir, ex * 0.6);
+      mesh.position.copy(home.origin).addScaledVector(home.dir, ex * SPREAD);
     }
   }
 

@@ -96,6 +96,10 @@ export function CalculatorSlide({
         ctx.beginPath(); ctx.moveTo(gx, PAD.t); ctx.lineTo(gx, H - PAD.b); ctx.stroke();
         ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillText(String(yr), gx, H - 9);
       }
+      // solid white X axis along the plot floor (matches the charts chapter's baseline);
+      // the year labels sit just below it.
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(PAD.l, H - PAD.b); ctx.lineTo(W - PAD.r, H - PAD.b); ctx.stroke();
 
       const drawSeg = (a: number, b: number, color: string, width: number) => {
         ctx.beginPath();
