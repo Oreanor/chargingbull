@@ -291,13 +291,15 @@ function journeyPadLeft(vw: number): number {
 
 // ── Journey pacing ───────────────────────────────────────────────────────────
 // Each stop's leg gets STOP_VH of scroll. The bull's race across the map read too
-// fast, so the journey scroll is DOUBLED (BULL_SLOW = 2 → the reader scrolls twice
-// as far to move the bull the same distance = half speed). The step cards keep their
-// ORIGINAL on-screen velocity because REACH is halved in lockstep (see the cards
-// loop): fh/REACH × d(prog)/d(scroll) is invariant, so plaques still whip past at the
+// fast, so the journey scroll is stretched (BULL_SLOW) — the reader scrolls farther
+// to move the bull the same distance. The step cards keep their ORIGINAL on-screen
+// velocity because REACH is scaled in lockstep (see the cards loop):
+// fh/REACH × d(prog)/d(scroll) is invariant, so plaques still whip past at the
 // same speed — only the bull slows, with short "bull drives on alone" gaps mid-leg.
 const BASE_STOP_VH = 150;
-const BULL_SLOW = 2;
+// Was 2 → 2.5; now 3.25 so long borough hops don't read as a race. Cards keep
+// their on-screen speed via REACH = 0.5 / BULL_SLOW.
+const BULL_SLOW = 3.25;
 const JOURNEY_STOP_VH = BASE_STOP_VH * BULL_SLOW;
 // Keep the final dive (map → 3D bull handoff) at its ORIGINAL absolute scroll — the
 // handoff shouldn't drag just because the journey slowed. This is the dive's old
@@ -512,6 +514,9 @@ export default function MapChapter({
   const outroRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const poiUpdateRef = useRef<(() => void) | null>(null);
+  // Fetched road polylines — shared so the ?bullTrack=1 sampler can project the
+  // same trail-head the 3D bull uses (routes live in the deck.gl effect otherwise).
+  const routesRef = useRef<LngLat[][]>([]);
   const [steps, setSteps] = useState<Step[]>([]);
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   // Camera choreography (stops / flyover waypoints / leg weights / bull facing) read
@@ -672,6 +677,11 @@ export default function MapChapter({
       ? new IntersectionObserver((es) => { visible = es.some((e) => e.isIntersecting); }, { rootMargin: '15% 0px' })
       : null;
     if (section && visIO) visIO.observe(section);
+    // Straight-line stubs so ?bullTrack can sample before Directions / deck.gl resolve.
+    routesRef.current = steps.slice(0, -1).map((a, i) => {
+      const b = steps[i + 1];
+      return [[a.lng, a.lat] as LngLat, [b.lng, b.lat] as LngLat];
+    });
     (async () => {
       // Load deck.gl now (client only) — kept out of the module graph for SSR.
       const [mb, layersMod, meshMod] = await Promise.all([
@@ -687,6 +697,7 @@ export default function MapChapter({
       };
       const routes = await fetchAllRoutes(steps);
       if (cancelled || !mapRef.current) return;
+      routesRef.current = routes;
       overlay = new DL.MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(DL, 0, steps, routes, cfg.headings, cfg.bullScale) });
       map.addControl(overlay);
       let lastProg = -1;
@@ -700,7 +711,7 @@ export default function MapChapter({
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
-    })();
+    })().catch((e) => console.warn('[MapChapter] deck overlay failed', e));
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
@@ -994,28 +1005,99 @@ export default function MapChapter({
       // map spins in LOCKSTEP with the revealed bull instead of slower / across the whole dive.
       const panE = smoothstep(clamp(dive / 0.45, 0, 1));
       const rotE = easeInOutCubic(clamp((diveOf(sj) - REVEAL_DIVE_FROM) / REVEAL_DIVE_SPAN, 0, 1));
-      const center: [number, number] = [lerp(cam.center[0], bull[0], panE), lerp(cam.center[1], bull[1], panE)];
+      let center: [number, number] = [lerp(cam.center[0], bull[0], panE), lerp(cam.center[1], bull[1], panE)];
       const isNarrow = window.innerWidth < 720;
       const padLeft = lerp(isNarrow ? 30 : journeyPadLeft(window.innerWidth), isNarrow ? 30 : 60, panE);
+      const zoom = cam.zoom + DIVE_ZOOM * dive + introZoom;
+      const pitch = Math.min(85, cam.pitch + DIVE_PITCH * dive);
+      const bearing = cam.bearing + DIVE_BEARING * rotE;
       map.setPadding({ top: isNarrow ? 60 : 80, right: isNarrow ? 30 : 60, bottom: isNarrow ? 40 : 80, left: padLeft });
-      map.jumpTo({
-        center,
-        zoom: cam.zoom + DIVE_ZOOM * dive + introZoom,
-        pitch: Math.min(85, cam.pitch + DIVE_PITCH * dive),
-        bearing: cam.bearing + DIVE_BEARING * rotE,
-      });
+      map.jumpTo({ center, zoom, pitch, bearing });
+
+      // Journey bull head (same trail tip the 3D marker uses) — for corridor clamp + debug.
+      const dv = diveOf(sj);
+      const locProg = Math.max(0, stopProgressWith(journeyOf(sj), bounds) - 1);
+      const routes = routesRef.current;
+      const trail = routes.length ? computeTrailCoords(locProg, steps, routes) : [];
+      let head: [number, number];
+      if (trail.length) {
+        head = trail[trail.length - 1];
+      } else if (steps.length) {
+        // Before routes land: lerp consecutive stop coords (NOT the final Bowling Green
+        // pin — that would yank the camera across the city on early legs).
+        const i = Math.min(Math.floor(locProg), steps.length - 1);
+        const j = Math.min(i + 1, steps.length - 1);
+        const f = locProg - Math.floor(locProg);
+        head = [
+          steps[i].lng + (steps[j].lng - steps[i].lng) * f,
+          steps[i].lat + (steps[j].lat - steps[i].lat) * f,
+        ];
+      } else {
+        head = center;
+      }
+
+      // Corridor clamp (desktop journey only): keep the bull in the free right-half
+      // band [W/2 + body, W*0.9] at ANY viewport width. Authored cameras alone drift
+      // off the right edge when the window isn't the tuning size (e.g. not 1920).
+      // Dive pans to centre on purpose — don't fight it.
+      if (!isNarrow && dv < 0.02) {
+        const W = window.innerWidth;
+        const BULL_W = 105; // ScenegraphLayer sizeMaxPixels
+        const lo = W * 0.5 + BULL_W;
+        const hi = W * 0.9;
+        const bp = map.project(head);
+        if (bp.x < lo || bp.x > hi) {
+          const err = bp.x < lo ? bp.x - lo : bp.x - hi;
+          const c = map.project(center);
+          const n = map.unproject([c.x + err, c.y]);
+          center = [n.lng, n.lat];
+          map.jumpTo({ center, zoom, pitch, bearing });
+        }
+      }
+
       // POI pills ride the same jumpTo — don't wait for a later render tick.
       poiUpdateRef.current?.();
       // Project the bull's world coord to the (updated) screen and hand its offset from
       // viewport centre to the splat reveal, so the iris + bull start GLUED to the map
       // bull and ride to centre with the pan — not popping in higher/right at a fixed centre.
       // Only during the dive (the reveal window); the journey doesn't need the projection.
-      const dv = diveOf(sj);
       if (dv > 0) {
         const bp = map.project(bull);
         onDive?.(dv, { x: bp.x - window.innerWidth / 2, y: bp.y - window.innerHeight / 2 });
       } else {
         onDive?.(dv);
+      }
+
+      // ?bullTrack=1 — publish the JOURNEY bull's screen position for scripts/fix-bull-framing.mjs.
+      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('bullTrack')) {
+        const bp = map.project(head);
+        const W = window.innerWidth, H = window.innerHeight;
+        const BULL_W = 105;
+        (window as unknown as { __mapBullTrack: unknown }).__mapBullTrack = {
+          ready: steps.length >= 2,
+          prog: locProg,
+          dive: dv,
+          x: bp.x,
+          y: bp.y,
+          W,
+          H,
+          head,
+          camCenter: center,
+          lo: W / 2 + BULL_W,
+          hi: W * 0.9,
+          bullW: BULL_W,
+          cameras: cfg.cameras,
+          subCams: cfg.subCams,
+          project: (ll: [number, number]) => {
+            const p = map.project(ll);
+            return { x: p.x, y: p.y };
+          },
+          nudgeCenter: (ll: [number, number], errX: number): [number, number] => {
+            const c = map.project(ll);
+            const n = map.unproject([c.x + errX, c.y]);
+            return [n.lng, n.lat];
+          },
+        };
       }
     };
     // coalesce both sources into at most one apply per frame (else map.jumpTo fires
