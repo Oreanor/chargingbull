@@ -3,6 +3,7 @@ import { useInViewMount } from './useInViewMount';
 import { useSmoothProgress } from './smoothScroll';
 import { createChartsEngine, CHART_STEPS, type ChartsEngine } from './charts/chartsEngine';
 import { t } from '../i18n';
+import BM_MINUS_20 from '../assets/charts/bm-minus-20.png';
 import './ChartsChapter.css';
 
 /**
@@ -238,11 +239,9 @@ export default function ChartsChapter({
           className="cc-legend"
           dangerouslySetInnerHTML={{ __html: t('charts.footer') }}
         />
-        {/* Black Monday plate (HTML overlay) — only on the candle frame, Druk crash figure */}
+        {/* Black Monday plate — designer −20% glyph only (Frame 59); no leftover date/title) */}
         <div ref={bmPlateRef} className="cc-bm-plate" style={{ opacity: 0 }} aria-hidden>
-          <div className="cc-bm-date">{BM.date}</div>
-          <div className="cc-bm-title">{BM.title}</div>
-          <div className="cc-bm-fig scale-[0.967]">{BM.figure}</div>
+          <img className="cc-bm-fig translate-x-[-3.99vh] translate-y-[-1.78vh]" src={BM_MINUS_20} alt={BM.figure} draggable={false} />
         </div>
         {/* Text cards — PINNED overlays (not scrolled). Each fades in only when its
             chart has settled and out during the morph (opacity driven in apply above),

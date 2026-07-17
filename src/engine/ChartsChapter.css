@@ -47,11 +47,13 @@
   text-align: left; pointer-events: none; color: #15131a;
   will-change: opacity, transform;
 }
-.cc-bm-date { font: 700 clamp(13px, 1.25vw, 18px)/1.2 var(--font-struve); }
-.cc-bm-title { font: 700 clamp(18px, 1.7vw, 24px)/1.1 var(--font-struve); margin-bottom: 2px; }
 .cc-bm-fig {
-  font-family: var(--font-druk), 'Archivo', system-ui, sans-serif;
-  font-size: clamp(84px, 9.5vw, 150px); line-height: 0.82; letter-spacing: 0.01em;
+  display: block;
+  width: clamp(120px, 14vw, 202px);
+  height: auto;
+  margin: 0;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* Chart caption — units & description, bottom-right of the pinned stage. */
