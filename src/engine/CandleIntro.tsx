@@ -165,6 +165,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         stage.style.transformOrigin = 'center center';
         stage.style.transform = `translate(-50%, -50%) scale(${vw / f.w})`;
         stage.style.setProperty('--ci-axis-shift', '0px');
+        stage.style.setProperty('--ci-axis-edge', '20px');
       } else {
         // LANDSCAPE — fit-height, then reflow-THEN-scale. Everything stays ONE locked
         // block: the candle camera + grid + plates all live in the fixed 1440×800 frame and
@@ -178,24 +179,30 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         //    price axis in over the right slack (up to REFLOW_MAX) — reflow;
         //  • once the slack is spent: scale the whole frame down — "потом жмётся".
         // Left-anchored so the oldest candles always hug the left edge.
+        // Price axis inset is 20 SCREEN px from the viewport right (--ci-axis-edge = 20/k
+        // in frame px); --ci-axis-shift then pulls it in over clipped overflow.
         const FW = LAND_FRAME.w, FH = LAND_FRAME.h; // 1440 × 800
         const REFLOW_MAX = FW * 0.20;               // ← right slack eaten before scaling (~20%)
+        const EDGE_PX = 20;                          // screen px from the viewport right edge
         const kHeight = vh / FH;                    // fit-height scale (bottom never clips)
         const frameW = FW * kHeight;                // its on-screen width
         const overflow = frameW - vw;               // >0 when that frame is wider than the viewport
-        let k: number, shiftFrame: number;
+        let k: number, shiftFrame: number, stageW: number;
         if (overflow <= 0) {
-          k = kHeight; shiftFrame = 0;                          // fits width too: axis at frame right
+          // Frame narrower than the viewport: widen the stage so the axis can sit on the
+          // real right edge (otherwise right:20px parks at the frame edge, short by the slack).
+          k = kHeight; shiftFrame = 0; stageW = vw / k;
         } else if (overflow <= REFLOW_MAX * kHeight) {
-          k = kHeight; shiftFrame = overflow / kHeight;         // reflow band: hold scale, axis rides in
+          k = kHeight; shiftFrame = overflow / kHeight; stageW = FW;
         } else {
-          k = vw / (FW - REFLOW_MAX); shiftFrame = REFLOW_MAX;  // slack spent: scale the whole frame
+          k = vw / (FW - REFLOW_MAX); shiftFrame = REFLOW_MAX; stageW = FW;
         }
-        stage.style.width = `${FW}px`;
+        stage.style.width = `${stageW}px`;
         stage.style.height = `${FH}px`;
         stage.style.left = '0';
         stage.style.transformOrigin = 'left center';
         stage.style.transform = `translate(0, -50%) scale(${k})`;
+        stage.style.setProperty('--ci-axis-edge', `${EDGE_PX / k}px`);
         stage.style.setProperty('--ci-axis-shift', `${shiftFrame}px`);
       }
 

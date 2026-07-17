@@ -49,10 +49,9 @@
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-hl {
-  /* flush to the left edge; stop 20px short on the RIGHT (where the price numbers sit).
-     --ci-axis-shift (set per-frame in fit()) slides the RIGHT end in as the viewport
-     narrows — the grid lines shorten from the right while the candles stay put. */
-  position: absolute; left: 0; right: calc(20px + var(--ci-axis-shift, 0px)); height: 1px;
+  /* flush to the left edge; stop --ci-axis-edge short on the RIGHT (20 screen px from the
+     viewport edge). --ci-axis-shift slides the RIGHT end in as the viewport narrows. */
+  position: absolute; left: 0; right: calc(var(--ci-axis-edge, 20px) + var(--ci-axis-shift, 0px)); height: 1px;
   background: #434343;
   opacity: var(--ci-grid);
 }
@@ -62,18 +61,15 @@
   opacity: var(--ci-grid);
 }
 .ci-overlay .ci-yl {
-  /* Sits ABOVE its price line. JS sets top = the line's y; this fixed lift (was a
-     dev-only -3vh tune delta) keeps the numbers off the lines. Fixed px now — it
-     scales with the frame like everything else. --ci-axis-shift rides the whole price
-     column in from the right edge in lockstep with the grid lines above. */
-  position: absolute; right: calc(20px + var(--ci-axis-shift, 0px)); transform: translateY(-24px); text-align: right; white-space: nowrap;
+  /* Sits ABOVE its price line, right edge flush with the grid end. JS sets top = the
+     line's y; this fixed lift keeps the numbers off the lines. */
+  position: absolute; right: calc(var(--ci-axis-edge, 20px) + var(--ci-axis-shift, 0px)); transform: translateY(-24px); text-align: right; white-space: nowrap;
   font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
-/* "S&P 500 INDEX" caption, top-right corner (above the top price line) — rides the
-   same --ci-axis-shift so it stays aligned with the price column. */
+/* "S&P 500 INDEX" caption, top-right corner — same right edge as the price column. */
 .ci-overlay .ci-index {
-  position: absolute; top: 24px; right: calc(20px + var(--ci-axis-shift, 0px)); white-space: nowrap;
+  position: absolute; top: 14px; right: calc(var(--ci-axis-edge, 20px) + var(--ci-axis-shift, 0px)); text-align: right; white-space: nowrap;
   font: 400 14px var(--font-mono); letter-spacing: 0; color: #fafafa;
   opacity: var(--ci-grid);
 }
