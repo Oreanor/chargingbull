@@ -203,8 +203,13 @@ export default function ChartsChapter({
       if (legendRef.current) {
         legendRef.current.style.color = bull ? 'rgba(245,243,238,0.55)' : 'rgba(0,0,0,0.5)';
       }
-      // Black Monday plate fades in only over the candle frame.
-      if (bmPlateRef.current) bmPlateRef.current.style.opacity = engine.candleAlpha().toFixed(3);
+      // Black Monday plate: sits just after the crash candle, rides the stretch, fades out.
+      if (bmPlateRef.current) {
+        const pl = engine.candlePlate();
+        bmPlateRef.current.style.opacity = pl.a.toFixed(3);
+        bmPlateRef.current.style.visibility = pl.a < 0.004 ? 'hidden' : 'visible';
+        bmPlateRef.current.style.transform = `translate(${pl.x.toFixed(1)}px, ${pl.y.toFixed(1)}px)`;
+      }
     };
     apply();
     const unsub = progress.on('change', apply);
@@ -234,7 +239,7 @@ export default function ChartsChapter({
           dangerouslySetInnerHTML={{ __html: t('charts.footer') }}
         />
         {/* Black Monday plate (HTML overlay) — only on the candle frame, Druk crash figure */}
-        <div ref={bmPlateRef} className="cc-bm-plate translate-x-[-10.8vh] translate-y-[5.3vh]" style={{ opacity: 0 }} aria-hidden>
+        <div ref={bmPlateRef} className="cc-bm-plate" style={{ opacity: 0 }} aria-hidden>
           <div className="cc-bm-date">{BM.date}</div>
           <div className="cc-bm-title">{BM.title}</div>
           <div className="cc-bm-fig scale-[0.967]">{BM.figure}</div>

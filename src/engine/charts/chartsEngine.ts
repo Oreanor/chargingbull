@@ -15,7 +15,11 @@
  * in the data because they're stable identifiers, not display text.
  */
 import { t } from '../../i18n';
-import { BM_CANDLES, BM_GEOM, BM_DD } from './blackMondayCandles';
+import { BM_GEOM, BM_DD } from './blackMondayCandles';
+import {
+  BM_OHLC, BM_AUG_I, bmPriceSvgY, bmLeft3SvgX, bmSampleDdLine, bmDdLineTangent,
+  bmMonthMarks3, bmTimeSvgX, bmDrawdownT,
+} from './blackMondayOHLC';
 
 export interface ChartStep {
   /** View key the chart morphs to on this step. */
@@ -208,6 +212,8 @@ export interface ChartsEngine {
   bullFactor(): number;
   /** 0..1 — 1 on the Black Monday candle frame; drives the HTML "−20%" plate. */
   candleAlpha(): number;
+  /** Plate anchor in stage/CSS px (just after the crash candle) + opacity. */
+  candlePlate(): { x: number; y: number; a: number };
   resize(): void;
   ready(): boolean;
 }
@@ -245,9 +251,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   let fromKey = CHART_STEPS[0].view, toKey = CHART_STEPS[0].view, animT = 1;
   let lastBull = 0; // 0..1 bull-phase factor for the React topbar, set each draw
   let lastCandle = 0; // 0..1 — 1 on the Black Monday candle frame (drives the HTML plate)
+  // −20% plate: sits just after the last candle; tracks stretch X and fades with it.
+  let lastPlate = { x: 0, y: 0, a: 0 };
   let entryFade = 1;  // 0..1 — the very first frame's content fades IN over the pink ground
   let labelReveal = 1; // 0..1 — gates on-graph labels: hidden while the line morphs, delayed slide-in on dwell
-  let bmPaths: { p: Path2D; up: boolean }[] | null = null; // cached candle Path2Ds
   let bullPath: Path2D | null = null; // cached Charging Bull figurine
 
   // Bull marker (Desktop-43): gold dot + the bull figurine + a big "1989" above it,
@@ -931,19 +938,29 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     }
   }
 
-  // Black Monday stage. p in [0,1]: 0 = the candle close-up (Desktop-36, exact SVG
-  // paths), 1 = the single-1987 drawdown (Desktop-41). The crossfade dissolves the
-  // candles, fades the drawdown line+area in from transparent, keeps the month axis
-  // constant, and morphs the price grid (5 lines) into the percent grid (4 lines).
+  // Black Monday stage. p in [0,1]:
+  //  0–5%    squash candles in place → short stubs
+  //  5–85%   stubs travel toward BM_DD.line (length ×2, no tilt)
+  //  85–100% snap: stubs vanish, drawdown line+hatch appear
   function drawCandleStage(p: number) {
     const { ctx, x0, y0, x1, y1 } = setupCtx();
     const B = BM_GEOM.box;
     const mapX = (sx: number) => x0 + (sx - B.x) / B.w * (x1 - x0);
     const mapY = (sy: number) => y0 + (sy - B.y) / B.h * (y1 - y0);
     const gx0 = mapX(B.x), gx1 = mapX(B.x + B.w);
-    const cAlpha = 1 - p, dAlpha = p;
+    const gy0 = mapY(B.y), gy1 = mapY(B.y + B.h);
+    const squash = p <= 0 ? 0 : p >= 0.05 ? 1 : smoothstep(p / 0.05);
+    // Travel fills until 85%; last 15% = crossfade stubs → drawdown
+    const travel = p <= 0.05 ? 0 : p >= 0.85 ? 1 : smoothstep((p - 0.05) / 0.8);
+    const endSnap = p <= 0.85 ? 0 : smoothstep((p - 0.85) / 0.15);
+    const cAlpha = 1 - endSnap;
+    const dAlpha = endSnap;
+    const N = BM_OHLC.length;
+    const nDD = N - BM_AUG_I;
+    const LINE_THICK = 4;
+    const STUB_H = LINE_THICK;
 
-    // ---- price grid (5 lines, fades out) + "S&P 500 INDEX" + 225 baseline ----
+    // ---- price grid — rest chrome; fades with the end snap ----
     if (cAlpha > 0.01) {
       ctx.globalAlpha = cAlpha * entryFade;
       ctx.font = FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -961,7 +978,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.globalAlpha = 1;
     }
 
-    // ---- percent grid (4 lines, fades in); the 0% line is solid white ----
+    // ---- percent grid — pops in with the drawdown ----
     if (dAlpha > 0.01) {
       ctx.globalAlpha = dAlpha * entryFade;
       ctx.font = FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -976,43 +993,120 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.globalAlpha = 1;
     }
 
-    // ---- month axis (JUN–OCT) + dots — CONSTANT through the crossfade ----
-    ctx.globalAlpha = entryFade;
-    ctx.fillStyle = AXIS; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    for (const mo of BM_GEOM.months) {
-      const mx = mapX(mo.x + 14);
-      ctx.beginPath(); ctx.arc(mx, mapY(BM_GEOM.dotY), 3, 0, 2 * Math.PI); ctx.fill();
-      ctx.fillText(mo.l, mx, mapY(BM_GEOM.monthY));
+    // ---- months: left half → full width only while stubs travel ----
+    {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = FONT;
+      ctx.fillStyle = AXIS;
+      ctx.globalAlpha = entryFade;
+      for (const mo of bmMonthMarks3()) {
+        const t = mo.t * 0.5 + mo.t * 0.5 * travel;
+        const mx = mapX(bmTimeSvgX(t));
+        ctx.beginPath(); ctx.arc(mx, mapY(BM_GEOM.dotY), 3, 0, 2 * Math.PI); ctx.fill();
+        ctx.fillText(mo.l, mx, mapY(BM_GEOM.monthY));
+      }
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
 
-    // ---- candles (dissolve out) ----
-    if (cAlpha > 0.01) {
-      if (!bmPaths) bmPaths = BM_CANDLES.map((c) => ({ p: new Path2D(c.d), up: c.up }));
+    const ddPts = BM_DD.line.map(([sx, sy]) => [mapX(sx), mapY(sy)] as [number, number]);
+    const leftSpan = (gx1 - gx0) * 0.5;
+    const colW0 = Math.max(2, leftSpan / Math.max(nDD - 1, 1) * 0.62);
+
+    // −20% plate: dies fast once travel starts
+    {
+      const [sx0, sy0] = [bmLeft3SvgX(N - 1), bmPriceSvgY(BM_OHLC[N - 1][2])];
+      const [sx1, sy1] = bmSampleDdLine(1);
+      const plateT = travel * 0.15;
+      const px = mapX(sx0 + (sx1 - sx0) * plateT);
+      const py = mapY(sy0 + (sy1 - sy0) * plateT);
+      lastPlate = {
+        x: px + colW0 / 2 + 14,
+        y: py,
+        a: entryFade * Math.pow(1 - Math.max(squash, travel), 4),
+      };
+    }
+
+    // ---- drawdown under: pops in over the last ~15% ----
+    if (dAlpha > 0.02) {
       ctx.save();
-      ctx.globalAlpha = cAlpha * entryFade;
-      ctx.translate(x0, y0); ctx.scale((x1 - x0) / B.w, (y1 - y0) / B.h); ctx.translate(-B.x, -B.y);
-      for (const c of bmPaths) { ctx.fillStyle = c.up ? '#f5f3ee' : '#15131a'; ctx.fill(c.p); }
+      ctx.globalAlpha = dAlpha * entryFade;
+      fillDrawdownArea(ctx, ddPts, mapY(BM_DD.topY), y1, FILL_BEAR);
+      ctx.strokeStyle = LINE; ctx.lineWidth = LINE_THICK; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ddPts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+      ctx.stroke();
+      const [ex, ey] = ddPts[ddPts.length - 1];
+      ctx.fillStyle = LINE; ctx.beginPath(); ctx.arc(ex, ey, 6, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = CRISIS; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.font = FONT; ctx.fillText(CRISES[1].troughLbl, ex, ey + 9);
       ctx.restore();
     }
 
-    // ---- drawdown line + hatched area + endpoint + trough label (fade in) ----
-    if (dAlpha > 0.01) {
+    // ---- candles: squash → travel as stubs (длина ×2) → tilt+vanish on crossfade ----
+    if (cAlpha > 0.02) {
       ctx.save();
-      ctx.globalAlpha = dAlpha * entryFade;
-      const pts = BM_DD.line.map(([sx, sy]) => [mapX(sx), mapY(sy)] as [number, number]);
-      fillDrawdownArea(ctx, pts, mapY(BM_DD.topY), y1, FILL_BEAR);
-      ctx.strokeStyle = LINE; ctx.lineWidth = 4; ctx.lineJoin = 'round';
       ctx.beginPath();
-      pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
-      ctx.stroke();
-      const [ex, ey] = [mapX(BM_DD.end[0]), mapY(BM_DD.end[1])];
-      ctx.fillStyle = LINE; ctx.beginPath(); ctx.arc(ex, ey, 6, 0, 2 * Math.PI); ctx.fill();
-      // Same trough label as the slide (CRISES[1].troughLbl "Nov 1987"): identical text,
-      // font, colour and placement (under the endpoint, right edge flush with the line's
-      // right edge) so the wording/style doesn't jump when this frame hands off to the slide.
-      ctx.fillStyle = CRISIS; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-      ctx.font = FONT; ctx.fillText(CRISES[1].troughLbl, ex, ey + 9);
+      ctx.rect(gx0, Math.min(gy0, gy1), gx1 - gx0, Math.abs(gy1 - gy0) + 40);
+      ctx.clip();
+      const u = travel * 0.92;
+      const nudgeX = 11 * u;
+      const nudgeY = 4 * u;
+      const lerpAng = (a0: number, a1: number, k: number) => {
+        let d = a1 - a0;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        return a0 + d * k;
+      };
+      for (let i = BM_AUG_I; i < N; i++) {
+        const [, o, h, l, c] = BM_OHLC[i];
+        const a = entryFade * cAlpha;
+        if (a < 0.02) continue;
+        const t = bmDrawdownT(i);
+        const xS = mapX(bmLeft3SvgX(i));
+        const yHS = mapY(bmPriceSvgY(h)), yLS = mapY(bmPriceSvgY(l));
+        const yOS = mapY(bmPriceSvgY(o)), yCS = mapY(bmPriceSvgY(c));
+        const [tx, ty] = bmSampleDdLine(t);
+        const xT = mapX(tx), yT = mapY(ty);
+        const [tnx, tny] = bmDdLineTangent(t);
+
+        // 1) Squash in place onto the close → short horizontal stub
+        const hScale = 1 - squash;
+        const midS = yCS;
+        const wickTopS = midS + (Math.min(yHS, yLS) - midS) * hScale;
+        const wickBotS = midS + (Math.max(yHS, yLS) - midS) * hScale;
+        let bodyTopS = midS + (Math.min(yOS, yCS) - midS) * hScale;
+        let bodyBotS = midS + (Math.max(yOS, yCS) - midS) * hScale;
+        if (bodyBotS - bodyTopS < STUB_H) {
+          const cy = (bodyTopS + bodyBotS) / 2;
+          bodyTopS = cy - STUB_H / 2; bodyBotS = cy + STUB_H / 2;
+        }
+
+        // 2) Travel toward the polyline; stub length grows ×2, plus ~one stub extra
+        const x = xS + (xT - xS) * u + nudgeX;
+        const midY = midS + (yT - midS) * u + nudgeY;
+        const bodyH = Math.max(STUB_H, bodyBotS - bodyTopS);
+        const bodyOff = ((bodyTopS + bodyBotS) / 2 - midS) * (1 - squash) * (1 - u);
+        const thick = Math.max(1.5, colW0 * 1.12 * (1 + travel) + colW0 * travel);
+        // 3) On crossfade only: tilt horizontal stub → polyline tangent
+        const ang = lerpAng(0, Math.atan2(tny, tnx), endSnap);
+        const up = c >= o;
+        const ink = up ? '#f5f3ee' : lerpColor('#15131a', '#f5f3ee', Math.max(squash * 0.35, u));
+        ctx.globalAlpha = a;
+        ctx.fillStyle = ink;
+        ctx.strokeStyle = ink;
+        ctx.save();
+        ctx.translate(x, midY + bodyOff);
+        ctx.rotate(ang);
+        if ((wickBotS - wickTopS) * (1 - u) > 0.5) {
+          ctx.lineWidth = Math.max(1, thick * 0.2);
+          const wScale = 1 - u;
+          ctx.beginPath();
+          ctx.moveTo(0, (wickTopS - midS) * wScale);
+          ctx.lineTo(0, (wickBotS - midS) * wScale);
+          ctx.stroke();
+        }
+        ctx.fillRect(-thick / 2, -bodyH / 2, thick, bodyH);
+        ctx.restore();
+      }
       ctx.restore();
     }
   }
@@ -1061,7 +1155,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     if (fromKey === 'bm') { // bm dwell + bm→0a transition
       applyTheme(0); lastBull = 0;
       drawCandleStage(animT);
-      lastCandle = 1 - animT;
+      lastCandle = lastPlate.a;
       return CAPTION[animT < 0.5 ? 'bm' : '0a'] || '';
     }
     // The exact single-1987 drawdown (drawCandleStage) is 0a's resting view. Yield to the
@@ -1075,9 +1169,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       applyTheme(0); lastBull = 0;
       drawCandleStage(1);
       lastCandle = 0;
+      lastPlate.a = 0;
       return CAPTION['0a'] || '';
     }
     lastCandle = 0;
+    lastPlate.a = 0;
     drawNow();
     return CAPTION[dominantKey] || '';
   }
@@ -1100,6 +1196,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     draw(progress: number) { return applyProgress(progress); },
     bullFactor() { return lastBull; },
     candleAlpha() { return lastCandle; },
+    candlePlate() { return lastPlate; },
     resize() { drawNow(); },
     ready() { return xs.length > 0; },
   };

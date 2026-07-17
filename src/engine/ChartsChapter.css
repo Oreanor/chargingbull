@@ -39,12 +39,13 @@
 }
 .cc-legend a { color: inherit; text-decoration: underline; }
 
-/* Black Monday plate — HTML overlay on the candle frame, bottom-right. Near-black
-   ink on the pink ground; the crash figure is the big Druk display face. */
+/* Black Monday plate — anchored just after the crash candle (engine sets translate).
+   Near-black ink on pink; crash figure is the big Druk display face. No CSS
+   transition — opacity/pos scrub with the stretch. */
 .cc-bm-plate {
-  position: absolute; right: 11vw; bottom: 22vh; z-index: 42;
-  text-align: right; pointer-events: none; color: #15131a;
-  transition: opacity 0.25s ease;
+  position: absolute; left: 0; top: 0; z-index: 42;
+  text-align: left; pointer-events: none; color: #15131a;
+  will-change: opacity, transform;
 }
 .cc-bm-date { font: 700 clamp(13px, 1.25vw, 18px)/1.2 var(--font-struve); }
 .cc-bm-title { font: 700 clamp(18px, 1.7vw, 24px)/1.1 var(--font-struve); margin-bottom: 2px; }
