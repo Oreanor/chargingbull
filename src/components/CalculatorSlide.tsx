@@ -154,7 +154,7 @@ export function CalculatorSlide() {
         if (knob) knob.style.bottom = Math.max(0, floor - knobR) + 'px';
       }
       // Hint is a child of flag A — lift above the axis / knob.
-      hintEl.style.bottom = (floor + (mobile ? 28 : 18)) + 'px';
+      hintEl!.style.bottom = (floor + (mobile ? 28 : 18)) + 'px';
 
       const nomMult = rows[i1].tr / rows[i0].tr;
       const realMult = nomMult * (rows[i0].cpi / rows[i1].cpi);
