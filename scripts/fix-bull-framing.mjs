@@ -1,11 +1,11 @@
 /**
- * Sample the map bull's on-screen X + geographic speed across the journey at a
- * fixed viewport width. Optionally nudge cameras into the free-area band and/or
+ * Sample the map bull's on-screen position + geographic speed across the journey
+ * at a fixed viewport. Optionally nudge cameras into the corridor band and/or
  * report (and half-smooth) per-leg speed skew via mapConfig.weights.
  *
- * Band (free area = right half of the screen):
- *   lo = W/2 + bullW     (not left of mid-screen + bull body)
- *   hi = W * 0.9         (not past the last 10% of the screen)
+ * Band (matches MapChapter BULL_CORRIDOR):
+ *   X — [W*0.70, W*0.80]
+ *   Y — [H*0.25, H*0.75]
  *
  * Usage:
  *   1. npm run dev
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DATA = path.join(ROOT, 'public/chapters/bull/data.json');
+const DATA = path.join(ROOT, 'src/data/bullMapData.json');
 const BASE = process.env.BULL_TRACK_URL || 'http://localhost:5173';
 const WIDTH = Number(process.env.BULL_TRACK_W || 1920);
 const HEIGHT = Number(process.env.BULL_TRACK_H || 1080);
@@ -71,16 +71,21 @@ async function sample(page) {
   return page.evaluate(() => {
     const t = window.__mapBullTrack;
     if (!t?.ready) return null;
-    const err = t.x < t.lo ? t.x - t.lo : t.x > t.hi ? t.x - t.hi : 0;
+    const errX = t.x < t.lo ? t.x - t.lo : t.x > t.hi ? t.x - t.hi : 0;
+    const errY = t.y < t.loY ? t.y - t.loY : t.y > t.hiY ? t.y - t.hiY : 0;
     return {
-      prog: t.prog, dive: t.dive, x: t.x, y: t.y, W: t.W, lo: t.lo, hi: t.hi,
-      head: t.head, err, ok: err === 0,
+      prog: t.prog, dive: t.dive, x: t.x, y: t.y, W: t.W, H: t.H,
+      lo: t.lo, hi: t.hi, loY: t.loY, hiY: t.hiY,
+      head: t.head, errX, errY, err: errX || errY, ok: errX === 0 && errY === 0,
     };
   });
 }
 
-async function nudgeLngLat(page, ll, errX) {
-  return page.evaluate(({ ll, errX }) => window.__mapBullTrack.nudgeCenter(ll, errX), { ll, errX });
+async function nudgeLngLat(page, ll, errX, errY = 0) {
+  return page.evaluate(
+    ({ ll, errX, errY }) => window.__mapBullTrack.nudgeCenter(ll, errX, errY),
+    { ll, errX, errY },
+  );
 }
 
 function round6(n) { return Math.round(n * 1e6) / 1e6; }
@@ -185,9 +190,12 @@ async function main() {
   }
 
   const bad = samples.filter((s) => !s.ok);
-  console.log(`\nFraming: samples=${samples.length}  violations=${bad.length}  band=[${samples[0]?.lo?.toFixed(0)}, ${samples[0]?.hi?.toFixed(0)}]`);
+  const band = samples[0]
+    ? `X[${samples[0].lo?.toFixed(0)}, ${samples[0].hi?.toFixed(0)}] Y[${samples[0].loY?.toFixed(0)}, ${samples[0].hiY?.toFixed(0)}]`
+    : '?';
+  console.log(`\nFraming: samples=${samples.length}  violations=${bad.length}  band=${band}`);
   for (const s of bad.slice(0, 20)) {
-    console.log(`  prog=${s.prog.toFixed(3)}  x=${s.x.toFixed(0)}  err=${s.err.toFixed(0)}`);
+    console.log(`  prog=${s.prog.toFixed(3)}  x=${s.x.toFixed(0)} y=${s.y.toFixed(0)}  errX=${s.errX.toFixed(0)} errY=${s.errY.toFixed(0)}`);
   }
 
   const speed = analyzeSpeed(samples);
@@ -232,11 +240,11 @@ async function main() {
       console.warn(`skip camera[${i}] — could not settle (prog=${s?.prog})`);
       continue;
     }
-    if (s.ok) { console.log(`camera[${i}] ok  x=${s.x.toFixed(0)}`); continue; }
-    const next = await nudgeLngLat(page, cams[i].center, s.err);
-    console.log(`camera[${i}] err=${s.err.toFixed(0)}  → [${round6(next[0])}, ${round6(next[1])}]`);
+    if (s.ok) { console.log(`camera[${i}] ok  x=${s.x.toFixed(0)} y=${s.y.toFixed(0)}`); continue; }
+    const next = await nudgeLngLat(page, cams[i].center, s.errX, s.errY);
+    console.log(`camera[${i}] errX=${s.errX.toFixed(0)} errY=${s.errY.toFixed(0)}  → [${round6(next[0])}, ${round6(next[1])}]`);
     cams[i].center = [round6(next[0]), round6(next[1])];
-    edits.push({ kind: 'camera', i, err: s.err });
+    edits.push({ kind: 'camera', i, errX: s.errX, errY: s.errY });
   }
 
   for (let k = 0; k < subCams.length; k++) {
@@ -246,10 +254,10 @@ async function main() {
       const target = k === 0 ? via.at * 0.01 : (k - 1) + via.at;
       const s = await gotoProg(Math.min(nStops - 1.01, Math.max(0, target)));
       if (!s || Math.abs(s.prog - target) > 0.2 || s.ok) continue;
-      const next = await nudgeLngLat(page, via.camera.center, s.err);
-      console.log(`subCams[${k}][${vi}]@${via.at} err=${s.err.toFixed(0)}  → [${round6(next[0])}, ${round6(next[1])}]`);
+      const next = await nudgeLngLat(page, via.camera.center, s.errX, s.errY);
+      console.log(`subCams[${k}][${vi}]@${via.at} errX=${s.errX.toFixed(0)} errY=${s.errY.toFixed(0)}  → [${round6(next[0])}, ${round6(next[1])}]`);
       via.camera.center = [round6(next[0]), round6(next[1])];
-      edits.push({ kind: 'subCam', k, vi, err: s.err });
+      edits.push({ kind: 'subCam', k, vi, errX: s.errX, errY: s.errY });
     }
   }
 

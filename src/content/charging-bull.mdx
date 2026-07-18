@@ -1,5 +1,5 @@
 import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TRACK } from './openerBull';
-import { t } from '../i18n';
+import copy from './copy.json';
 import { BearsBullsTitle } from '../components/BearsBullsTitle';
 import { BullBearExplainer } from '../components/BullBearExplainer';
 
@@ -35,9 +35,8 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
       moment the bull settles rear (~0.92), through centre, and off the top by ~0.99,
       leaving a clean rear beat before the whole slide scrolls on to the intro. */}
   <StageOverlay
-    stagesUrl="/chapters/splash/stages.json"
     range={[0.52, 1]}
-    plaques={t('opener.plaques')}
+    plaques={copy.opener.plaques}
     plaqueAt={[0.44, 0.54, undefined, 0.838, 0.955]}
     plaqueReach={[undefined, undefined, undefined, 0.04, 0.035]}
     hidePlaques={[1, 2]}
@@ -54,8 +53,8 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
     and dissolves to transparent — revealing the bull splat scene that lies
     underneath. The bull then holds (orbitable) and fades to black into II. */}
 <MapBullHandoff
-  introTitle={t('map.intro.title')}
-  introBody={t('map.intro.body')}
+  introTitle={copy.map.intro.title}
+  introBody={copy.map.intro.body}
   label="bull-env"
   sceneId="32caa065-7eb1-43a1-b8fc-5d6017ed52ad"
   revision="1f515756-64b8-4e85-9dc8-eaa4359cbd1a"
@@ -67,8 +66,7 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
 
 <BreakReveal
   titleNode={<BearsBullsTitle />}
-  body={t('bearsBulls.body')}
-  bodyClassName="max-sm:translate-x-[-1.87vh] max-sm:translate-y-[10.92vh] max-sm:scale-[1.697]"
+  body={copy.bearsBulls.body}
 />
 
 {/* ===================== EXPLAINER — bull / bear market ================== */}

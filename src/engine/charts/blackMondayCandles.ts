@@ -8,7 +8,7 @@ export const BM_GEOM = {
   box: { x: 149, y: 150, w: 1142, h: 501.5 },
   ticks: [ {v:325,y:204.5}, {v:300,y:316.25}, {v:275,y:428}, {v:250,y:539.75}, {v:225,y:651.5} ],
   months: [ {l:"JUN",x:252.142}, {l:"JUL",x:459.642}, {l:"AUG",x:667.142}, {l:"SEP",x:874.642}, {l:"OCT",x:1082.14} ],
-  monthY: 716, dotY: 666, baselineY: 651.5, labelX: 1265.28, indexX: 1180, indexY: 150,
+  monthY: 688, dotY: 666, baselineY: 651.5, labelX: 1265.28, indexX: 1180, indexY: 150,
 };
 
 // The single-1987 drawdown frame (Desktop-41), same SVG box/x as the candles so it

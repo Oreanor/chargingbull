@@ -18,7 +18,9 @@ const A = ({ href, children }: { href: string; children: React.ReactNode }) => (
 export function SummaryBlock() {
   return (
     <section
-      className="w-full bg-[#292929] text-[#A5A5A5] px-6 lg:px-6 py-16"
+      // Vertical pads from summary-block (1).svg (1440×560): first baseline y≈100,
+      // last baseline y≈464 → ~100px top / ~96px bottom (was py-16 = 64px).
+      className="w-full bg-[#292929] text-[#A5A5A5] px-6 lg:px-6 pt-[100px] pb-[96px]"
       style={{ fontFamily: 'var(--font-struve)' }}
     >
       {/* Same editorial grid as FutureSlide / BullBearExplainer — container / spacer width /

@@ -104,6 +104,15 @@ export class GlbScene {
    *  the subject stays framed by WIDTH and shrinks as the viewport narrows, instead of
    *  being locked to height — so the bull resizes together with the fit-height overlays. */
   private baseFov = 60;
+  /** Absolute screen-space framing nudge as a fraction of visible frame height
+   *  (+x = subject right, +y = subject up). Re-applied after every spherical pose. */
+  private frameNudgeX = 0;
+  private frameNudgeY = 0;
+  /** Extra camera-distance multiplier (mobile profile-fit pull). Authored dist is
+   *  kept in lastSpherical; this only affects the live camera radius. */
+  private fitDistMul = 1;
+  /** Last authored spherical pose (pre-nudge) — so frame nudge can re-apply cleanly. */
+  private lastSpherical: CameraSpherical | null = null;
   /** Editor hook: fired on OrbitControls 'start'/'end' (user grab/release). */
   private interactCb: ((phase: 'start' | 'end') => void) | null = null;
 
@@ -175,7 +184,10 @@ export class GlbScene {
     scene.add(rim);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+    // Damping only while the user can orbit — in cinematic mode (rotate off) it
+    // fights scroll-driven setCameraSpherical / fitDistMul and pulls the camera
+    // back to the pre-fit distance on every rAF during track holds.
+    controls.enableDamping = !!(this.options.rotate);
     controls.dampingFactor = 0.08;
     controls.enablePan = this.options.pan ?? false; // editor-only: reposition subject
     controls.screenSpacePanning = true;
@@ -275,8 +287,12 @@ export class GlbScene {
       if (!W || !H) return;
       renderer.setSize(W, H, false); // buffer only; CSS keeps the canvas full-bleed
       camera.aspect = W / H;
-      camera.fov = this.effectiveFov(); // re-fit: widen fov on narrow viewports so the bull shrinks with the window
-      camera.updateProjectionMatrix();
+      // Re-apply last track pose so FOV fit + mobile frame nudge stay consistent.
+      if (this.lastSpherical) this.setCameraSpherical(this.lastSpherical);
+      else {
+        camera.fov = this.effectiveFov();
+        camera.updateProjectionMatrix();
+      }
     };
     window.addEventListener('resize', onResize);
     this.ro = new ResizeObserver(onResize);
@@ -297,6 +313,7 @@ export class GlbScene {
     if (!this.controls) return;
     this.controls.enableRotate = on;
     this.controls.enableZoom = on;
+    this.controls.enableDamping = on; // see init — damping only while orbiting
     // Capture all touch while editing; let vertical scroll through otherwise (mobile).
     (this.controls.domElement as HTMLElement).style.touchAction = on ? 'none' : 'pan-y';
   }
@@ -305,7 +322,11 @@ export class GlbScene {
    *  the authored fov (framing unchanged — desktop stays as tuned). Below it, the vertical
    *  fov is widened so the HORIZONTAL fov stays constant: the subject then fits by WIDTH and
    *  scales down as the viewport narrows, matching the fit-height overlays. REF is the design
-   *  ~16:9 aspect — tweak if the bull should start shrinking at a different proportion. */
+   *  ~16:9 aspect — tweak if the bull should start shrinking at a different proportion.
+   *
+   *  On mobile the host is CSS-sized to 800px wide and centered (see ModelChapter.css), so
+   *  this FOV stops shrinking below the 800px framing without blowing the subject to the
+   *  phone's edges. */
   private effectiveFov(): number {
     const host = this.options.container;
     const W = host.clientWidth, H = host.clientHeight;
@@ -316,15 +337,39 @@ export class GlbScene {
     return 2 * Math.atan(tanHalfH / aspect) * (180 / Math.PI);
   }
 
+  /** Absolute screen-space framing nudge (fraction of frame height). 0,0 = track center. */
+  setFrameNudge(nx: number, ny: number): void {
+    if (this.frameNudgeX === nx && this.frameNudgeY === ny) return;
+    this.frameNudgeX = nx;
+    this.frameNudgeY = ny;
+    if (this.lastSpherical) this.setCameraSpherical(this.lastSpherical);
+  }
+
+  /** Multiply live camera distance (authored pose unchanged). Used for the mobile
+   *  bull+taxi profile fit — re-applies last pose so it works during track holds. */
+  setFitDistMul(mul: number): void {
+    const m = mul > 0 ? mul : 1;
+    if (Math.abs(m - this.fitDistMul) < 1e-4) return;
+    this.fitDistMul = m;
+    if (this.lastSpherical) this.setCameraSpherical(this.lastSpherical);
+  }
+
   /** Drive the camera from a spherical pose (target + az/polar/dist + fov). */
   setCameraSpherical(p: CameraSpherical): void {
     const camera = this.camera;
     const controls = this.controls;
     if (!camera || !controls) return;
+    this.lastSpherical = {
+      azimuthDeg: p.azimuthDeg,
+      polarDeg: p.polarDeg,
+      distance: p.distance,
+      fov: p.fov,
+      target: [p.target[0], p.target[1], p.target[2]],
+    };
     const t = p.target;
     const polar = p.polarDeg * DEG2RAD;
     const az = p.azimuthDeg * DEG2RAD;
-    const r = p.distance;
+    const r = p.distance * this.fitDistMul;
     camera.position.set(
       t[0] + r * Math.sin(polar) * Math.sin(az),
       t[1] + r * Math.cos(polar),
@@ -340,10 +385,44 @@ export class GlbScene {
       camera.updateProjectionMatrix();
     }
     controls.update();
+    this.applyFrameNudge();
   }
 
-  /** Read the current camera pose back as spherical (for keyframe capture). */
+  /** Shift camera+target in the screen plane after the authored pose is set. */
+  private applyFrameNudge(): void {
+    const nx = this.frameNudgeX;
+    const ny = this.frameNudgeY;
+    if (!nx && !ny) return;
+    const camera = this.camera;
+    const controls = this.controls;
+    if (!camera || !controls) return;
+    const dist = camera.position.distanceTo(controls.target) || 1;
+    const frameH = 2 * dist * Math.tan((camera.fov * Math.PI) / 360);
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+    // +nx/+ny = subject right/up → move camera+target opposite.
+    const pan = new THREE.Vector3()
+      .addScaledVector(right, -nx * frameH)
+      .addScaledVector(up, -ny * frameH);
+    camera.position.add(pan);
+    controls.target.add(pan);
+    controls.update();
+  }
+
+  /** Read the current camera pose back as spherical (for keyframe capture).
+   *  When a mobile frame-nudge is active, return the last authored pose so the
+   *  nudge never bakes into keys; otherwise read the live camera (editor pans). */
   getCameraSpherical(): CameraSpherical | null {
+    if ((this.frameNudgeX || this.frameNudgeY) && this.lastSpherical) {
+      const p = this.lastSpherical;
+      return {
+        azimuthDeg: p.azimuthDeg,
+        polarDeg: p.polarDeg,
+        distance: p.distance,
+        target: [p.target[0], p.target[1], p.target[2]],
+        fov: p.fov,
+      };
+    }
     const camera = this.camera;
     const controls = this.controls;
     if (!camera || !controls) return null;

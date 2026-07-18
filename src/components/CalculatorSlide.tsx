@@ -1,18 +1,15 @@
 import { useEffect, useRef } from 'react';
+import { CALC_CPI, CALC_DIV, CALC_PRICE, CALC_T0 } from '../data/sp500Monthly';
 import './CalculatorSlide.css';
 
 /**
  * CalculatorSlide — an interactive "what would $X invested in the S&P 500 be worth"
- * widget, ported from wallst-rodeo/calculator.html. Loads the same Shiller monthly CSV
- * the charts use, draws a log-scale total-return curve and lets the reader drag two
- * year flags to pick the holding window; shows final value, multiple, CAGR and the
+ * widget, ported from wallst-rodeo/calculator.html. Uses the bundled Shiller monthly
+ * series (no CSV fetch), draws a log-scale total-return curve and lets the reader drag
+ * two year flags to pick the holding window; shows final value, multiple, CAGR and the
  * inflation-adjusted ("real") value.
  */
-export function CalculatorSlide({
-  dataUrl = '/chapters/charts/data/sp500_shiller_monthly.csv',
-}: {
-  dataUrl?: string;
-}) {
+export function CalculatorSlide() {
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flagARef = useRef<HTMLDivElement>(null);
@@ -43,9 +40,22 @@ export function CalculatorSlide({
     let startY = 2000, endY = 2026;
     let tMin = 1928, tMax = 2026;
     const PAD = { l: 12, r: 12, t: 16, b: 28 };
+    // Mobile: extra floor so the round drag knobs sit on the axis without eating labels.
+    const isMobile = () => window.innerWidth <= 640;
+    const padB = () => (isMobile() ? 40 : PAD.b);
+    // Slight X-domain gutter so edge years aren’t flush with the plot ends (matches charts).
+    const X_EDGE_PAD = 0.02;
     const plotW = () => canvas.clientWidth - PAD.l - PAD.r;
-    const xOf = (tt: number) => PAD.l + (tt - tMin) / (tMax - tMin) * plotW();
-    const xToYear = (px: number) => Math.round(tMin + (px - PAD.l) / plotW() * (tMax - tMin));
+    const xOf = (tt: number) => {
+      const span = Math.max(1e-9, tMax - tMin);
+      const pad = span * X_EDGE_PAD;
+      return PAD.l + (tt - (tMin - pad)) / (span + 2 * pad) * plotW();
+    };
+    const xToYear = (px: number) => {
+      const span = Math.max(1e-9, tMax - tMin);
+      const pad = span * X_EDGE_PAD;
+      return Math.round((tMin - pad) + (px - PAD.l) / plotW() * (span + 2 * pad));
+    };
 
     const fmtMoney = (v: number) => !isFinite(v) ? '—'
       : v >= 1e9 ? '$' + (v / 1e9).toFixed(2) + 'B'
@@ -84,22 +94,24 @@ export function CalculatorSlide({
       hatchPat = null; // the resize invalidates the cached pattern — rebuild it this frame
       const ctx = canvas!.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
 
+      const floor = padB();
+      const mobile = isMobile();
       let lo = Infinity, hi = -Infinity;
       for (let i = I0; i < rows.length; i++) { const l = Math.log(rows[i].tr); if (l < lo) lo = l; if (l > hi) hi = l; }
       const spanV = (hi - lo) || 1;
-      const yOf = (tr: number) => PAD.t + (1 - (Math.log(tr) - lo) / spanV) * (H - PAD.t - PAD.b);
+      const yOf = (tr: number) => PAD.t + (1 - (Math.log(tr) - lo) / spanV) * (H - PAD.t - floor);
 
       ctx.font = "11px 'Space Mono', monospace"; ctx.textAlign = 'center';
       for (let yr = 1940; yr < MAXY; yr += 20) {
         const gx = xOf(yr);
         ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(gx, PAD.t); ctx.lineTo(gx, H - PAD.b); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(gx, PAD.t); ctx.lineTo(gx, H - floor); ctx.stroke();
         ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillText(String(yr), gx, H - 9);
       }
       // solid white X axis along the plot floor (matches the charts chapter's baseline);
       // the year labels sit just below it.
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(PAD.l, H - PAD.b); ctx.lineTo(W - PAD.r, H - PAD.b); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(PAD.l, H - floor); ctx.lineTo(W - PAD.r, H - floor); ctx.stroke();
 
       const drawSeg = (a: number, b: number, color: string, width: number) => {
         ctx.beginPath();
@@ -107,22 +119,42 @@ export function CalculatorSlide({
         ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.stroke();
       };
       drawSeg(I0, rows.length - 1, 'rgba(255,255,255,0.22)', 1.4);
-      ctx.beginPath(); ctx.moveTo(xOf(rows[i0].t), H - PAD.b);
+      ctx.beginPath(); ctx.moveTo(xOf(rows[i0].t), H - floor);
       for (let i = i0; i <= i1; i++) ctx.lineTo(xOf(rows[i].t), yOf(rows[i].tr));
-      ctx.lineTo(xOf(rows[i1].t), H - PAD.b); ctx.closePath();
-      const grad = ctx.createLinearGradient(0, PAD.t, 0, H - PAD.b);
+      ctx.lineTo(xOf(rows[i1].t), H - floor); ctx.closePath();
+      const grad = ctx.createLinearGradient(0, PAD.t, 0, H - floor);
       grad.addColorStop(0, 'rgba(97,226,107,0.22)'); grad.addColorStop(1, 'rgba(97,226,107,0.01)');
       ctx.fillStyle = grad; ctx.fill();
       const hatch = getHatch(ctx); // faint diagonal hatch over the same area (mockup signature)
       if (hatch) { ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = hatch; ctx.fill(); ctx.restore(); }
       drawSeg(i0, i1, '#61E26B', 2.6);
-      for (const i of [i0, i1]) {
-        ctx.beginPath(); ctx.arc(xOf(rows[i].t), yOf(rows[i].tr), 4, 0, 7); ctx.fillStyle = '#61E26B'; ctx.fill();
+      for (const [i, label] of [[i0, startY], [i1, endY]] as const) {
+        const px = xOf(rows[i].t), py = yOf(rows[i].tr);
+        ctx.beginPath(); ctx.arc(px, py, 4, 0, 7); ctx.fillStyle = '#61E26B'; ctx.fill();
         ctx.strokeStyle = '#06210b'; ctx.lineWidth = 1.5; ctx.stroke();
+        // Mobile: year sits above the endpoint (knobs replace the bottom pills).
+        if (mobile) {
+          ctx.font = "700 13px 'Space Mono', monospace";
+          ctx.fillStyle = '#61E26B';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          ctx.fillText(String(label), px, py - 10);
+          ctx.textBaseline = 'alphabetic';
+        }
       }
 
-      flagA!.style.left = xOf(rows[i0].t) + 'px'; flagA!.querySelector('.yr')!.textContent = String(startY);
-      flagB!.style.left = xOf(rows[i1].t) + 'px'; flagB!.querySelector('.yr')!.textContent = String(endY);
+      // Flags + knobs + hint share the pole X / axis floor — never drift on resize.
+      const ax = xOf(rows[i0].t), bx = xOf(rows[i1].t);
+      flagA!.style.left = ax + 'px'; flagA!.querySelector('.yr')!.textContent = String(startY);
+      flagB!.style.left = bx + 'px'; flagB!.querySelector('.yr')!.textContent = String(endY);
+      const knobR = mobile ? 22 : 0; // half of 44px mobile knob
+      for (const el of [flagA!, flagB!]) {
+        const line = el.querySelector('.line') as HTMLElement | null;
+        const knob = el.querySelector('.knob') as HTMLElement | null;
+        if (line) line.style.bottom = floor + 'px';
+        if (knob) knob.style.bottom = Math.max(0, floor - knobR) + 'px';
+      }
+      // Hint is a child of flag A — lift above the axis / knob.
+      hintEl.style.bottom = (floor + (mobile ? 28 : 18)) + 'px';
 
       const nomMult = rows[i1].tr / rows[i0].tr;
       const realMult = nomMult * (rows[i0].cpi / rows[i1].cpi);
@@ -221,6 +253,9 @@ export function CalculatorSlide({
     sizeInput(); refreshField(); // initial: size to "100", both arrows off (scene inactive)
     const onResize = () => { if (rows.length) render(); };
     window.addEventListener('resize', onResize);
+    // Sticky stage / dvh can reflow without a window resize — keep poles + hint locked.
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
+    ro?.observe(canvas);
 
     // Cursor drops into the amount field only when the scene turns ACTIVE (not while the
     // scripted intro plays) — so nothing blinks while the calculator is inert.
@@ -259,29 +294,24 @@ export function CalculatorSlide({
     );
     introIO.observe(vizEl);
 
-    let alive = true;
-    fetch(dataUrl).then((r) => r.text()).then((text) => {
-      if (!alive) return;
-      let tr = 1, prevPrice: number | null = null, lastCPI = 0;
-      for (const line of text.trim().split('\n').slice(1)) {
-        const c = line.split(',');
-        const [Y, M] = c[0].split('-').map(Number);
-        const price = +c[1], div = +c[2] || 0, cpiRaw = +c[4];
-        if (!isFinite(price) || price <= 0) continue;
-        if (cpiRaw > 0) lastCPI = cpiRaw;
+    {
+      let tr = 1, prevPrice: number | null = null;
+      for (let i = 0; i < CALC_PRICE.length; i++) {
+        const price = CALC_PRICE[i], div = CALC_DIV[i] || 0, cpi = CALC_CPI[i];
+        const Y = CALC_T0 + Math.floor(i / 12);
+        const M = (i % 12) + 1;
         if (prevPrice != null) tr *= (price + div / 12) / prevPrice;
         prevPrice = price;
-        rows.push({ y: Y, m: M, t: Y + (M - 1) / 12, price, tr, cpi: lastCPI });
+        rows.push({ y: Y, m: M, t: Y + (M - 1) / 12, price, tr, cpi });
       }
       for (let i = 0; i < rows.length; i++) { const y = rows[i].y; if (firstIdx[y] === undefined) firstIdx[y] = i; lastIdx[y] = i; }
       MINY = 1928; MAXY = rows[rows.length - 1].y; I0 = firstIdx[MINY];
       startY = MINY; endY = MAXY; // left flag starts at the left edge; the intro drives it in
       render();
-      playIntro(); // if the reader is already on the slide when data lands, play now
-    }).catch((e) => console.warn('[CalculatorSlide] data load failed', e));
+      playIntro();
+    }
 
     return () => {
-      alive = false;
       flagA.removeEventListener('pointerdown', onA);
       flagB.removeEventListener('pointerdown', onB);
       amountEl.removeEventListener('input', onInput);
@@ -295,10 +325,11 @@ export function CalculatorSlide({
       introIO.disconnect();
       cancelAnimationFrame(introRaf);
       window.removeEventListener('resize', onResize);
+      ro?.disconnect();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', endDrag);
     };
-  }, [dataUrl]);
+  }, []);
 
   return (
     <section ref={sectionRef} className="calc-section" style={{ height: '150vh' }}>
@@ -324,19 +355,29 @@ export function CalculatorSlide({
         </div>
         <div ref={vizRef} className="calc-viz">
           <canvas ref={canvasRef} className="calc-chart" />
-          <div ref={flagARef} className="calc-flag"><div className="line" /><div className="grab" /><div className="yr" /></div>
-          <div ref={flagBRef} className="calc-flag"><div className="line" /><div className="grab" /><div className="yr" /></div>
-          <div ref={hintRef} className="calc-hint">
-            {/* White double-headed ↔ above the text (Struve has no U+2194 glyph, so it must be
-                traced). NBSP keeps "the axis" from splitting across the wrap. */}
-            <svg className="ar" viewBox="0 0 31 17" aria-hidden="true">
-              <path d="M8.184 16.8965L1.248 9.86448V7.00848L8.832 0.000483036H12.384L5.256 7.00848H25.968L18.648 0.000483036H22.2L29.784 7.00848V9.86448L22.848 16.8965H19.296L25.992 9.86448H5.04L11.736 16.8965H8.184Z" />
-            </svg>
-            {/* Green curved arrow (Figma "Group 159") sweeping from the text down to the flag. */}
-            <svg className="arc" viewBox="0 0 70 74" aria-hidden="true">
-              <path d="M68.2073 69.8835C68.7222 69.6838 68.9777 69.1045 68.778 68.5896L65.5235 60.1986C65.3238 59.6837 64.7445 59.4282 64.2296 59.6279C63.7147 59.8276 63.4591 60.4069 63.6589 60.9218L66.5518 68.3805L59.0931 71.2734C58.5782 71.4731 58.3227 72.0524 58.5224 72.5673C58.7221 73.0822 59.3014 73.3377 59.8164 73.138L68.2073 69.8835ZM2.8457 0.951172L1.89724 1.26807C9.97878 25.4558 29.1628 52.9824 67.4421 69.8661L67.8457 68.9512L68.2493 68.0362C30.5286 51.3988 11.7126 24.3339 3.79416 0.634275L2.8457 0.951172Z" />
-            </svg>
-            Drag the year flags on the{' '}axis to choose the holding period
+          <div ref={flagARef} className="calc-flag">
+            <div className="line" /><div className="grab" /><div className="yr" />
+            {/* Mobile drag knob — same ↔ SVG path as the hint glyph. */}
+            <div className="knob" aria-hidden="true">
+              <svg viewBox="0 0 31 17"><path d="M8.184 16.8965L1.248 9.86448V7.00848L8.832 0.000483036H12.384L5.256 7.00848H25.968L18.648 0.000483036H22.2L29.784 7.00848V9.86448L22.848 16.8965H19.296L25.992 9.86448H5.04L11.736 16.8965H8.184Z" /></svg>
+            </div>
+            {/* Hint lives on the left штанга so it never detaches on resize / drag. */}
+            <div ref={hintRef} className="calc-hint">
+              {/* White ↔ + green arc (both SVGs). Same copy everywhere — mobile only retunes type + park. */}
+              <svg className="ar" viewBox="0 0 31 17" aria-hidden="true">
+                <path d="M8.184 16.8965L1.248 9.86448V7.00848L8.832 0.000483036H12.384L5.256 7.00848H25.968L18.648 0.000483036H22.2L29.784 7.00848V9.86448L22.848 16.8965H19.296L25.992 9.86448H5.04L11.736 16.8965H8.184Z" />
+              </svg>
+              <svg className="arc" viewBox="0 0 70 74" aria-hidden="true">
+                <path d="M68.2073 69.8835C68.7222 69.6838 68.9777 69.1045 68.778 68.5896L65.5235 60.1986C65.3238 59.6837 64.7445 59.4282 64.2296 59.6279C63.7147 59.8276 63.4591 60.4069 63.6589 60.9218L66.5518 68.3805L59.0931 71.2734C58.5782 71.4731 58.3227 72.0524 58.5224 72.5673C58.7221 73.0822 59.3014 73.3377 59.8164 73.138L68.2073 69.8835ZM2.8457 0.951172L1.89724 1.26807C9.97878 25.4558 29.1628 52.9824 67.4421 69.8661L67.8457 68.9512L68.2493 68.0362C30.5286 51.3988 11.7126 24.3339 3.79416 0.634275L2.8457 0.951172Z" />
+              </svg>
+              Drag the year flags on the{' '}axis to choose the holding period
+            </div>
+          </div>
+          <div ref={flagBRef} className="calc-flag">
+            <div className="line" /><div className="grab" /><div className="yr" />
+            <div className="knob" aria-hidden="true">
+              <svg viewBox="0 0 31 17"><path d="M8.184 16.8965L1.248 9.86448V7.00848L8.832 0.000483036H12.384L5.256 7.00848H25.968L18.648 0.000483036H22.2L29.784 7.00848V9.86448L22.848 16.8965H19.296L25.992 9.86448H5.04L11.736 16.8965H8.184Z" /></svg>
+            </div>
           </div>
         </div>
         <div ref={noteRef} className="calc-note" />

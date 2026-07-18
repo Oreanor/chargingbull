@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { t } from '../i18n';
+import copy from '../content/copy.json';
 import './BullBearExplainer.css';
 
 /**
@@ -10,7 +10,7 @@ import './BullBearExplainer.css';
  * The panel is the bridge into the charts: the section is tall and pinned (sticky);
  * as the reader scrolls through it the pink panel grows from a rounded box around the
  * right column to a full-screen fill, the text fades, and it hands straight off to the
- * (pink, bear-phase) charts. Copy lives in i18n `explainer.*`.
+ * (pink, bear-phase) charts. Copy lives in content/copy.json `explainer.*`.
  */
 const clamp01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
 const smoothstep = (n: number) => { n = clamp01(n); return n * n * (3 - 2 * n); };
@@ -79,16 +79,16 @@ export function BullBearExplainer() {
             <aside
               className="xpl-aside lg:w-[348px] lg:shrink-0 text-[clamp(14px,1.25vw,18px)] leading-[1.333] max-w-[329px]"
               style={{ fontFamily: 'var(--font-struve)' }}
-              dangerouslySetInnerHTML={{ __html: t('explainer.aside') }}
+              dangerouslySetInnerHTML={{ __html: copy.explainer.aside }}
             />
             <div
               ref={mainRef}
               className="xpl-main xpl-onpink lg:flex-1 lg:max-w-[760px] text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white space-y-7"
               style={{ fontFamily: 'var(--font-martina)' }}
             >
-              <p dangerouslySetInnerHTML={{ __html: t('explainer.p1') }} />
-              <p dangerouslySetInnerHTML={{ __html: t('explainer.p2') }} />
-              <p dangerouslySetInnerHTML={{ __html: t('explainer.p3') }} />
+              <p dangerouslySetInnerHTML={{ __html: copy.explainer.p1 }} />
+              <p dangerouslySetInnerHTML={{ __html: copy.explainer.p2 }} />
+              <p dangerouslySetInnerHTML={{ __html: copy.explainer.p3 }} />
             </div>
           </div>
         </div>

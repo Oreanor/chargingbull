@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import './CandleIntro.css';
 import { useChapterProgress } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
-import { t } from '../i18n';
+import copy from '../content/copy.json';
 import { tuneStore } from './tuneEditor';
 // Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
 // drop straight into the overlay: arrow-in-circle (green up / pink down) and the
@@ -15,6 +15,8 @@ import WORDMARK_MOBILE from '../assets/logos/wallst-rodeo-mobile.svg?url';
 import ICON_UP from '../assets/icons/candle-arrow-up.svg?raw';
 import ICON_DOWN from '../assets/icons/candle-arrow-down.svg?raw';
 import ICON_SKULL from '../assets/icons/candle-skull.svg?raw';
+// Mobile crash plate — Frame 181 with outlined −20.5% (designer export).
+import BM_FRAME_181 from '../assets/charts/bm-frame-181.png';
 import { BM_OHLC_OPENER as OHLC } from './charts/blackMondayOHLC';
 
 /**
@@ -56,15 +58,15 @@ const PH = {
   scatterStart: 0.6, scatterDur: 0.24,    // …then the FULL chart HOLDS ~one screen (0.44→0.6) before it scatters
 };
 
-// Dates/positions/marker are data; the heading (date) + body text are localized.
-const FACT_COPY = t<{ date: string; text: string }[]>('opener.candles.facts');
+// Dates/positions/marker are data; heading + body from copy.json.
+const FACT_COPY = copy.opener.candles.facts;
 const FACTS = [
   { anchor: '1987-08-25', pos: 'top' as const, marker: 'up' as const, ...FACT_COPY[0] },
   { anchor: '1987-09-04', pos: 'bottom' as const, marker: 'down' as const, ...FACT_COPY[1] },
   { anchor: '1987-10-16', pos: 'top' as const, marker: 'down' as const, ...FACT_COPY[2] },
 ];
-const CRASH = t<{ date: string; title: string; figure: string }>('opener.candles.crash');
-const INDEX_LABEL = t('opener.candles.indexLabel');
+const CRASH = copy.opener.candles.crash;
+const INDEX_LABEL = copy.opener.candles.indexLabel;
 
 // Placement nudges for the fact callouts + crash block — offset (vh) from each block's
 // canvas anchor + scale. Baked from the old layout editor; no runtime layer.
@@ -74,9 +76,13 @@ const FACT_WIDTH: (number | null)[] = [null, null, null]; // px max-width per fa
 const CRASH_OFFSET: [number, number] = [3.79, 1.67];
 const CRASH_SCALE: number = 0.965;
 const CRASH_WIDTH: number | null = null; // px max-width of the crash block (null = CSS default)
+// Portrait: 16 Oct stays absolute; crash plate tracks the last candle (left of it).
+const FACT2_ABS_MOBILE = { left: 24, top: 220 };
+const CRASH_TOP_MOBILE = 400; // px from top of the design frame
+const CRASH_GAP_MOBILE = 14;  // px between plaque right edge and last candle
 
-// month markers at the first trading day of each month (labels are localized)
-const MONTHS = t<string[]>('opener.candles.months');
+// month markers at the first trading day of each month
+const MONTHS = copy.opener.candles.months;
 const GRID = [{ d: '1987-08-03' }, { d: '1987-09-01' }, { d: '1987-10-01' }];
 
 function niceTicks(min: number, max: number): number[] {
@@ -135,15 +141,24 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       stage.classList.toggle('ci-stage--portrait', portrait);
 
       if (portrait) {
-        // PORTRAIT — unchanged: fixed phone frame, width-fit, centred.
+        // PORTRAIT — fixed 393×852 design frame, FIT-HEIGHT so AUG / month labels /
+        // the full plot never clip when the phone chrome eats vertical space.
+        // k = min(1, vh/852): shrink uniformly if needed, never upscale past 1:1.
+        // Stage width = vw/k so after scale the FRAME spans the viewport; candles
+        // themselves stop short of the price digits (see plotFrac in the tick).
         const f = PORT_FRAME;
-        stage.style.width = `${f.w}px`;
+        const EDGE_PX = 20;
+        const k = Math.min(1, vh / f.h);
+        const stageW = Math.max(f.w, vw / k);
+        const overflow = stageW * k - vw; // >0 when design is wider than the viewport
+        const shiftFrame = overflow > 0 ? overflow / k : 0;
+        stage.style.width = `${stageW}px`;
         stage.style.height = `${f.h}px`;
-        stage.style.left = '50%';
-        stage.style.transformOrigin = 'center center';
-        stage.style.transform = `translate(-50%, -50%) scale(${vw / f.w})`;
-        stage.style.setProperty('--ci-axis-shift', '0px');
-        stage.style.setProperty('--ci-axis-edge', '20px');
+        stage.style.left = '0';
+        stage.style.transformOrigin = 'left center';
+        stage.style.transform = `translate(0, -50%) scale(${k})`;
+        stage.style.setProperty('--ci-axis-edge', `${EDGE_PX / k}px`);
+        stage.style.setProperty('--ci-axis-shift', `${shiftFrame}px`);
       } else {
         // LANDSCAPE — fit-height, then reflow-THEN-scale. Everything stays ONE locked
         // block: the candle camera + grid + plates all live in the fixed 1440×800 frame and
@@ -187,7 +202,11 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       const heroStage = heroStageRef.current;
       if (heroStage) {
         const f = portrait ? PORT_FRAME : LAND_FRAME;
-        const kc = Math.min(vw / f.w, vh / f.h); // contain-fit — title never clips
+        // Contain-fit so the title never clips. Portrait also caps at 1:1 (same
+        // fit-height idea as the chart — phone chrome shortens the visible vh).
+        const kc = portrait
+          ? Math.min(1, vw / f.w, vh / f.h)
+          : Math.min(vw / f.w, vh / f.h);
         heroStage.style.width = `${f.w}px`;
         heroStage.style.height = `${f.h}px`;
         heroStage.style.transform = `translate(-50%, -50%) scale(${kc})`;
@@ -208,12 +227,16 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     if (!host || !overlay || !gridEl) return;
     let disposed = false;
 
-    // Nudge the whole PLOT (candles + time gridlines/month labels + callouts) 20px to
-    // the RIGHT, while the price axis stays put. Applied in exactly two places that move
+    // Nudge the whole PLOT (candles + time gridlines/month labels + callouts) to the
+    // RIGHT, while the price axis stays put. Applied in exactly two places that move
     // in x: the candle canvas (CSS translateX below) and projX's x (baked in). The price
     // axis — horizontal price lines (.ci-hl) + their number labels (.ci-yl) + the
     // "S&P 500 INDEX" caption — is untouched: those read only projX's y (or fixed CSS).
-    const X_SHIFT_PX = 20;
+    // Portrait: ~1 mono glyph inset so AUG isn't flush to the left edge
+    // (.ci-gd is 14px Space Mono — one character ≈ that).
+    const isPort = () => (typeof window !== 'undefined' && window.innerWidth <= PORT_BREAK)
+      || (stageRef.current?.classList.contains('ci-stage--portrait') ?? false);
+    const X_SHIFT_PX = isPort() ? 14 : 20;
 
     // --- derived chart geometry ---
     const candles = OHLC.map(([date, o, h, l, c]) => ({ date, o, h, l, c, up: c >= o }));
@@ -241,6 +264,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     // exact brand hex.
 
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    // Portrait squeezes this group in X (height-fit camera + left plot) so candles
+    // keep design thickness ratios without width-fit zoom-out emptying the frame.
+    const plotRoot = new THREE.Group();
+    scene.add(plotRoot);
     const groups = candles.map((k, i) => {
       const col = k.up ? UP : DOWN;
       const g = new THREE.Group();
@@ -250,7 +277,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       const bodyMesh = new THREE.Mesh(boxGeo, bodyMat); g.add(bodyMesh);
       const wickMat = new THREE.MeshBasicMaterial({ color: col, transparent: true });
       const wickMesh = new THREE.Mesh(boxGeo, wickMat); g.add(wickMesh);
-      scene.add(g);
+      plotRoot.add(g);
       const hy = priceToY(k.h), ly = priceToY(k.l), oy = priceToY(k.o), cy = priceToY(k.c);
       const rangeCenter = (hy + ly) / 2, top = Math.max(oy, cy), bot = Math.min(oy, cy);
       bodyMesh.scale.set(BODYW, Math.max(0.6, top - bot), BODYW);
@@ -282,7 +309,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     // --- overlay DOM (built once) ---
     const _proj = new THREE.Vector3();
     const projX = (i: number, y?: number) => {
-      _proj.set(xOfIdx(i), y == null ? 0 : y, 0).project(camera);
+      // plotRoot.scale.x is the portrait X-squeeze — project in that scaled world.
+      _proj.set(xOfIdx(i) * plotRoot.scale.x, y == null ? 0 : y, 0).project(camera);
       // +X_SHIFT_PX on x only — moves the time gridlines/month labels + callouts right
       // with the candles; consumers that read only .y (price lines/labels) are unaffected.
       return { x: (_proj.x * 0.5 + 0.5) * host.clientWidth + X_SHIFT_PX, y: (-_proj.y * 0.5 + 0.5) * host.clientHeight };
@@ -304,31 +332,33 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       el.innerHTML =
         `<span class="ci-icon ci-icon-${f.marker}">${icon}</span>` +
         `<div class="ci-plate">` +
-        `<div class="ci-fh" data-i18n="opener.candles.facts.${i}.date">${f.date}</div>` +
-        `<div class="ci-fb" data-i18n="opener.candles.facts.${i}.text">${f.text}</div></div>`;
+        `<div class="ci-fh">${f.date}</div>` +
+        `<div class="ci-fb">${f.text}</div></div>`;
       return { ...f, idx: candles.findIndex((c) => c.date === f.anchor), el };
     });
     const bmEl = mk('ci-bm');
     bmEl.dataset.tune = 'opener.candle.crash'; bmEl.dataset.tuneMode = 'store'; // draggable via the layout editor (adds to CRASH_OFFSET/SCALE)
     if (CRASH_WIDTH != null) bmEl.style.maxWidth = `${CRASH_WIDTH}px`; // baked width (editor right-edge drag)
-    // The leading minus/dash hangs in the left margin (ci-bm-sign is absolute) so
-    // the figure aligns on the "20", not on the dash — matching the reference.
+    // Desktop: skull + date + title + Druk −20.5%. Mobile: Frame 181 PNG (outlined −20.5%).
     const dash = /^[‒–—−-]/.exec(CRASH.figure)?.[0] ?? '';
     const figNum = CRASH.figure.slice(dash.length);
-    bmEl.innerHTML =
+    const BM_HTML_DESKTOP =
       `<span class="ci-skull">${ICON_SKULL}</span>` +
-      `<div class="ci-bm-date" data-i18n="opener.candles.crash.date">${CRASH.date}</div>` +
+      `<div class="ci-bm-date">${CRASH.date}</div>` +
       `<div class="ci-bm-title">${CRASH.title}</div>` +
       `<div class="ci-bm-fig"><span class="ci-bm-sign">${dash}</span>${figNum}</div>`;
+    const BM_HTML_MOBILE =
+      `<img class="ci-bm-frame" src="${BM_FRAME_181}" alt="${CRASH.date} — ${CRASH.figure}" draggable="false" />`;
+    let bmMobile = false;
+    bmEl.innerHTML = BM_HTML_DESKTOP;
 
     // --- title: shown all at once (no typed reveal, no logo fade, no wordmark glow) ---
-    const SUB = t<string[]>('opener.hero.subtitle');
+    const SUB = copy.opener.hero.subtitle;
     if (subtitleRef.current) {
       subtitleRef.current.textContent = '';
-      SUB.forEach((line, li) => {
+      SUB.forEach((line) => {
         const lineEl = document.createElement('span');
         lineEl.style.display = 'block';
-        lineEl.dataset.i18n = `opener.hero.subtitle.${li}`;
         lineEl.textContent = line;
         subtitleRef.current!.appendChild(lineEl);
       });
@@ -361,15 +391,28 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // STATIC full-chart camera — the chart stays in place; only the candles draw
       // in left→right (no pan, no zoom).
       const chartT = clamp01((sp - PH.chartStart) / (PH.chartEnd - PH.chartStart));
-      // Zoom in ~15% ONLY on the height-fit — so wide screens read larger, but a narrow
-      // (portrait/mobile) frame that's width-constrained isn't pushed off the sides/bottom.
-      const camZNow = Math.max(camZForHeight(WORLD_H * 1.22) / 1.15, camZForWidth(chartW * 1.06));
-      // LEFT-anchor the chart: candles are symmetric about x=0, so look at a point RIGHT of
-      // centre (camX>0) and the first candle sits near the LEFT edge — the chart draws
-      // left→right from there. vwNow = visible world width at the chart plane; clamp camX ≥0
-      // so a width-constrained (narrow) frame stays full-width instead of shifting right.
-      const vwNow = 2 * tan2 * aspect * camZNow;
-      const camX = Math.max(0, vwNow / 2 - chartW / 2 - COLW);
+      const port = isPort();
+      let camZNow: number;
+      let camX: number;
+      if (port) {
+        // PORTRAIT: height-fit, then scale plot in X so candles stop SHORT of the
+        // price column — ~20% right gutter for the digits (never ride under 325…225).
+        // Horizontal grid lines still span the full stage to the axis.
+        camZNow = camZForHeight(WORLD_H * 1.22) / 1.15;
+        const vwNow = 2 * tan2 * aspect * camZNow;
+        const plotFrac = 0.78;
+        const xScale = (vwNow * plotFrac) / (chartW + COLW);
+        plotRoot.scale.set(xScale, 1, 1);
+        camX = vwNow / 2 - (chartW / 2) * xScale - COLW * xScale;
+      } else {
+        plotRoot.scale.set(1, 1, 1);
+        // Zoom in ~15% ONLY on the height-fit — so wide screens read larger, but a
+        // narrow frame that's width-constrained isn't pushed off the sides/bottom.
+        camZNow = Math.max(camZForHeight(WORLD_H * 1.22) / 1.15, camZForWidth(chartW * 1.06));
+        // LEFT-anchor: look right of centre so the first candle sits near the left edge.
+        const vwNow = 2 * tan2 * aspect * camZNow;
+        camX = Math.max(0, vwNow / 2 - chartW / 2 - COLW);
+      }
       // Only the VIEW changes per frame (position/lookAt) — fov/aspect are set in resize(),
       // so no per-frame updateProjectionMatrix() is needed.
       camera.position.set(camX, 0, camZNow); camera.lookAt(camX, 0, 0);
@@ -437,10 +480,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // Per-plate spin (deg): mixed clockwise / counter-clockwise, varied magnitude.
       const FACT_FLY_SPIN = [16, -19, 13];
       const CRASH_FLY_SPIN = -15;
-      // On mobile (≤800px, the editor's mobile breakpoint) the first two callouts
-      // (25 Aug + 4 Sep) are hidden — the narrow frame only keeps 16 Oct + the
-      // Black Monday (19 Oct) block, so the plates don't crowd/overlap.
-      const isMobile = W <= 800;
+      // On mobile (≤800px) keep only 16 Oct + Black Monday — hide the earlier two.
+      // Plaques stay at authored size (no scale squeeze); candle host is locked to
+      // the 393 design width (see fit effect + .ci-candle-host).
+      const isMobile = port;
       factItems.forEach((fi, i) => {
         // fade each label up gradually as the chart draws past it; on scatter it
         // flies off (transform) and dissolves (plateFade).
@@ -449,25 +492,33 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           : chartOn * smoothstep(clamp01((revealEdge - fi.idx) / 9)) * plateFade;
         fi.el.style.opacity = op.toFixed(3);
         if (op > 0.005) {
-          const maxL = host.clientWidth - 320;
-          const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
-          // baked constant + live layout-editor delta (store-mode), both in vh
           const tune = tuneStore.get(`opener.candle.fact.${i}`);
-          const oxv = FACT_OFFSET[i][0] + tune[0], oyv = FACT_OFFSET[i][1] + tune[1];
-          const sc = FACT_SCALE[i] * tuneStore.getScale(`opener.candle.fact.${i}`);
-          const ox = oxv * vhPx, oy = oyv * vhPx;
+          const vhPx = host.clientHeight / 100;
           let leftPx: number, topPx: number, base: string;
-          if (fi.pos === 'bottom') {
-            const p = projX(fi.idx, priceToY(candles[fi.idx].l));
+          if (isMobile) {
+            // Absolute mockup coords — no candle projection / translateY(-100%).
+            leftPx = FACT2_ABS_MOBILE.left + (tune[0] * vhPx);
+            topPx = FACT2_ABS_MOBILE.top + (tune[1] * vhPx);
             base = '';
-            leftPx = Math.max(8, Math.min(maxL, p.x)) + ox;
-            topPx = Math.max(p.y + 14, host.clientHeight * 0.32) + oy;
           } else {
-            const p = projX(fi.idx, priceToY(candles[fi.idx].h));
-            base = 'translateY(-100%)';
-            leftPx = Math.max(8, Math.min(maxL, p.x)) + ox;
-            topPx = Math.max(fi.el.offsetHeight + 8, p.y - 10) + oy;
+            const plateW = fi.el.offsetWidth || 300;
+            const maxL = Math.max(8, host.clientWidth - plateW - 8);
+            const oxv = FACT_OFFSET[i][0] + tune[0], oyv = FACT_OFFSET[i][1] + tune[1];
+            const ox = oxv * vhPx, oy = oyv * vhPx;
+            if (fi.pos === 'bottom') {
+              const p = projX(fi.idx, priceToY(candles[fi.idx].l));
+              base = '';
+              leftPx = Math.max(8, Math.min(maxL, p.x)) + ox;
+              topPx = Math.max(p.y + 14, host.clientHeight * 0.32) + oy;
+            } else {
+              const p = projX(fi.idx, priceToY(candles[fi.idx].h));
+              base = 'translateY(-100%)';
+              leftPx = Math.max(8, Math.min(maxL, p.x)) + ox;
+              topPx = Math.max(fi.el.offsetHeight + 8, p.y - 10) + oy;
+            }
           }
+          // Mobile: never scale plates down — keep CSS/design size.
+          const sc = isMobile ? 1 : FACT_SCALE[i] * tuneStore.getScale(`opener.candle.fact.${i}`);
           fi.el.style.left = leftPx + 'px';
           fi.el.style.top = topPx + 'px';
           const flyT = flyTransform(leftPx, topPx, base, FACT_FLY_SPEED[i] ?? 1, FACT_FLY_SPIN[i] ?? 0);
@@ -480,18 +531,33 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // Black Monday block (skull + crash headline + the −20.5% figure), anchored
       // just right of the final crash candle. Fades in once the chart settles, then
       // flies off + dissolves with the other plates as the candles scatter.
+      if (isMobile !== bmMobile) {
+        bmMobile = isMobile;
+        bmEl.innerHTML = isMobile ? BM_HTML_MOBILE : BM_HTML_DESKTOP;
+        bmEl.classList.toggle('ci-bm--mobile', isMobile);
+      }
       const bmOp = smoothstep(clamp01((sp - PH.bmIn[0]) / (PH.bmIn[1] - PH.bmIn[0]))) * plateFade;
       bmEl.style.opacity = bmOp.toFixed(3);
       if (bmOp > 0.005) {
-        const cx = projX(N - 1).x;
-        const vhPx = host.clientHeight / 100; // tune offsets are stored in vh
-        // baked constant + live layout-editor delta (store-mode), both in vh
         const bTune = tuneStore.get('opener.candle.crash');
-        const bxv = CRASH_OFFSET[0] + bTune[0], byv = CRASH_OFFSET[1] + bTune[1];
-        const bsc = CRASH_SCALE * tuneStore.getScale('opener.candle.crash');
-        const bx = bxv * vhPx, by = byv * vhPx;
-        const leftPx = Math.min(host.clientWidth - 220, cx + 22) + bx;
-        const topPx = host.clientHeight * 0.48 + by;
+        const vhPx = host.clientHeight / 100;
+        const cx = projX(N - 1).x;
+        const bmW = bmEl.offsetWidth || (isMobile ? 200 : 220);
+        let leftPx: number;
+        let topPx: number;
+        let bsc: number;
+        if (isMobile) {
+          // Ride with the last column — plaque stays just to its left.
+          leftPx = Math.max(8, cx - bmW - CRASH_GAP_MOBILE) + bTune[0] * vhPx;
+          topPx = CRASH_TOP_MOBILE + bTune[1] * vhPx;
+          bsc = 1;
+        } else {
+          const bxv = CRASH_OFFSET[0] + bTune[0], byv = CRASH_OFFSET[1] + bTune[1];
+          bsc = CRASH_SCALE * tuneStore.getScale('opener.candle.crash');
+          const bx = bxv * vhPx, by = byv * vhPx;
+          leftPx = Math.min(host.clientWidth - 220, cx + 22) + bx;
+          topPx = host.clientHeight * 0.48 + by;
+        }
         bmEl.style.left = leftPx + 'px';
         bmEl.style.top = topPx + 'px';
         const bFly = flyTransform(leftPx, topPx, '', CRASH_FLY_SPEED, CRASH_FLY_SPIN);
@@ -501,30 +567,44 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         bmEl.style.transform = bParts.length ? bParts.join(' ') : 'none';
       }
 
-      // hero: intro-in (time-based, once on mount, on black) × slide-out (scroll).
-      // At sp≈0 the slide-out is identity, so the timed intro plays; as the reader
-      // scrolls, the slide-out takes over. Order: logo instant → subtitle types
-      // (~2s) → wordmark from black + glow pulse → coords fade (with wordmark).
+      // hero: fade-out on scroll + ✎ tuneStore nudge (store-mode) on each piece.
       {
-        // Hero exit is a pure FADE on scroll — the pieces stay put (only the layout-
-        // editor offset positions them) and dissolve in place, no slide-off.
-        // Hero dissolves right at the start so it's GONE before the chart draws in —
-        // fades over the first ~0.05 of scroll, tiny stagger (logo/wordmark → coords).
         const fadeOut = (off: number) => 1 - smoothstep(clamp01((sp - off) / 0.045));
         const STAG = 0.012;
         const glow = 0;
-        // Hero pieces: position/scale/fit now live in Tailwind classes (desktop base +
-        // max-[800px] mobile overrides, fit-to-width via clamp()). Here we only drive the
-        // scroll slide-off opacity (+ the wordmark glow, currently disabled).
-        if (logoRef.current) logoRef.current.style.opacity = fadeOut(0).toFixed(3);
+        const applyHeroTune = (el: HTMLElement | null, id: string, base = '') => {
+          if (!el) return;
+          const [ox, oy] = tuneStore.get(id);
+          const sc = tuneStore.getScale(id);
+          const parts: string[] = [];
+          if (base) parts.push(base);
+          if (ox || oy) parts.push(`translate(${ox.toFixed(2)}vh, ${oy.toFixed(2)}vh)`);
+          if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
+          el.style.transform = parts.length ? parts.join(' ') : '';
+        };
+        const port = isPort();
+        if (logoRef.current) {
+          logoRef.current.style.opacity = fadeOut(0).toFixed(3);
+          applyHeroTune(logoRef.current, 'opener.hero.logo');
+        }
         if (wordmarkRef.current) {
           wordmarkRef.current.style.opacity = fadeOut(0).toFixed(3);
           wordmarkRef.current.style.filter = glow > 0.01
             ? `brightness(${(1 + glow * 0.8).toFixed(2)}) drop-shadow(0 0 ${(glow * 13).toFixed(0)}px rgba(255,255,255,${(glow * 0.7).toFixed(2)}))`
             : '';
+          applyHeroTune(wordmarkRef.current, 'opener.hero.wordmark',
+            port ? '' : 'translate(26.3px, 3.1px) scale(1.123)');
         }
-        if (subtitleRef.current) subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3);
-        if (coordsRef.current) coordsRef.current.style.opacity = fadeOut(2 * STAG).toFixed(3);
+        if (subtitleRef.current) {
+          subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3);
+          applyHeroTune(subtitleRef.current, 'opener.hero.subtitle',
+            port ? 'translate(-5.2px, 47.7px)' : 'translate(-14.6px, 10px)');
+        }
+        if (coordsRef.current) {
+          coordsRef.current.style.opacity = fadeOut(2 * STAG).toFixed(3);
+          applyHeroTune(coordsRef.current, 'opener.hero.coords',
+            port ? 'translate(-4.2px, 96.4px)' : '');
+        }
       }
 
       renderer.render(scene, camera);
@@ -557,10 +637,12 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     <div ref={wrapRef} className="ci-stagewrap absolute inset-0 overflow-hidden pointer-events-none">
       <div ref={stageRef} className="ci-stage" style={{ width: `${LAND_FRAME.w}px`, height: `${LAND_FRAME.h}px` }}>
         {/* grid layer — dashed verticals / price lines / axis labels, BEHIND the
-            candles so the opaque candle bodies paint over it (candles on top of grid). */}
+            candles so the opaque candle bodies paint over it (candles on top of grid).
+            Full stage: on portrait the host stays 393px while this layer (and the
+            horizontal price lines) can extend to the real right edge. */}
         <div ref={gridRef} className="ci-overlay absolute inset-0 z-0 pointer-events-none" />
-        {/* candle canvas (transparent — composites over the grid behind it) */}
-        <div ref={hostRef} className="absolute inset-0 z-[5]" />
+        {/* candle canvas — portrait: locked 393px (.ci-candle-host); desktop: full stage */}
+        <div ref={hostRef} className="ci-candle-host" />
         {/* DOM overlay: facts + BM label (above the candles) */}
         <div ref={overlayRef} className="ci-overlay absolute inset-0 z-10 pointer-events-none" />
       </div>
@@ -572,31 +654,42 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         <div className="ci-hero-layer absolute inset-0 z-20 pointer-events-none">
           {/* coords (upper small) — leaves last */}
           <div className="ci-coords-wrap">
-            <div ref={coordsRef} className="ci-coords">
-              {t('opener.hero.coordsCity')}{' '}
+            <div
+              ref={coordsRef}
+              className="ci-coords"
+              data-tune="opener.hero.coords"
+              data-tune-mode="store"
+            >
+              {copy.opener.hero.coordsCity}{' '}
               <span className="ci-coords-dot" />
-              {' '}{t('opener.hero.coordsGeo')}
+              {' '}{copy.opener.hero.coordsGeo}
             </div>
           </div>
           {/* wordmark (biggest) + subtitle */}
           <div className="ci-hero">
-            {/* wordmark wrapper carries the fade-off opacity/glow (set per-frame).
-                Desktop = the combined "Wall St Rodeo" mark; portrait = the designer's
-                EXACT outlined wordmark from the mockup. */}
-            <div ref={wordmarkRef} className="ci-wordmark">
+            <div
+              ref={wordmarkRef}
+              className="ci-wordmark"
+              data-tune="opener.hero.wordmark"
+              data-tune-mode="store"
+            >
               <img
                 src="/brand/wall-st-rodeo.svg"
-                alt={t('opener.wordmarkAlt')}
+                alt={copy.opener.wordmarkAlt}
                 className="ci-wordmark-desktop"
               />
               <img
                 src={WORDMARK_MOBILE}
-                alt={t('opener.wordmarkAlt')}
+                alt={copy.opener.wordmarkAlt}
                 className="ci-wordmark-mobile"
               />
             </div>
-            {/* subtitle — built in JS */}
-            <p ref={subtitleRef} className="ci-subtitle" />
+            <p
+              ref={subtitleRef}
+              className="ci-subtitle"
+              data-tune="opener.hero.subtitle"
+              data-tune-mode="store"
+            />
           </div>
         </div>
       </div>
@@ -606,8 +699,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       <img
         ref={logoRef}
         src="/brand/meridian-logo.svg"
-        alt={t('opener.logoAlt')}
+        alt={copy.opener.logoAlt}
         className="ci-logo pointer-events-none"
+        data-tune="opener.hero.logo"
+        data-tune-mode="store"
       />
     </div>
   );

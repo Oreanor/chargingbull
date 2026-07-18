@@ -6,18 +6,19 @@
  * is passed in, and the scroll bridge / DOM card rendering were dropped (the React
  * <ChartsChapter> owns the cards + drives draw(progress) off the smoothed scroll).
  *
- * draw(progress) takes a continuous step index in [0, CHART_STEPS.length-1]; it
- * applies the per-step dwell, morphs between the two surrounding views, paints, and
- * returns the caption string for the current dominant view.
+ * Series data is bundled (src/data/sp500Monthly.ts) — no CSV fetch. draw(progress)
+ * takes a continuous step index in [0, CHART_STEPS.length-1]; it applies the per-step
+ * dwell, morphs between the two surrounding views, paints, and returns the caption
+ * for the current dominant view.
  *
- * All copy (step cards, captions, crisis labels, the small canvas annotations)
- * comes from the active locale's dictionary — see src/i18n. The `view` keys stay
- * in the data because they're stable identifiers, not display text.
+ * Copy (step cards, captions, crisis labels, canvas annotations) lives in
+ * src/content/copy.json. The `view` keys are stable identifiers, not display text.
  */
-import { t } from '../../i18n';
+import copy from '../../content/copy.json';
+import { CHART_NOM, CHART_REAL, CHART_T0 } from '../../data/sp500Monthly';
 import { BM_GEOM } from './blackMondayCandles';
 import {
-  BM_OHLC, BM_AUG_I, bmPriceSvgY, bmLeft3SvgX, bmSampleDdLine, bmDdLineTangent,
+  BM_OHLC, BM_AUG_I, bmPriceSvgY, bmLeft3SvgX,
   bmMonthMarks3, bmTimeSvgX, bmDrawdownT,
 } from './blackMondayOHLC';
 
@@ -30,12 +31,11 @@ export interface ChartStep {
   comment: string;
 }
 
-/** The 10 scroll steps (cards), in order, from the active locale's dictionary.
- *  Rendered in flow by <ChartsChapter>. */
-export const CHART_STEPS: ChartStep[] = t<ChartStep[]>('charts.steps');
+/** The scroll-step cards, in order. Rendered in flow by <ChartsChapter>. */
+export const CHART_STEPS: ChartStep[] = copy.charts.steps as ChartStep[];
 
 /** Small canvas labels (axis annotations + the $350k investment overlay). */
-const LBL = t<Record<string, string>>('charts.labels');
+const LBL = copy.charts.labels;
 
 // Themed per draw (bear = pink bg / bull = dark bg) — see applyTheme below.
 let GRID = '#1f1f28';
@@ -51,7 +51,10 @@ const FONT_BOLD = "bold 14px 'Struve', system-ui, sans-serif";
 const FONT_INVEST = "18px 'Struve', system-ui, sans-serif";
 const FONT_INVEST_BOLD = "bold 18px 'Struve', system-ui, sans-serif";
 // Clearance above the plot top so "S&P 500 INDEX" sits over the topmost tick label, not on it.
-const INDEX_ABOVE = 24;
+// ~2× line height: one gap above the top tick label, plus another full caption height.
+const INDEX_ABOVE = 40;
+const END_DOT_R = 5;
+const TROUGH_LINE_H = 16;
 let BG = '#000000';
 
 /** Shared Y-axis title: right edge at plot right, parked above the top grid. */
@@ -63,12 +66,45 @@ function drawIndexCaption(ctx: CanvasRenderingContext2D, xRight: number, plotTop
   ctx.fillText(LBL.indexLabel || 'S&P 500 INDEX', xRight, plotTop - INDEX_ABOVE);
 }
 
-type YM = [number, number];
-interface Crisis { peak: YM; trough: YM; troughLbl: string; label: string }
+/**
+ * Two-line label at an endpoint: lines left-aligned to each other,
+ * block centered on the dot. Default below; `above` parks it over the dot.
+ * Optional maxRight keeps the block clear of the Y-axis ticks.
+ */
+function drawCenteredTwoLine(
+  ctx: CanvasRenderingContext2D,
+  line1: string, line2: string, px: number, py: number,
+  font1: string, font2: string,
+  maxRight?: number,
+  above = false,
+) {
+  const blockH = TROUGH_LINE_H * 2;
+  const top = above
+    ? py - END_DOT_R - 4 - blockH
+    : py + END_DOT_R + 4;
+  ctx.font = font1;
+  const w1 = ctx.measureText(line1).width;
+  ctx.font = font2;
+  const w = Math.max(w1, ctx.measureText(line2).width);
+  let left = px - w / 2;
+  if (maxRight != null && left + w > maxRight) left = maxRight - w;
+  ctx.fillStyle = CRISIS;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.font = font1;
+  ctx.fillText(line1, left, top);
+  ctx.font = font2;
+  ctx.fillText(line2, left, top + TROUGH_LINE_H);
+}
 
-// Numeric peak/trough are data; the trough date + crisis label are localized text
-// (merged by index from the dictionary's `charts.crises`).
-const CRISIS_LABELS = t<{ troughLbl: string; label: string }[]>('charts.crises');
+type YM = [number, number];
+interface Crisis {
+  peak: YM; trough: YM;
+  troughMonth: string; troughYear: string; label: string;
+}
+
+// Numeric peak/trough are data; trough date + crisis label come from copy.json.
+const CRISIS_LABELS = copy.charts.crises;
 const CRISES: Crisis[] = [
   { peak: [1973, 1], trough: [1974, 9], ...CRISIS_LABELS[0] },
   { peak: [1987, 8], trough: [1987, 11], ...CRISIS_LABELS[1] },
@@ -82,6 +118,15 @@ const ymToIdx = (xs: number[], ym: YM) => Math.round((ymToX(ym) - xs[0]) * 12);
 const fmtPct = (p: number) =>
   p === 100 ? '0%' : (p > 100 ? '+' + Math.round(p - 100) : '−' + Math.round(100 - p)) + '%';
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+/** Side gutter on the X domain so edge ticks/labels aren’t flush with the axis ends
+ *  (~2% each side ≈ a few days on month slides, ~1 year on 1970–2026). */
+const X_EDGE_PAD = 0.02;
+function makeSx(xMin: number, xMax: number, x0: number, x1: number) {
+  const span = Math.max(1e-9, xMax - xMin);
+  const pad = span * X_EDGE_PAD;
+  const d0 = xMin - pad, d1 = xMax + pad;
+  return (v: number) => x0 + (v - d0) / (d1 - d0) * (x1 - x0);
+}
 const hexRgb = (h: string) => {
   const x = h.replace('#', '');
   return [parseInt(x.slice(0, 2), 16), parseInt(x.slice(2, 4), 16), parseInt(x.slice(4, 6), 16)];
@@ -150,13 +195,14 @@ function viewConfig(key: string): Cfg {
   }
   if (key === '1a') {
     return { kind: 'state2', mode: 'nominal', modeBlend: 0,
-      xMin: 1970, xMax: 2026, yClip: 5000,
+      // Headroom above ~5000 so recent peaks / hatch aren’t clipped at the plot top.
+      xMin: 1970, xMax: 2026, yClip: 6000,
       visibleYears: [1973, 1987, 2000, 2007, 2020],
       showCrisisSegments: true, bullAlpha: 0, investAlpha: 0 };
   }
   if (key === '1b') {
     return { kind: 'state2', mode: 'nominal', modeBlend: 0,
-      xMin: 1986, xMax: 1991, yClip: 500,
+      xMin: 1986, xMax: 1991, yClip: 540,
       visibleYears: [1987], showCrisisSegments: true,
       bullAlpha: 1, investAlpha: 0 };
   }
@@ -164,7 +210,7 @@ function viewConfig(key: string): Cfg {
     const isReal = key === '3';
     return { kind: 'state2', mode: isReal ? 'real' : 'nominal',
       modeBlend: isReal ? 1 : 0,
-      xMin: 1970, xMax: 2026, yClip: 5000,
+      xMin: 1970, xMax: 2026, yClip: 6000,
       visibleYears: [1973, 1987, 2000, 2007, 2020],
       showInvestment: true, showCrisisSegments: false,
       isReal, bullAlpha: 0, investAlpha: 1 };
@@ -177,7 +223,7 @@ function viewConfig(key: string): Cfg {
     visibleYears: s.years, focusYear: s.focus, focusAll: false };
 }
 
-const CAPTION = t<Record<string, string>>('charts.captions');
+const CAPTION = copy.charts.captions as Record<string, string>;
 
 function lerpState2Cfg(a: Cfg, b: Cfg, t: number): Cfg {
   const am = (a.modeBlend as number) ?? (a.mode === 'real' ? 1 : 0);
@@ -192,7 +238,9 @@ function lerpState2Cfg(a: Cfg, b: Cfg, t: number): Cfg {
     yClip: lerp(a.yClip as number, b.yClip as number, t),
     visibleYears: t < 0.5 ? a.visibleYears : b.visibleYears,
     showCrisisSegments: (a.showCrisisSegments || b.showCrisisSegments),
-    showInvestment: (a.showInvestment || b.showInvestment),
+    // Follow the morph, don’t OR — otherwise green invest fill flips on at t≈0
+    // while the bg is still pink and the hatch reads muddy/dark.
+    showInvestment: t < 0.5 ? !!a.showInvestment : !!b.showInvestment,
     investAlpha: lerp((a.investAlpha as number) || 0, (b.investAlpha as number) || 0, t),
     bullAlpha: lerp((a.bullAlpha as number) || 0, (b.bullAlpha as number) || 0, t),
     isReal: blend >= 0.5,
@@ -209,13 +257,17 @@ function colorIn(crisis: Crisis, cfg: Cfg) {
   if (cfg.focusYear === crisis.peak[0]) return LINE;
   return LINE_DIM;
 }
+const LINE_W_THICK = 4;
+const LINE_W_THIN = 2;
+/** Gap between series/hatch and the right-edge Y labels. Grid still reaches x1.
+ *  Sized so trough date labels under the end-dot don’t collide with the % ticks. */
+const PLOT_RIGHT_INSET = 52;
 function widthIn(crisis: Crisis, cfg: Cfg) {
-  if (cfg.focusAll || cfg.focusYear === crisis.peak[0]) return 2.5;
-  return 1.5;
+  if (cfg.focusAll || cfg.focusYear === crisis.peak[0]) return LINE_W_THICK;
+  return LINE_W_THIN;
 }
 
 export interface ChartsEngine {
-  load(csvUrl: string): Promise<void>;
   /** progress = continuous step index in [0, CHART_STEPS.length-1]. Returns caption. */
   draw(progress: number): string;
   /** 0..1 bull-phase factor (the $350k views) — drives the React topbar tint/label. */
@@ -228,8 +280,8 @@ export interface ChartsEngine {
   ready(): boolean;
 }
 
-/** Fraction of each step's travel spent dwelling (held) on the view, per end. Higher =
- *  the chart stands still longer after it finishes drawing before morphing on. */
+/** Fraction of each step's travel spent dwelling (held) on the view, per end.
+ *  Keep morph budget (~20%); longer “sit” comes from SEG_W chronometry, not denser dwells. */
 const DWELL_HOLD_FRAC = 0.4;
 // On-graph labels wait for the line to finish building: they stay hidden through the morph
 // and slide in a beat AFTER the view settles (LABEL_DELAY into the end-dwell), so a label
@@ -241,30 +293,71 @@ const smoothstep = (x: number) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x 
 // 0a → 0b is a TWO-BEAT move. Hand off from left-half 1987 (drawCandleStage) to the data
 // slide EARLY at the same density (xMax≈6: 3 mo in the left half); beat 1 reveals COVID
 // at that scale; beat 2 widens to 24 so both crises compress left.
-const A0_HANDOFF = 0.16;      // morph fraction at which 0a's static drawdown yields to the slide
-const COMPRESS_REVEAL = 0.44;  // sub-progress by which the COVID line has FULLY drawn
-const COMPRESS_START = 0.66;   // sub-progress at which the xMax widening (compression) begins
+const A0_HANDOFF = 0.08;      // morph fraction at which 0a's static drawdown yields to the slide
+const COMPRESS_REVEAL = 0.28;  // sub-progress by which the COVID line has FULLY drawn
+// Hold with COVID labeled before the xMax widen — “подсветил → подписал → постоял”.
+const COMPRESS_START = 0.68;   // sub-progress at which the xMax widening (compression) begins
 // Match left-half candle/drawdown stage: month 3 at ~50% of plot ⇒ xMax = 6.
 const COMPRESS_XTIGHT = 6;
 const COMPRESS_XWIDE = 24;    // = SLIDE_DATA['0b'].xMax — the two-crisis comparison scale
+/** bm morph handoff: candles → numbered-month slide (shared by drawNow guard + stage). */
+const BM_TO_SLIDE = 0.82;
 
 export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
-  const xs: number[] = [], yNom: number[] = [], yReal: number[] = [];
+  // Bundled monthly series (1970-01…) — no CSV fetch at runtime.
+  const xs: number[] = new Array(CHART_NOM.length);
+  const yNom: number[] = CHART_NOM.slice();
+  const yReal: number[] = CHART_REAL.slice();
+  for (let i = 0; i < CHART_NOM.length; i++) xs[i] = CHART_T0 + i / 12;
   let mode: 'nominal' | 'real' = 'nominal';
   let scale: 'lin' | 'log' = 'lin';
-  let fromKey = CHART_STEPS[0].view, toKey = CHART_STEPS[0].view, animT = 1;
+  let fromKey = CHART_STEPS[0].view, toKey = CHART_STEPS[0].view, animT = 0;
+  let lastLinear = 0; // last scrub index — resize must re-apply this (not bare drawNow)
+  let scrubReady = false; // true after the first scroll-driven draw(); blocks premature resize paints
   let lastBull = 0; // 0..1 bull-phase factor for the React topbar, set each draw
   let lastCandle = 0; // 0..1 — 1 on the Black Monday candle frame (drives the HTML plate)
   // −20% plate: sits just after the last candle; tracks stretch X and fades with it.
   let lastPlate = { x: 0, y: 0, a: 0 };
   let entryFade = 1;  // 0..1 — the very first frame's content fades IN over the pink ground
-  let labelReveal = 1; // 0..1 — gates on-graph labels: hidden while the line morphs, delayed slide-in on dwell
+  // Gates invest-overlay copy only. Crisis trough/drop labels ride with their lines
+  // (appear when the bold series appears, never blink out during morphs).
+  let labelReveal = 1;
   let paintAlpha = 1; // 0..1 — multiplies slide paint (bm→0a crossfade)
   let skipBgClear = false; // when true, setupCtx keeps the previous layer (crossfade overlay)
   let bullPath: Path2D | null = null; // cached Charging Bull figurine
 
   // Bull marker (Desktop-43): gold dot + the bull figurine + a big "1989" above it,
   // anchored at (dx,dy) = the Dec-1989 point, scaled to the plot so it tracks the zoom.
+  /**
+   * Halo disc + “The financial crisis” + bull figurine (Desktop-43).
+   * Circle + label share one transform (design space r=283.5), so they scale as a unit.
+   */
+  function drawBullCallout(
+    ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, radius: number,
+    dx: number, dy: number, plotW: number,
+  ) {
+    const R = 283.5; // Desktop-43 circle radius
+    const k = radius / R;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(k, k);
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, 2 * Math.PI); ctx.fill();
+    // SVG seat (487.3, 208.4) vs circle centre (593.5, 382), +1 line down.
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = "24px 'Struve', system-ui, sans-serif";
+    ctx.fillText(
+      LBL.finCrisis || 'The financial crisis',
+      487.348 - 593.5,
+      208.448 - 382 + 24,
+    );
+    ctx.restore();
+    drawBull(ctx, dx, dy, plotW);
+  }
+
   function drawBull(ctx: CanvasRenderingContext2D, dx: number, dy: number, plotW: number) {
     if (!bullPath) bullPath = new Path2D(BULL_PATH);
     const s = plotW / 1142;
@@ -387,11 +480,23 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const padL = Math.round(W * 0.1), padR = Math.round(W * 0.1);
     // Extra bottom band so lowered X-axis labels stay above the HTML footer.
     const padT = Math.round(H * 0.18), padB = Math.round(H * 0.20);
-    return { ctx, W, H, x0: padL, y0: padT, x1: W - padR, y1: H - padB };
+    const x1 = W - padR;
+    // Series + hatch stop here; Y labels / grid continue to x1.
+    const xData1 = x1 - PLOT_RIGHT_INSET;
+    return { ctx, W, H, x0: padL, y0: padT, x1, y1: H - padB, xData1 };
   }
 
   function drawNow() {
     if (!xs.length) return;
+    // viewConfig aliases 'bm'→0a, so a bare drawNow during the candle hold paints the
+    // line chart on top of (or instead of) candles and leaves the HTML −20% plate up.
+    // Only the intentional crossfade (animT past BM_TO_SLIDE) may use this path for bm.
+    if (fromKey === 'bm' && animT <= BM_TO_SLIDE) {
+      drawCandleStage(animT);
+      return;
+    }
+    // Line/slide painter — drop any stale −20% unless a bm crossfade will re-paint it.
+    if (paintAlpha >= 1) lastPlate.a = 0;
     const cfgA = viewConfig(fromKey);
     const cfgB = viewConfig(toKey);
     const t = animT;
@@ -434,8 +539,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const yMin = lerp(cfgA.yMin as number, cfgB.yMin as number, t);
     const yMax = lerp(cfgA.yMax as number, cfgB.yMax as number, t);
     const Y = ys();
-    const { ctx, x0, y0, x1, y1 } = setupCtx();
-    const sx = (v: number) => x0 + (v - xMin) / (xMax - xMin) * (x1 - x0);
+    const { ctx, x0, y0, x1, y1, xData1 } = setupCtx();
+    const sx = makeSx(xMin, xMax, x0, xData1);
     const sy = (pct: number) => y1 - (pct - yMin) / (yMax - yMin) * (y1 - y0);
     const pa = paintAlpha;
 
@@ -481,7 +586,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
 
     ctx.save();
-    ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
+    // Clip series + hatch short of the Y labels; grids above already span to x1.
+    ctx.beginPath(); ctx.rect(x0, y0, xData1 - x0, y1 - y0); ctx.clip();
 
     // Slide views (single drawdown over months) get an area fill under the focused
     // line, like the multi-line state2 views (mockup frame 41). The state1 '1' view
@@ -551,13 +657,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.stroke();
       const [lastSx, lastSy] = pts[pts.length - 1];
       ctx.fillStyle = stroke;
-      ctx.beginPath(); ctx.arc(lastSx, lastSy, 2.8, 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(lastSx, lastSy, END_DOT_R, 0, 2 * Math.PI); ctx.fill();
     }
     ctx.globalAlpha = pa;
     ctx.restore();
 
-    ctx.font = FONT;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     for (const c of visible) {
       const iP = ymToIdx(xs, c.peak), iT = ymToIdx(xs, c.trough);
       if (iP < 0 || iT < 0) continue;
@@ -579,15 +683,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       else if (!inA && inB) alpha = t;
       if (revealK !== null && inA !== inB) alpha = revealK;
       if (alpha <= 0) continue;
-      ctx.globalAlpha = alpha * labelReveal * pa; // hold the label until the line settles
-
-      ctx.fillStyle = CRISIS; // uniform dark ink — the focus moves between slides, so the old
-                              // focused/non-focused split made a label flip black↔white for no reason
-      // Mockup: the date sits UNDER the line, its right edge flush with the line's right
-      // edge (the trough endpoint) — not floated out to the right at mid-height.
+      // Label rides with the line: appears as soon as the (bold) series is drawn,
+      // and never fades out during morphs — only with the line’s own alpha.
+      ctx.globalAlpha = alpha * pa;
       if (px >= x0 + 30 && px <= x1 + 4 && py >= y0 && py <= y1) {
-        ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-        ctx.fillText(c.troughLbl, px, py + 9);
+        drawCenteredTwoLine(ctx, c.troughMonth, c.troughYear, px, py, FONT, FONT, xData1);
       }
     }
     ctx.globalAlpha = 1;
@@ -605,10 +705,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         Y[i] = (isFinite(n) && isFinite(r)) ? (n + (r - n) * blend) : NaN;
       }
     }
-    const { ctx, x0, y0, x1, y1 } = setupCtx();
+    const { ctx, x0, y0, x1, y1, xData1 } = setupCtx();
     const xMin = cfg.xMin as number, xMax = cfg.xMax as number;
     const yClip = cfg.yClip as number;
-    const sx = (v: number) => x0 + (v - xMin) / (xMax - xMin) * (x1 - x0);
+    const sx = makeSx(xMin, xMax, x0, xData1);
     let sy: (v: number) => number;
     if (scale === 'log') {
       const lyMin = Math.log10(Math.max(1, yClip / 1000)), lyMax = Math.log10(yClip);
@@ -630,8 +730,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         ctx.fillText(String(v), x1, y - 3);
       }
     } else {
+      // Tick through nice round tops (5000), not the headroom ceiling (6000).
+      const tickMax = yClip >= 5000 ? 5000 : yClip > 500 ? Math.floor(yClip / 100) * 100 : yClip;
       const step = yClip >= 4500 ? 1000 : yClip > 2000 ? 500 : yClip > 400 ? 100 : 50;
-      for (let v = 0; v <= yClip + 0.1; v += step) {
+      for (let v = 0; v <= tickMax + 0.1; v += step) {
         const y = sy(v);
         ctx.strokeStyle = GRID; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
         ctx.fillText(String(v), x1, y - 3);
@@ -661,18 +763,20 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const iEnd = Math.min(xs.length - 1, ymToIdx(xs, [Math.ceil(xMax), 12]));
 
     ctx.save();
-    ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
+    ctx.beginPath(); ctx.rect(x0, y0, xData1 - x0, y1 - y0); ctx.clip();
 
-    // Area fill under the main line (mockup): green on the bull/$350k views,
-    // white-ish elsewhere. Keyed on showInvestment (not the lerped investAlpha) so
-    // it doesn't read cream/pink during the dwell at the start of view 2. The 1b zoom
-    // ("Charging Bull", frame 43) has no fill — skip it while the bull marker shows.
-    if (((cfg.bullAlpha as number) || 0) < 0.5) {
-      const fillCol = cfg.showInvestment ? FILL_BULL : FILL_BEAR;
+    // Area fill under the main line: cream on bear/1b, green only once the invest
+    // theme has taken over (investAlpha). Keying on showInvestment alone flipped
+    // green at the first frame of 1b→2 and muddied the pink hatch.
+    {
+      const ia = (cfg.investAlpha as number) || 0;
+      const fillCol = ia > 0.5 ? FILL_BULL : FILL_BEAR;
       const areaPts: [number, number][] = [];
       for (let i = iStart; i <= iEnd; i++) {
         if (!isFinite(Y[i])) continue;
-        areaPts.push([sx(xs[i]), sy(Y[i])]);
+        const px = sx(xs[i]);
+        if (px < x0 - 0.5 || px > xData1 + 0.5) continue;
+        areaPts.push([px, sy(Y[i])]);
       }
       fillAreaUnder(ctx, areaPts, y1, y0, fillCol);
     }
@@ -680,27 +784,29 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const drawSegment = (iFrom: number, iTo: number, color: string, width: number) => {
       if (iFrom < 0 || iTo >= xs.length || iFrom > iTo) return;
       ctx.strokeStyle = color; ctx.lineWidth = width;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.beginPath(); let st = false;
       for (let i = iFrom; i <= iTo; i++) {
         if (!isFinite(Y[i])) { st = false; continue; }
         const px = sx(xs[i]), py = sy(Y[i]);
+        if (px < x0 - 0.5 || px > xData1 + 0.5) { st = false; continue; }
         if (!st) { ctx.moveTo(px, py); st = true; } else ctx.lineTo(px, py);
       }
       ctx.stroke();
     };
 
     const GROWTH = '#61e26b'; // bull/invest highlight — GREEN, not the bear pink/crisis red
+    const GROWTH_THIN = 'rgba(97,226,107,0.4)'; // thin series: same green, semi-transparent
     const investAlpha = (cfg.investAlpha as number) || 0;
     if (investAlpha > 0.01) {
-      // Mockup (46/47): the whole line is green — base/ghost over the full range,
-      // bold green over the held $350k position (purchase → compare). Both fade in
-      // from the muted grey of the non-invest views via investAlpha.
-      drawSegment(iStart, iEnd, lerpColor(LINE, GROWTH, investAlpha), lerp(1.2, 2, investAlpha));
-      ctx.save(); ctx.globalAlpha = investAlpha;
-      drawSegment(Math.max(iPurchase, iStart), Math.min(iCompare, iEnd), GROWTH, lerp(2, 4, investAlpha));
+      // Thin = translucent green; thick hold = solid. investAlpha fades the pair in.
+      ctx.save();
+      ctx.globalAlpha = investAlpha;
+      drawSegment(iStart, iEnd, GROWTH_THIN, LINE_W_THIN);
+      drawSegment(Math.max(iPurchase, iStart), Math.min(iCompare, iEnd), GROWTH, LINE_W_THICK);
       ctx.restore();
     } else {
-      drawSegment(iStart, iEnd, LINE, 1.6);
+      drawSegment(iStart, iEnd, LINE, LINE_W_THIN);
     }
 
     if (cfg.showCrisisSegments) {
@@ -710,7 +816,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         if (iP < 0 || iT >= xs.length) continue;
         if (xs[iP] < xMin) continue;
         if (!isFinite(Y[iP]) || !isFinite(Y[iT])) continue;
-        ctx.strokeStyle = LINE; ctx.lineWidth = 2.5;
+        ctx.strokeStyle = LINE; ctx.lineWidth = LINE_W_THICK;
         ctx.beginPath(); let st = false;
         for (let i = iP; i <= iT; i++) {
           if (!isFinite(Y[i])) continue;
@@ -718,20 +824,17 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
           if (!st) { ctx.moveTo(px, py); st = true; } else ctx.lineTo(px, py);
         }
         ctx.stroke();
+        // Dot only at the trough (right end of the segment).
         ctx.fillStyle = LINE;
-        for (const i of [iP, iT]) {
-          ctx.beginPath(); ctx.arc(sx(xs[i]), sy(Y[i]), 2.8, 0, 2 * Math.PI); ctx.fill();
-        }
-        // Two-line label under the trough (mockup 39): "−51%" bold over "2008",
-        // right edge flush with the trough point — same rule as slide date labels.
+        ctx.beginPath();
+        ctx.arc(sx(xs[iT]), sy(Y[iT]), END_DOT_R, 0, 2 * Math.PI);
+        ctx.fill();
+        // Label above the peak (left of the drop) so it doesn’t cross the line.
         const drop = ((Y[iT] - Y[iP]) / Y[iP]) * 100;
-        ctx.fillStyle = CRISIS;
-        ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-        const lx = sx(xs[iT]), ly = sy(Y[iT]) + 4;
-        ctx.save(); ctx.globalAlpha *= labelReveal; // label waits for its segment to finish drawing
-        ctx.font = FONT_BOLD; ctx.fillText(`${drop.toFixed(0)}%`, lx, ly);
-        ctx.font = FONT; ctx.fillText(c.label, lx, ly + 18);
-        ctx.restore();
+        drawCenteredTwoLine(
+          ctx, `${drop.toFixed(0)}%`, c.label,
+          sx(xs[iP]), sy(Y[iP]), FONT_BOLD, FONT, xData1, true,
+        );
       }
     }
 
@@ -741,8 +844,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.save(); ctx.globalAlpha = investAlpha;
       const xP = sx(xs[iPurchase]), yP = sy(Y[iPurchase]);
       const xC = sx(xs[iCompare]), yC = sy(Y[iCompare]);
-      // Solid green purchase marker line, full plot height (mockup 46/47).
-      ctx.strokeStyle = GROWTH; ctx.lineWidth = 1.5;
+      // Desktop-46/47: solid green purchase rule, full plot height (not the translucent series).
+      ctx.strokeStyle = GROWTH; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(xP, y0); ctx.lineTo(xP, y1); ctx.stroke();
       ctx.fillStyle = GROWTH;
       ctx.beginPath(); ctx.arc(xP, yP, 5, 0, 2 * Math.PI); ctx.fill();
@@ -750,13 +853,16 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // Labels wait for the line to finish building (marker line + dots above stay at full
       // investAlpha; only the text is gated by labelReveal so it slides in a beat later).
       ctx.globalAlpha = investAlpha * labelReveal;
-      // Purchase: "$350K →" bold over "October 1987" (mockup 46/47), green, by the line.
+      // Purchase copy left-flush to the rule (SVG: line 514.5 → text 522). Park it in the
+      // clear band under the green HTML card so the tick doesn’t “fall off” behind the plate
+      // on the inflation step (taller card / higher rest).
       ctx.fillStyle = GROWTH;
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      const pLabelY = y0 + (y1 - y0) * 0.62;
-      ctx.font = FONT_INVEST_BOLD; ctx.fillText(LBL.investArrow, xP + 10, pLabelY);
-      ctx.font = FONT_INVEST; ctx.fillText(LBL.buyDate, xP + 10, pLabelY + 22);
-      // End: "$4.85M" bold over "February 2021", right-aligned, just above the end dot.
+      const labelX = xP + 8;
+      const pLabelY = Math.min(y1 - 52, Math.max(y0 + (y1 - y0) * 0.72, yP - 52));
+      ctx.font = FONT_INVEST_BOLD; ctx.fillText(LBL.investArrow, labelX, pLabelY);
+      ctx.font = FONT_INVEST; ctx.fillText(LBL.buyDate, labelX, pLabelY + 22);
+      // End: "$4.85M" / real "$2.13M" bold over "February 2021", right-aligned above the dot.
       const inv = getInvest();
       const endVal = inv ? (cfg.isReal ? fmtMln(inv.realVal) : fmtMln(inv.nomVal)) : '—';
       ctx.textAlign = 'right';
@@ -770,25 +876,22 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.save(); ctx.globalAlpha = bullAlpha;
       const cx = sx(1988), cy = sy(Y[ymToIdx(xs, [1988, 6])] || 320);
       const radius = Math.abs(sx(1989) - sx(1987)) / 1.5;
-      // Soft white halo (mockup 43): a semi-transparent filled disc, NOT a dashed ring.
-      ctx.fillStyle = 'rgba(245,243,238,0.2)';
-      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, 2 * Math.PI); ctx.fill();
       const iDec1989 = ymToIdx(xs, [1989, 12]);
       const dec89Price = isFinite(Y[iDec1989]) ? Y[iDec1989] : 350;
       const dx = sx(1989 + 11 / 12), dy = sy(dec89Price);
-      drawBull(ctx, dx, dy, x1 - x0);
+      drawBullCallout(ctx, cx, cy, radius, dx, dy, x1 - x0);
       ctx.restore();
     }
   }
 
   function drawMixed(cfgA: Cfg, cfgB: Cfg, t: number) {
     const Y = ys();
-    const { ctx, x0, y0, x1, y1 } = setupCtx();
+    const { ctx, x0, y0, x1, y1, xData1 } = setupCtx();
 
     const xMinA = cfgA.xMin as number, xMaxA = cfgA.xMax as number;
     const xMinB = cfgB.xMin as number, xMaxB = cfgB.xMax as number;
     const xMin = lerp(xMinA, xMinB, t), xMax = lerp(xMaxA, xMaxB, t);
-    const sx = (v: number) => x0 + (v - xMin) / (xMax - xMin) * (x1 - x0);
+    const sx = makeSx(xMin, xMax, x0, xData1);
 
     // Full-height normalized mapping (peak 100% → top), matching the new view '1'.
     const sy1 = (pct: number) => y0 + (100 - pct) * (y1 - y0) / 100;
@@ -828,11 +931,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     }
 
     if (gridAlpha > 0.02) {
+      const tickMax = yClip >= 5000 ? 5000 : yClip > 500 ? Math.floor(yClip / 100) * 100 : yClip;
       const step = yClip >= 4500 ? 1000 : yClip > 2000 ? 500 : yClip > 400 ? 100 : 50;
       ctx.save(); ctx.globalAlpha = gridAlpha;
       ctx.setLineDash([2, 6]); // dotted, like the settled '1a' grid — was inheriting stray state
       ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-      for (let v = 0; v <= yClip + 0.1; v += step) {
+      for (let v = 0; v <= tickMax + 0.1; v += step) {
         const y = sy2(v, yClip);
         ctx.strokeStyle = GRID;
         ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
@@ -857,17 +961,18 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
 
     ctx.save();
-    ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
+    ctx.beginPath(); ctx.rect(x0, y0, xData1 - x0, y1 - y0); ctx.clip();
 
     if (a2Alpha > 0.02) {
       ctx.save(); ctx.globalAlpha = a2Alpha;
       const iStart = Math.max(0, ymToIdx(xs, [Math.floor(xMin), 1]));
       const iEnd = Math.min(xs.length - 1, ymToIdx(xs, [Math.ceil(xMax), 12]));
-      ctx.strokeStyle = LINE; ctx.lineWidth = 1.6;
+      ctx.strokeStyle = LINE; ctx.lineWidth = LINE_W_THIN;
       ctx.beginPath(); let st = false;
       for (let i = iStart; i <= iEnd; i++) {
         if (!isFinite(Y[i])) { st = false; continue; }
         const px = sx(xs[i]), py = sy2(Math.min(yClip, Y[i]), yClip);
+        if (px < x0 - 0.5 || px > xData1 + 0.5) { st = false; continue; }
         if (!st) { ctx.moveTo(px, py); st = true; } else ctx.lineTo(px, py);
       }
       ctx.stroke();
@@ -886,7 +991,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       const peakPrice = Y[iP];
       if (!isFinite(peakPrice)) continue;
 
-      ctx.strokeStyle = LINE; ctx.lineWidth = 2.5;
+      ctx.strokeStyle = LINE; ctx.lineWidth = LINE_W_THICK;
       ctx.beginPath(); let st = false;
       let lastSx = 0, lastSy = 0;
       for (let i = iP; i <= iT; i++) {
@@ -900,13 +1005,13 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       }
       ctx.stroke();
       ctx.fillStyle = LINE;
-      ctx.beginPath(); ctx.arc(lastSx, lastSy, 2.8, 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(lastSx, lastSy, END_DOT_R, 0, 2 * Math.PI); ctx.fill();
       if (a2Alpha > 0.02) {
         ctx.save(); ctx.globalAlpha = a2Alpha;
         const pyA = screenYAt(iP, peakPrice, cfgA.kind);
         const pyB = screenYAt(iP, peakPrice, cfgB.kind);
         const py = lerp(pyA, pyB, pieceT);
-        ctx.beginPath(); ctx.arc(sx(xs[iP]), py, 2.8, 0, 2 * Math.PI); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx(xs[iP]), py, END_DOT_R, 0, 2 * Math.PI); ctx.fill();
         ctx.restore();
       }
     }
@@ -914,10 +1019,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
 
     // Crisis date labels — fade out with a1Alpha as the growth chart arrives, instead of
     // popping the instant drawNow hands the '1' overview off to drawMixed (which drew none).
+    // Overview trough dates ride with the crisis lines (a1Alpha), never gated by labelReveal.
     if (a1Alpha > 0.02) {
-      ctx.save(); ctx.globalAlpha = a1Alpha * labelReveal; // wait for the line to build before the label
-      ctx.fillStyle = CRISIS; ctx.font = FONT;
-      ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.save(); ctx.globalAlpha = a1Alpha;
       for (const c of CRISES) {
         if (!crisesYears.includes(c.peak[0])) continue;
         const iP = ymToIdx(xs, c.peak), iT = ymToIdx(xs, c.trough);
@@ -925,7 +1029,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         const peakPrice = Y[iP];
         if (!isFinite(peakPrice)) continue;
         const py = lerp(screenYAt(iT, peakPrice, cfgA.kind), screenYAt(iT, peakPrice, cfgB.kind), pieceT);
-        ctx.fillText(c.troughLbl, sx(xs[iT]), py + 9);
+        drawCenteredTwoLine(
+          ctx, c.troughMonth, c.troughYear, sx(xs[iT]), py, FONT, FONT, xData1,
+        );
       }
       ctx.restore();
     }
@@ -935,22 +1041,18 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.save(); ctx.globalAlpha = bullAlpha;
       const cx = sx(1988), cy = sy2(Y[ymToIdx(xs, [1988, 6])] || 320, yClip);
       const radius = Math.abs(sx(1989) - sx(1987)) / 1.5;
-      // Soft white halo (mockup 43): a semi-transparent filled disc, NOT a dashed ring.
-      ctx.fillStyle = 'rgba(245,243,238,0.2)';
-      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, 2 * Math.PI); ctx.fill();
       const iDec1989 = ymToIdx(xs, [1989, 12]);
       const dec89Price = isFinite(Y[iDec1989]) ? Y[iDec1989] : 350;
       const dx = sx(1989 + 11 / 12), dy = sy2(dec89Price, yClip);
-      drawBull(ctx, dx, dy, x1 - x0);
+      drawBullCallout(ctx, cx, cy, radius, dx, dy, x1 - x0);
       ctx.restore();
     }
   }
 
   // Black Monday candle stage. p in [0,1] until handoff to the numbered-month slide:
   //  0–5%   squash on verticals → stubs
-  //  5–82%  Y settle (no X travel / width stretch) + tilt after 50%
-  //  ≥82%   crossfade into the data slide (peak / 1 month / …) — no AUG–OCT interim
-  const BM_TO_SLIDE = 0.82;
+  //  5–70%  fly on Y onto the SAME monthly curve 0a will paint (no X travel)
+  //  ≥82%   tilt + crossfade into the data slide — stubs must already sit on the line
   function drawCandleStage(p: number) {
     const { ctx, x0, y0, x1, y1 } = setupCtx();
     const B = BM_GEOM.box;
@@ -960,12 +1062,36 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const gy0 = mapY(B.y), gy1 = mapY(B.y + B.h);
     const leftSpan = (gx1 - gx0) * 0.5;
     const squash = p <= 0 ? 0 : p >= 0.05 ? 1 : smoothstep(p / 0.05);
-    const settle = p <= 0.05 ? 0 : p >= BM_TO_SLIDE ? 1 : smoothstep((p - 0.05) / (BM_TO_SLIDE - 0.05));
+    // Park on the line BEFORE the slide fades in (BM_TO_SLIDE), not during the crossfade.
+    const SETTLE_END = 0.70;
+    const settle = p <= 0.05 ? 0 : p >= SETTLE_END ? 1 : smoothstep((p - 0.05) / (SETTLE_END - 0.05));
     const fadeOut = p <= BM_TO_SLIDE ? 0 : smoothstep((p - BM_TO_SLIDE) / (1 - BM_TO_SLIDE));
     const cAlpha = 1 - fadeOut;
     const N = BM_OHLC.length;
     const nDD = N - BM_AUG_I;
     const STUB_H = 4;
+
+    // Target = 0a monthly drawdown curve (real), same sy as drawNow — NOT daily closes
+    // (those stay high until Oct 19 and make stubs look stuck above the line).
+    const crisis87 = CRISES[1];
+    const Yslide = yReal;
+    const iPeak = ymToIdx(xs, crisis87.peak);
+    const iTrough = ymToIdx(xs, crisis87.trough);
+    const peakPx = (iPeak >= 0 && isFinite(Yslide[iPeak])) ? Yslide[iPeak] : BM_OHLC[BM_AUG_I][4];
+    const lastM = Math.max(1, iTrough - iPeak);
+    const yMinS = SLIDE_DATA['0a'].yMin, yMaxS = 100;
+    const sySlide = (pct: number) => y1 - (pct - yMinS) / (yMaxS - yMinS) * (y1 - y0);
+    const slideYAtT = (t01: number) => {
+      const t = t01 <= 0 ? 0 : t01 >= 1 ? 1 : t01;
+      const m = t * lastM;
+      const m0 = Math.floor(m);
+      const m1 = Math.min(lastM, m0 + 1);
+      const u = m - m0;
+      const i0 = iPeak + m0, i1 = iPeak + m1;
+      const v0 = (i0 >= 0 && isFinite(Yslide[i0])) ? Yslide[i0] : peakPx;
+      const v1 = (i1 >= 0 && isFinite(Yslide[i1])) ? Yslide[i1] : v0;
+      return sySlide(((v0 + (v1 - v0) * u) / peakPx) * 100);
+    };
 
     // ---- price grid + AUG/SEP/OCT (candle chrome only; no %-drawdown interim) ----
     if (cAlpha > 0.01) {
@@ -992,15 +1118,19 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
 
     const colW0 = Math.max(2, leftSpan / Math.max(nDD - 1, 1) * 0.62);
 
-    // −20% tip: left of the last candle, 20px above the X-axis
+    // −20% tip: left of the last candle, 20px above the X-axis.
+    // Desktop size is fixed (202×167) — ride the last column, don't scale with plot width.
     {
-      const figW = Math.min(202, Math.max(120, (gx1 - gx0) * 0.14));
+      const mobile = (typeof window !== 'undefined' ? window.innerWidth : 1440) <= 720;
+      const figW = mobile
+        ? Math.min(160, Math.max(120, (gx1 - gx0) * 0.36))
+        : 202;
       const figH = figW * (167 / 202);
       const lastX = mapX(bmLeft3SvgX(N - 1));
       lastPlate = {
         x: lastX - colW0 / 2 - 10 - figW,
         y: mapY(BM_GEOM.baselineY) - figH - 20,
-        a: entryFade * Math.pow(1 - Math.max(squash, settle), 4),
+        a: entryFade * cAlpha * Math.pow(1 - Math.max(squash, settle), 4),
       };
     }
 
@@ -1021,19 +1151,19 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         const a = entryFade * cAlpha;
         if (a < 0.02) continue;
         const t = bmDrawdownT(i);
-        const x = mapX(bmLeft3SvgX(i)); // stay on the candle vertical
+        const x = mapX(bmLeft3SvgX(i)); // stay on the candle vertical (left half)
         const yHS = mapY(bmPriceSvgY(h)), yLS = mapY(bmPriceSvgY(l));
         const yOS = mapY(bmPriceSvgY(o)), yCS = mapY(bmPriceSvgY(c));
-        const [, sy] = bmSampleDdLine(t);
-        const yT = mapY(sy); // left-half line Y (X ignored — stub keeps x)
-        // Tangent in left-half canvas space (X compressed ×0.5)
-        const [tnx0, tny0] = bmDdLineTangent(t);
-        const tLen = Math.hypot(tnx0 * 0.5, tny0) || 1;
-        const tnx = (tnx0 * 0.5) / tLen, tny = tny0 / tLen;
+        const yT = slideYAtT(t); // exact 0a monthly curve Y
+        // Tangent from the monthly curve (left-half X, slide Y)
+        const yTa = slideYAtT(Math.max(0, t - 0.02));
+        const yTb = slideYAtT(Math.min(1, t + 0.02));
+        const tLen = Math.hypot(leftSpan * 0.04, yTb - yTa) || 1;
+        const tnx = (leftSpan * 0.04) / tLen, tny = (yTb - yTa) / tLen;
 
-        // 1) Squash toward body mid on the same vertical
+        // 1) Squash onto the close → short stub (same vertical)
         const hScale = 1 - squash;
-        const midS = (yOS + yCS) / 2;
+        const midS = yCS;
         const wickTopS = midS + (Math.min(yHS, yLS) - midS) * hScale;
         const wickBotS = midS + (Math.max(yHS, yLS) - midS) * hScale;
         let bodyTopS = midS + (Math.min(yOS, yCS) - midS) * hScale;
@@ -1043,14 +1173,13 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
           bodyTopS = cy - STUB_H / 2; bodyBotS = cy + STUB_H / 2;
         }
 
-        // 2) Settle Y onto the left-half polyline; width stays candle-pitch (no stretch)
+        // 2) Fly on Y only onto the 0a line (no X travel)
         const midY = midS + (yT - midS) * settle;
         const bodyH = Math.max(STUB_H, bodyBotS - bodyTopS);
         const bodyOff = ((bodyTopS + bodyBotS) / 2 - midS) * (1 - squash) * (1 - settle);
         const thick = colW0;
-        // 3) Tilt after 50% of the path → left-half polyline tangent
-        const tilt = p <= 0.5 ? 0 : smoothstep((p - 0.5) / 0.5);
-        const ang = lerpAng(0, Math.atan2(tny, tnx), tilt);
+        // 3) Tilt only on the final crossfade — during settle they stay upright and slide in Y
+        const ang = lerpAng(0, Math.atan2(tny, tnx), fadeOut);
         const up = c >= o;
         const ink = up ? '#f5f3ee' : lerpColor('#15131a', '#f5f3ee', Math.max(squash * 0.35, settle));
         ctx.globalAlpha = a;
@@ -1077,6 +1206,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   function applyProgress(linear: number): string {
     const N = CHART_STEPS.length;
     const clamped = Math.max(0, Math.min(N - 1, linear));
+    lastLinear = clamped;
     // Everything on the slide arrives TOGETHER: the whole stage (pink backdrop + canvas
     // chart + HTML chrome + the −20% plate) is faded in as one unit by the ChartsChapter
     // stage opacity, so the candles no longer lag behind the framing/plate.
@@ -1089,20 +1219,19 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // crammed into the tail 20% and the compression reads as abrupt/rushed.
     const isCompressStep = CHART_STEPS[i]?.view === '0a' && CHART_STEPS[i + 1]?.view === '0b';
     // This step is given ~2.4× the scroll (ChartsChapter warp); spend that budget on the
-    // MORPH (reveal→hold→compress), not on fat static dwells, so both the pause and the
-    // squash get real screen-space instead of standing still on 1987 for a whole viewport.
+    // MORPH (reveal→hold→compress), not on fat static dwells.
     const startDwell = isCompressStep ? 0.12 : DWELL_HOLD_FRAC;
     const endDwell = isCompressStep ? 0.05 : DWELL_HOLD_FRAC;
     let p: number;
     if (frac < startDwell) p = 0;
     else if (frac > 1 - endDwell) p = 1;
     else p = (frac - startDwell) / (1 - startDwell - endDwell);
-    // On-graph labels: shown while settled, fade out early in the morph, then slide back
-    // in only AFTER the line has finished building — LABEL_DELAY into the end-dwell.
-    if (frac < startDwell) labelReveal = 1;                                        // start-dwell: already settled
-    else if (frac < 1 - endDwell) {                                                // morphing: line is (re)building
+    // Invest labels only: wait for the settle, then slide in. Crisis date/% labels do not
+    // use this gate — they stay glued to their lines through every morph.
+    if (frac < startDwell) labelReveal = 1;
+    else if (frac < 1 - endDwell) {
       labelReveal = 1 - smoothstep((frac - startDwell) / (1 - startDwell - endDwell) / LABEL_FADE_OUT);
-    } else {                                                                        // end-dwell: delayed slide-in
+    } else {
       const d = (frac - (1 - endDwell)) / endDwell;
       labelReveal = smoothstep((d - LABEL_DELAY) / (1 - LABEL_DELAY));
     }
@@ -1151,25 +1280,20 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   }
 
   return {
-    async load(csvUrl: string) {
-      const text = await (await fetch(csvUrl)).text();
-      for (const line of text.trim().split('\n').slice(1)) {
-        const c = line.split(',');
-        const date = c[0], sp500 = c[1], rp = c[6];
-        if (date >= '1926-01' && sp500) {
-          const [y, m] = date.split('-');
-          xs.push(+y + (+m - 1) / 12);
-          yNom.push(parseFloat(sp500));
-          const r = parseFloat(rp);
-          yReal.push(r > 0 ? r : NaN);
-        }
-      }
+    draw(progress: number) {
+      scrubReady = true;
+      return applyProgress(progress);
     },
-    draw(progress: number) { return applyProgress(progress); },
     bullFactor() { return lastBull; },
     candleAlpha() { return lastCandle; },
     candlePlate() { return lastPlate; },
-    resize() { drawNow(); },
+    // Re-paint via applyProgress only after the scrubber has drawn once. Early RO/window
+    // resize (mount, stage reveal, heavy-scene teardown) must not paint bm→0a stand-in
+    // or flash −20% before scroll owns the frame.
+    resize() {
+      if (!scrubReady) return;
+      applyProgress(lastLinear);
+    },
     ready() { return xs.length > 0; },
   };
 }

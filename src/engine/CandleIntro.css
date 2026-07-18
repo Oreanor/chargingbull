@@ -24,6 +24,13 @@
   will-change: transform;
 }
 
+/* Candle WebGL host — desktop fills the stage. Portrait locks to the 393 design
+   width (see .ci-stage--portrait) so widening the stage only extends the grid/
+   axis, never stretches the candles. */
+.ci-candle-host {
+  position: absolute; inset: 0; z-index: 5;
+}
+
 /* Hero stage: same fixed frame as .ci-stage but CONTAIN-fit + centered (see the fit
    effect — scale = min(vw/fw, vh/fh)). The title composition always fits whole, so
    the corner logo/coords never get clipped the way width-fit clips the top on wide/
@@ -119,6 +126,7 @@
 /* Meridian mark — pinned to the real VIEWPORT top-left corner. It's a direct child of
    .ci-stagewrap (not the contain-fit hero frame), so left/top are viewport offsets and it
    always hugs the corner regardless of the hero's letterbox. z above the hero stage (30). */
+/* Desktop: slightly larger mark. Mobile sizes → SVG native (90×57), see portrait. */
 .ci-logo { position: absolute; left: 25px; top: 27px; height: 68px; width: auto; z-index: 40; }
 
 /* coords line, centred at top. The whole line reads at 70% (matches the reference
@@ -153,18 +161,37 @@
 }
 
 /* ── portrait frame overrides (≤800px viewport) ─────────────────────────── */
-/* Values are the old max-[800px]/mobile design evaluated at the 393×852 frame. */
+/* Fixed SVG/design px — hero stage is scale(1), so these never change with width. */
+/* Portrait: candle host fills the stage (full viewport width) so the plot can
+   stretch toward the right edge; price axis still sits on --ci-axis-edge. */
+.ci-stage--portrait .ci-candle-host {
+  inset: 0;
+  width: auto;
+}
 .ci-stage--portrait .ci-coords {
   font-size: 17px; transform: translate(-4.2px, 96.4px);
 }
 .ci-stage--portrait .ci-hero { transform: translateY(0); }
 .ci-stage--portrait .ci-wordmark { transform: none; }
 .ci-stage--portrait .ci-wordmark-desktop { display: none; }
-/* the designer's outlined wordmark, full frame width — «Rodeo» bleeds off and
-   clips at the frame's right edge exactly as drawn (stage overflow:hidden). */
-.ci-stage--portrait .ci-wordmark-mobile { display: block; width: 393px; max-width: none; height: auto; }
+/* wallst-rodeo-mobile.svg is 402×400 — keep that size; frame clips the bleed. */
+.ci-stage--portrait .ci-wordmark-mobile {
+  display: block; width: 402px; height: auto; max-width: none;
+}
 .ci-stage--portrait .ci-subtitle {
   font-size: 19.2px; max-width: 345px; transform: translate(-5.2px, 47.7px);
 }
-/* crash figure shrinks to the portrait scale (was clamp floor 95 at narrow widths). */
-.ci-stage--portrait .ci-bm-fig { font-size: 95px; }
+/* Fact plates — mockup width (not desktop 300), never viewport-squeezed. */
+.ci-stage--portrait .ci-overlay .ci-fact { width: 268px; max-width: none; }
+/* Mobile Frame 181 — outlined −20.5% plate as designer PNG. */
+.ci-overlay .ci-bm.ci-bm--mobile { width: 200px; }
+.ci-overlay .ci-bm-frame {
+  display: block; width: 200px; height: auto;
+  mix-blend-mode: lighten;
+  user-select: none; -webkit-user-drag: none;
+}
+
+/* Meridian mark — SVG native 90×57 (outside the hero stage, viewport-pinned). */
+@media (max-width: 800px) {
+  .ci-logo { left: 16px; top: 16px; width: 90px; height: 57px; }
+}

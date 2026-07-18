@@ -219,6 +219,18 @@ export function initTuneEditor() {
     }
     return false;
   };
+  // Fade-out overlays (CandleIntro hero, Tonnes, …) stay in the DOM at opacity:0 and
+  // would steal clicks once peStyle forces pointer-events:auto — skip those.
+  const isInvisible = (el: HTMLElement): boolean => {
+    let n: HTMLElement | null = el;
+    while (n && n !== document.body) {
+      const s = getComputedStyle(n);
+      if (s.display === 'none' || s.visibility === 'hidden') return true;
+      if (parseFloat(s.opacity || '1') < 0.04) return true;
+      n = n.parentElement;
+    }
+    return false;
+  };
   // Climb from `start` to the OUTERMOST non-fullscreen card/svg/img (or an explicit
   // data-tune group, which wins). Returns null for fullscreen / canvas / nothing.
   const climb = (start: HTMLElement): HTMLElement | null => {
@@ -233,31 +245,43 @@ export function initTuneEditor() {
     }
     return chosen;
   };
-  // Pick the topmost composite under the cursor (handles overlapping layers).
-  const pickAt = (x: number, y: number): HTMLElement | null => {
-    for (const node of document.elementsFromPoint(x, y)) {
-      if (!(node instanceof HTMLElement) && !(node instanceof SVGElement)) continue;
-      const h = node as unknown as HTMLElement;
-      if (h.closest('[data-tune-ui]')) continue; // skip the editor's own chrome
-      const c = climb(h);
-      if (c) return c;
+  const asHtml = (node: Element): HTMLElement | null => {
+    if (node instanceof HTMLElement) return node;
+    if (node instanceof SVGElement) {
+      return ((node.ownerSVGElement as unknown as HTMLElement) ?? node.parentElement) as HTMLElement | null;
     }
     return null;
   };
-  // Ctrl/⌘+click: grab the EXACT part under the cursor (e.g. one piece of a 3-part
-  // logo), not the whole composite — the most specific non-fullscreen element.
-  const pickSpecificAt = (x: number, y: number): HTMLElement | null => {
+  // Pick the topmost VISIBLE composite under the cursor.
+  const pickAt = (x: number, y: number): HTMLElement | null => {
     for (const node of document.elementsFromPoint(x, y)) {
-      // SVG inner nodes can't take a CSS translate cleanly → hop to their <svg> host.
-      const h: HTMLElement | null = node instanceof HTMLElement
-        ? node
-        : ((node as SVGElement).ownerSVGElement as unknown as HTMLElement) ?? (node.parentElement as HTMLElement | null);
-      if (!h) continue;
-      if (h.closest('[data-tune-ui]')) continue;
-      if (h.tagName.toLowerCase() === 'canvas' || isFull(h)) continue;
-      return h;
+      const h = asHtml(node);
+      if (!h || h.closest('[data-tune-ui]') || isInvisible(h)) continue;
+      const c = climb(h);
+      if (c && !isInvisible(c)) return c;
     }
     return null;
+  };
+  // Ctrl/⌘+click: pierce through ghost layers → topmost [data-tune]. Click again
+  // (still holding Ctrl) to cycle the stack under the cursor.
+  const pickTuneStackAt = (x: number, y: number): HTMLElement[] => {
+    const stack: HTMLElement[] = [];
+    for (const node of document.elementsFromPoint(x, y)) {
+      const h = asHtml(node);
+      if (!h || h.closest('[data-tune-ui]') || isInvisible(h)) continue;
+      const tuned = h.closest('[data-tune]') as HTMLElement | null;
+      if (tuned && !isInvisible(tuned) && !stack.includes(tuned)) stack.push(tuned);
+    }
+    return stack;
+  };
+  const pickPierceAt = (x: number, y: number, current: HTMLElement | null): HTMLElement | null => {
+    const stack = pickTuneStackAt(x, y);
+    if (!stack.length) return pickAt(x, y);
+    if (current) {
+      const i = stack.indexOf(current);
+      if (i >= 0) return stack[(i + 1) % stack.length]!;
+    }
+    return stack[0]!;
   };
 
   // ---- selection state + frame overlay -------------------------------------
@@ -395,50 +419,14 @@ export function initTuneEditor() {
     startWidth(selected);
   });
 
-  // ---- in-place TEXT editing (data-i18n elements) --------------------------
-  // Double-click a plain-text element tagged `data-i18n="<dot.path>"` to edit its
-  // copy live; Save writes it back into en.json at that path. Only fields with no
-  // child markup are editable (editing links/<br> as plain text would corrupt them).
-  const pendingText = new Map<string, string>();
-
-  const commitEdit = (el: HTMLElement) => {
-    if (el.contentEditable !== 'true') return;
-    el.contentEditable = 'false';
-    el.style.outline = '';
-    const path = el.dataset.i18n;
-    if (path) pendingText.set(path, el.textContent ?? '');
-  };
-
-  const onDblClick = (e: MouseEvent) => {
-    if (!tuneStore.active) return;
-    const el = (e.target as HTMLElement | null)?.closest('[data-i18n]') as HTMLElement | null;
-    if (!el || el.querySelector('*')) return; // plain text only
-    e.preventDefault();
-    e.stopPropagation();
-    el.contentEditable = 'true';
-    el.style.outline = '2px solid #2bd66b';
-    el.focus();
-    const r = document.createRange();
-    r.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(r);
-  };
-
-  const onFocusOut = (e: FocusEvent) => {
-    const el = e.target as HTMLElement | null;
-    if (el && el.isContentEditable && el.dataset.i18n) commitEdit(el);
-  };
-
   // ---- input: click-to-select + drag, arrow-move, Escape -------------------
   const onPointerDown = (e: PointerEvent) => {
     if (!tuneStore.active) return;
     const t = e.target as HTMLElement | null;
-    if (t && t.isContentEditable) return;        // editing text — let the caret work
     if (t && t.closest('[data-tune-ui]')) return; // editor chrome handles itself
-    // Ctrl/⌘ drills into the exact part; a plain click takes the whole composite.
+    // Plain click = top visible composite. Ctrl/⌘ = pierce to [data-tune] (cycle stack).
     const picked = (e.ctrlKey || e.metaKey)
-      ? pickSpecificAt(e.clientX, e.clientY)
+      ? pickPierceAt(e.clientX, e.clientY, selected)
       : pickAt(e.clientX, e.clientY);
     if (!picked) { deselect(); return; }
     e.preventDefault();
@@ -518,7 +506,7 @@ export function initTuneEditor() {
   // ---- UI: toggle (always) + save (while editing) --------------------------
   const toggle = document.createElement('button');
   toggle.dataset.tuneUi = '';
-  toggle.title = 'Toggle inspect/edit mode — click any element to select (drag / arrows / corner-resize); the panel shows its size, offset, type props + a "Copy Tailwind" button for the current breakpoint. Double-click text to edit copy; Save bakes everything into source — text → en.json, and each element\'s tuned classes → its className.';
+  toggle.title = 'Layout editor — click to select (drag / arrows / resize). Ctrl/⌘+click pierces through ghost layers to [data-tune] targets (click again to cycle). Save → tune-layout.json (+ candle/class bake).';
   toggle.textContent = '✎';
   css(toggle, {
     position: 'fixed', top: '12px', right: '12px', width: '34px', height: '34px',
@@ -528,7 +516,7 @@ export function initTuneEditor() {
 
   const save = document.createElement('button');
   save.dataset.tuneUi = '';
-  save.title = 'Save: bakes every touched element into SOURCE — candle plates fold into their constants (FACT_/CRASH_OFFSET), text edits go to en.json, and any OTHER element gets its tuned width/font/color/offset substituted straight into its className (arbitrary-value classes). Elements with a dynamic/template-literal className can\'t be matched in source and are logged to the console instead.';
+  save.title = 'Save: bakes every touched element into SOURCE — candle plates fold into their constants (FACT_/CRASH_OFFSET); other elements get tuned width/font/color/offset substituted into className. Dynamic/template-literal classNames can\'t be matched and are logged to the console.';
   save.textContent = 'Save';
   css(save, {
     position: 'fixed', top: '12px', right: '54px', height: '34px', padding: '0 14px',
@@ -900,8 +888,6 @@ export function initTuneEditor() {
       window.addEventListener('pointerdown', onPointerDown, true);
       window.addEventListener('click', onClick, true);
       window.addEventListener('keydown', onKey);
-      window.addEventListener('dblclick', onDblClick, true);
-      window.addEventListener('focusout', onFocusOut, true);
       raf = requestAnimationFrame(tick);
     } else {
       deselect();
@@ -909,8 +895,6 @@ export function initTuneEditor() {
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('click', onClick, true);
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('dblclick', onDblClick, true);
-      window.removeEventListener('focusout', onFocusOut, true);
       if (raf) cancelAnimationFrame(raf);
     }
     activeSubs.forEach((f) => f(on));
@@ -923,18 +907,11 @@ export function initTuneEditor() {
     if (saving) return;
     saving = true;
     const orig = save.textContent;
-    // flush an in-progress edit so its text is included
-    const ae = document.activeElement as HTMLElement | null;
-    if (ae && ae.isContentEditable) commitEdit(ae);
-    // Save BAKES into source (no runtime delta layer): candle-plate drag deltas fold into
-    // the FACT_OFFSET/CRASH_OFFSET constants via /__bake; text edits go to en.json via
-    // /__i18n. After a successful candle bake the runtime delta is zeroed (the new position
-    // now lives in the source constant, so the plaque stays put; HMR reloads the new value).
-    // CSS/Tailwind elements still bake via the panel's Copy Tailwind (className).
+    // 1) Always persist store/transform nudges → tune-layout.json (/__tune).
+    // 2) Candle plates also fold into CandleIntro constants (/__bake).
+    // 3) Tailwind className elements bake via /__class.
     const CANDLE_IDS = ['opener.candle.fact.0', 'opener.candle.fact.1', 'opener.candle.fact.2', 'opener.candle.crash'];
     try {
-      // Per candle plate: offset delta (vh), scale multiplier, absolute width (px) — the
-      // endpoint folds each into its source constant (FACT_/CRASH_ OFFSET/SCALE/WIDTH).
       const candleEdits: Record<string, { d?: [number, number]; s?: number; w?: number | null }> = {};
       for (const id of CANDLE_IDS) {
         const [x, y] = tuneStore.get(id);
@@ -947,10 +924,6 @@ export function initTuneEditor() {
         if (Object.keys(e).length) candleEdits[id] = e;
       }
       const hasCandle = Object.keys(candleEdits).length > 0;
-      const hasText = pendingText.size > 0;
-      // Every OTHER touched element: substitute its tuned classes into the source
-      // className (width/font/color/offset/scale) and bake via /__class. The candle
-      // plates keep their constant-bake path above, so exclude them here.
       const classEdits: { old: string; new: string }[] = [];
       const bakedEls: { el: HTMLElement; id: string }[] = [];
       for (const el of seenEls) {
@@ -958,54 +931,53 @@ export function initTuneEditor() {
         const { id } = idOf(el);
         if (CANDLE_IDS.includes(id)) continue;
         const tw = tailwindFor(id);
-        if (tw[0] === '(') continue; // no changes on this element
+        if (tw[0] === '(') continue;
         const oldCls = el.className;
         const newCls = mergeClasses(oldCls, tw);
         if (newCls !== oldCls) { classEdits.push({ old: oldCls, new: newCls }); bakedEls.push({ el, id }); }
       }
       const hasClass = classEdits.length > 0;
-      if (!hasCandle && !hasText && !hasClass) { save.textContent = 'No changes'; return; }
-      const reqs: Promise<Response>[] = [];
-      if (hasCandle) reqs.push(fetch('/__bake', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(candleEdits),
-      }));
-      if (hasText) reqs.push(fetch('/__i18n', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.fromEntries(pendingText)),
-      }));
-      // Class bake runs on its own so we can read back WHICH elements couldn't be matched
-      // in source (dynamic/template-literal classNames) and log them for the user.
-      let classOk = true;
+
+      // Store-mode pieces (parts.dot, tonnes.*, …) live in tune-layout.json.
+      const tuneRes = await fetch('/__tune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tuneStore.all()),
+      });
+      let ok = tuneRes.ok;
+
+      if (hasCandle) {
+        const br = await fetch('/__bake', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(candleEdits),
+        });
+        ok = ok && br.ok;
+        if (br.ok) {
+          for (const id of Object.keys(candleEdits)) {
+            tuneStore.set(id, [0, 0]);
+            tuneStore.setScale(id, 1);
+            const ov = styleOv.get(id); if (ov) delete ov.maxW;
+          }
+        }
+      }
       if (hasClass) {
         const cr = await fetch('/__class', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ edits: classEdits }),
         });
-        classOk = cr.ok;
+        ok = ok && cr.ok;
         try {
           const j = await cr.json() as { results?: { ok: boolean; reason?: string }[] };
           (j.results || []).forEach((r, i) => { if (!r.ok) console.warn('[tune] class bake skipped:', r.reason, '\n  ', classEdits[i]?.old); });
-        } catch { /* non-JSON error body */ }
-      }
-      const ok = (await Promise.all(reqs)).every((r) => r.ok) && classOk;
-      if (ok) {
-        // folded into source → zero the runtime delta so it isn't double-applied (HMR
-        // reloads the module with the new constants/classes; the live inline width matches)
-        for (const id of Object.keys(candleEdits)) {
-          tuneStore.set(id, [0, 0]);
-          tuneStore.setScale(id, 1);
-          const ov = styleOv.get(id); if (ov) delete ov.maxW;
+        } catch { /* non-JSON */ }
+        if (cr.ok) {
+          for (const { el, id } of bakedEls) {
+            tuneStore.set(id, [0, 0]); tuneStore.setScale(id, 1);
+            styleOv.delete(id);
+            el.style.maxWidth = ''; el.style.minWidth = ''; el.style.fontSize = ''; el.style.color = ''; el.style.textAlign = '';
+            el.style.transform = baseTransforms.get(el) || '';
+          }
         }
-        // baked class elements: drop the runtime delta + inline overrides (the source
-        // className now carries the tuned values; HMR re-renders them).
-        for (const { el, id } of bakedEls) {
-          tuneStore.set(id, [0, 0]); tuneStore.setScale(id, 1);
-          styleOv.delete(id);
-          el.style.maxWidth = ''; el.style.minWidth = ''; el.style.fontSize = ''; el.style.color = ''; el.style.textAlign = '';
-          el.style.transform = baseTransforms.get(el) || '';
-        }
-        pendingText.clear();
       }
       save.textContent = ok ? 'Saved ✓' : 'Failed';
     } catch {

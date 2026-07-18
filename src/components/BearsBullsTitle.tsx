@@ -1,10 +1,10 @@
-import { t } from '../i18n';
 // Desktop: the designer's one-line "BEARS vs Bulls" lockup, outlined straight from
 // the Figma intro slide (docs/intros/Desktop - 51.svg) — one path per word, so the
 // spacing and overlap are the design's, not a re-typesetting of three loose pieces.
 import BEARS_VS_BULLS_DESKTOP from '../assets/logos/bears-vs-bulls-desktop.svg?url';
 // Mobile keeps the STACKED lockup (the wide one is unreadable on a phone).
 import BEARS_VS_BULLS from '../assets/logos/bears-vs-bulls.svg?url';
+import copy from '../content/copy.json';
 
 /**
  * BearsBullsTitle — the "BEARS vs Bulls" wordmark for the chapter-divider reveal.
@@ -13,7 +13,7 @@ import BEARS_VS_BULLS from '../assets/logos/bears-vs-bulls.svg?url';
  * native size so it never scales past 1:1.
  */
 export function BearsBullsTitle() {
-  const alt = `${t('bearsBulls.altBears')} ${t('bearsBulls.altVs')} ${t('bearsBulls.altBulls')}`;
+  const alt = `${copy.bearsBulls.altBears} ${copy.bearsBulls.altVs} ${copy.bearsBulls.altBulls}`;
   return (
     <>
       {/* desktop: wide one-line lockup */}

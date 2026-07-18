@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useInViewMount } from './useInViewMount';
 import { useSmoothProgress } from './smoothScroll';
 import { createChartsEngine, CHART_STEPS, type ChartsEngine } from './charts/chartsEngine';
-import { t } from '../i18n';
+import { tuneStore } from './tuneEditor';
+import copy from '../content/copy.json';
 import BM_MINUS_20 from '../assets/charts/bm-minus-20.png';
 import './ChartsChapter.css';
 
@@ -23,11 +24,13 @@ const EXIT_VH = 70;
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
-// Non-uniform scroll per transition. Transition k (step k → k+1) normally gets 1 unit of
-// scroll; the 0a→0b move (k=1) is a long reveal→hold→compress and gets ~2.4× so it doesn't
-// feel rushed. warpIdx maps chartRaw 0..1 → fractional step index through these weights;
-// SEG_EXTRA extra units are added to the section height so every OTHER step keeps its pace.
-const SEG_W = Array.from({ length: Math.max(1, N - 1) }, (_, k) => (k === 1 ? 2.4 : 1));
+// Non-uniform scroll per transition. Overall chronometry is stretched (SEG_BASE) so
+// holds AND morphs both get more scroll — don’t steal morph budget via denser dwells.
+// bm→0a (k=0) slower candle rebuild; 0a→0b (k=1) long reveal→hold→compress.
+const SEG_BASE = 1.4;
+const SEG_W = Array.from({ length: Math.max(1, N - 1) }, (_, k) => (
+  k === 0 ? 1.95 * SEG_BASE : k === 1 ? 2.4 * SEG_BASE : SEG_BASE
+));
 const SEG_CUM = SEG_W.reduce<number[]>((a, w) => (a.push(a[a.length - 1] + w), a), [0]);
 const SEG_TOTAL = SEG_CUM[SEG_CUM.length - 1];
 const SEG_EXTRA = SEG_TOTAL - (N - 1);
@@ -47,15 +50,12 @@ const CARD_STEPS = CHART_STEPS
   .filter(({ s }) => !CARDLESS_VIEWS.has(s.view));
 
 /** Black Monday plate text (HTML overlay on the candle frame). */
-const BM = t<{ date: string; title: string; figure: string }>('charts.blackMonday');
+const BM = copy.charts.blackMonday;
 
-export default function ChartsChapter({
-  dataUrl = '/chapters/charts/data/sp500_shiller_monthly.csv',
-}: {
-  /** CSV under public/ (Date,SP500,…,Real Price,…). */
-  dataUrl?: string;
-}) {
-  const { ref, mounted } = useInViewMount<HTMLElement>({ mountMargin: 1, unmountMargin: 1.5 });
+export default function ChartsChapter() {
+  // Series is bundled (no CSV fetch). Mount a bit early so the canvas is ready when
+  // the explainer hands off — avoids a blank first paint after a heavy scene.
+  const { ref, mounted } = useInViewMount<HTMLElement>({ mountMargin: 2, unmountMargin: 2.5 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const brandRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
@@ -66,26 +66,34 @@ export default function ChartsChapter({
   const progress = useSmoothProgress(ref);
   const [engine, setEngine] = useState<ChartsEngine | null>(null);
 
-  // Create the engine + load the CSV once the chapter nears the viewport (client).
+  // Create the engine once the chapter nears the viewport. Attach ResizeObserver only
+  // after setEngine — early RO paints were flashing the 0a line + −20% before the
+  // scroll scrubber took over (esp. after a heavy scene).
   useEffect(() => {
     if (!mounted || !canvasRef.current) return;
     const eng = createChartsEngine(canvasRef.current);
-    let alive = true;
-    eng.load(dataUrl)
-      .then(() => { if (alive) setEngine(eng); })
-      .catch((e) => console.warn('[ChartsChapter] data load failed', e));
-    const onResize = () => eng.resize();
+    let resizeRaf = 0;
+    const onResize = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        eng.resize();
+      });
+    };
+    setEngine(eng);
     window.addEventListener('resize', onResize);
-    // Also re-measure when the CANVAS box itself changes (pin, layout shift, mount via
-    // useInViewMount) without a window resize — otherwise the chart stays at whatever
-    // (possibly wrong) size it was first measured at.
-    const ro = new ResizeObserver(() => eng.resize());
-    if (canvasRef.current) ro.observe(canvasRef.current);
+    const ro = new ResizeObserver(onResize);
+    ro.observe(canvasRef.current);
     // Null the engine on teardown so the morph effect (deps [engine]) re-runs, early-returns
     // and drops its progress subscription — otherwise the off-screen chart keeps redrawing
     // (full 2D repaint) on every scroll frame for the rest of the session.
-    return () => { alive = false; window.removeEventListener('resize', onResize); ro.disconnect(); setEngine(null); };
-  }, [mounted, dataUrl]);
+    return () => {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      window.removeEventListener('resize', onResize);
+      ro.disconnect();
+      setEngine(null);
+    };
+  }, [mounted]);
 
   // Stage CROSSFADE — driven by RAW scroll (not the section-clamped progress, which
   // stays pinned at 0 during the approach and so can't animate the entry). The stage is
@@ -166,9 +174,9 @@ export default function ChartsChapter({
       // Split the section: the morph runs 0..1 over the first part (idx 0→N-1); the last
       // EXIT_VH is a tail where the chart HOLDS its final frame and only the last card moves.
       const secEl = ref.current;
-      const vhPx = window.innerHeight || 1;
-      const rangePx = secEl ? Math.max(1, secEl.offsetHeight - vhPx) : 1;
-      const rEnd = clamp01((rangePx - (EXIT_VH / 100) * vhPx) / rangePx);
+      const vh = window.innerHeight || 1;
+      const rangePx = secEl ? Math.max(1, secEl.offsetHeight - vh) : 1;
+      const rEnd = clamp01((rangePx - (EXIT_VH / 100) * vh) / rangePx);
       const chartRaw = rEnd > 0 ? clamp01(raw / rEnd) : raw;
       const idx = warpIdx(chartRaw);
       // 0 while the chart still morphs → 1 across the tail: drives the last card off.
@@ -176,29 +184,42 @@ export default function ChartsChapter({
       engine.draw(idx); // caption string is unused — the white per-frame caption was dropped
       // Cards RIDE bottom→top at constant velocity through their step — exactly like the
       // map/opener plaques (no fade-from-transparent): opacity is full and only fades at
-      // the off-screen edges, and a translateY sweeps them up. Card i sits at rest (tt=0,
-      // centred) while its chart is settled and sweeps up/off as the morph to the next
-      // begins, so the chart is clear between cards.
-      const fh = window.innerHeight || 1;
-      const REACH = 0.5;   // idx half-window the card is on-screen
-      const FADE = 0.15;   // fade only over the outer (off-screen) edges
-      for (const { i } of CARD_STEPS) {
+      // the off-screen edges, and a translateY sweeps them up. Card i parks a beat AFTER
+      // its chart frame has landed (CARD_LAG), so the bare plot hangs for ~⅓ step of
+      // scroll before the plate covers it; then rides off as the step continues
+      // (overall pace comes from SEG_W, not a squeezed morph window).
+      const fh = vh;
+      const vhPx = fh / 100;
+      const CARD_LAG = 1 / 3; // clear-chart beat after the frame settles (~⅓ wheel)
+      const REACH = 0.35;     // ride off during the start-dwell / early morph
+      const FADE = 0.15;      // fade only over the outer (off-screen) edges
+      for (const { i, s } of CARD_STEPS) {
         const el = cardRefs.current[i];
         if (!el) continue;
         // The final «Minus inflation» card doesn't park at the end — across the tail it
         // rides UP and OFF on its own (exitProg), leaving the clean chart before Anatomy rises.
-        const tt = (idx - i) / REACH + (i === lastCardIdx ? exitProg * 1.4 : 0);
+        // Enter across CARD_LAG (so at idx===i the plate is still fully off); exit across REACH.
+        const park = i + CARD_LAG;
+        const dist = idx - park + (i === lastCardIdx ? exitProg * 1.4 * REACH : 0);
+        const tt = dist < 0 ? dist / CARD_LAG : dist / REACH;
         const a = Math.abs(tt);
         const op = a < 1 ? (a > 1 - FADE ? (1 - a) / FADE : 1) : 0;
+        // Invest plates rest a bit lower so they don’t eat the 1987 purchase rule / $350K copy.
+        const bullNudge = (s.view === '2' || s.view === '3') ? fh * 0.08 : 0;
+        const [ox, oy] = tuneStore.get(`charts.card.${s.view}`);
+        const sc = tuneStore.getScale(`charts.card.${s.view}`);
         el.style.opacity = op.toFixed(3);
         el.style.visibility = op < 0.004 ? 'hidden' : 'visible';
-        el.style.transform = `translateY(calc(-50% + ${(-tt * fh).toFixed(1)}px))`;
+        const ty = bullNudge - tt * fh + oy * vhPx;
+        const parts = [`translate(${(ox * vhPx).toFixed(1)}px, calc(-50% + ${ty.toFixed(1)}px))`];
+        if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
+        el.style.transform = parts.join(' ');
       }
       // Topbar morphs Bear→Bull (white→green) across the $350k views.
       const bull = engine.bullFactor() > 0.5;
       if (brandRef.current) brandRef.current.style.color = bull ? '#61e26b' : '#fff';
       if (titleRef.current) {
-        titleRef.current.textContent = t(bull ? 'charts.topbarTitleBull' : 'charts.topbarTitle');
+        titleRef.current.textContent = bull ? copy.charts.topbarTitleBull : copy.charts.topbarTitle;
       }
       // Legend (credits) ink follows the ground: dark on the pink bear frames, light on bull.
       if (legendRef.current) {
@@ -207,14 +228,49 @@ export default function ChartsChapter({
       // Black Monday plate: sits just after the crash candle, rides the stretch, fades out.
       if (bmPlateRef.current) {
         const pl = engine.candlePlate();
+        const [ox, oy] = tuneStore.get('charts.bmPlate');
+        const sc = tuneStore.getScale('charts.bmPlate');
+        const vh = (window.innerHeight || 1) / 100;
         bmPlateRef.current.style.opacity = pl.a.toFixed(3);
         bmPlateRef.current.style.visibility = pl.a < 0.004 ? 'hidden' : 'visible';
-        bmPlateRef.current.style.transform = `translate(${pl.x.toFixed(1)}px, ${pl.y.toFixed(1)}px)`;
+        const parts = [`translate(${(pl.x + ox * vh).toFixed(1)}px, ${(pl.y + oy * vh).toFixed(1)}px)`];
+        if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
+        bmPlateRef.current.style.transform = parts.join(' ');
+      }
+      if (legendRef.current) {
+        const [ox, oy] = tuneStore.get('charts.legend');
+        const sc = tuneStore.getScale('charts.legend');
+        const vh = (window.innerHeight || 1) / 100;
+        const parts: string[] = [];
+        if (ox || oy) parts.push(`translate(${(ox * vh).toFixed(1)}px, ${(oy * vh).toFixed(1)}px)`);
+        if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
+        legendRef.current.style.transform = parts.length ? parts.join(' ') : '';
+      }
+      if (brandRef.current) {
+        const [ox, oy] = tuneStore.get('charts.topbar');
+        const sc = tuneStore.getScale('charts.topbar');
+        const vh = (window.innerHeight || 1) / 100;
+        const parts: string[] = [];
+        if (ox || oy) parts.push(`translate(${(ox * vh).toFixed(1)}px, ${(oy * vh).toFixed(1)}px)`);
+        if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
+        brandRef.current.style.transform = parts.length ? parts.join(' ') : '';
       }
     };
+    let raf = 0;
+    const stopRaf = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } };
+    const startRaf = () => {
+      stopRaf();
+      const tick = () => { apply(); raf = requestAnimationFrame(tick); };
+      tick();
+    };
     apply();
-    const unsub = progress.on('change', apply);
-    return () => unsub();
+    if (tuneStore.active) startRaf();
+    const unsub = progress.on('change', () => { if (!tuneStore.active) apply(); });
+    const unsubEdit = tuneStore.onActiveChange((on) => {
+      if (on) startRaf();
+      else { stopRaf(); apply(); }
+    });
+    return () => { unsub(); unsubEdit(); stopRaf(); };
   }, [engine, progress]);
 
   return (
@@ -223,9 +279,14 @@ export default function ChartsChapter({
         <canvas ref={canvasRef} className="cc-canvas" />
         <div className="cc-gradient" aria-hidden />
         <div className="cc-topbar">
-          <div ref={brandRef} className="cc-brand">
-            <span className="cc-small">{t('charts.topbarSmall')}</span>
-            <span ref={titleRef}>{t('charts.topbarTitle')}</span>
+          <div
+            ref={brandRef}
+            className="cc-brand"
+            data-tune="charts.topbar"
+            data-tune-mode="store"
+          >
+            <span className="cc-small">{copy.charts.topbarSmall}</span>
+            <span ref={titleRef}>{copy.charts.topbarTitle}</span>
           </div>
         </div>
         {/* The per-frame white caption was dropped, but this empty placeholder STAYS so the
@@ -237,10 +298,19 @@ export default function ChartsChapter({
         <div
           ref={legendRef}
           className="cc-legend"
-          dangerouslySetInnerHTML={{ __html: t('charts.footer') }}
+          data-tune="charts.legend"
+          data-tune-mode="store"
+          dangerouslySetInnerHTML={{ __html: copy.charts.footer }}
         />
         {/* Black Monday plate — designer −20% glyph only (Frame 59); no leftover date/title) */}
-        <div ref={bmPlateRef} className="cc-bm-plate" style={{ opacity: 0 }} aria-hidden>
+        <div
+          ref={bmPlateRef}
+          className="cc-bm-plate"
+          data-tune="charts.bmPlate"
+          data-tune-mode="store"
+          style={{ opacity: 0 }}
+          aria-hidden
+        >
           <img className="cc-bm-fig translate-x-[-3.99vh] translate-y-[-1.78vh]" src={BM_MINUS_20} alt={BM.figure} draggable={false} />
         </div>
         {/* Text cards — PINNED overlays (not scrolled). Each fades in only when its
@@ -253,6 +323,8 @@ export default function ChartsChapter({
               key={i}
               ref={(el) => { cardRefs.current[i] = el; }}
               className={`cc-card${s.view === '2' || s.view === '3' ? ' cc-card--bull' : ''}`}
+              data-tune={`charts.card.${s.view}`}
+              data-tune-mode="store"
               style={{ opacity: 0 }}
             >
               <h2 className="cc-title">{s.title}</h2>

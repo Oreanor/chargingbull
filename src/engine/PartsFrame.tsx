@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
-import { t } from '../i18n';
+import { tuneStore } from './tuneEditor';
+import copy from '../content/copy.json';
 // Inlined (not <img>) so the SVG can use the page's @font-face fonts. On DESKTOP the
-// label SVGs are used as-is; on MOBILE all copy is rendered as DOM text pulled from
-// i18n (per the "no text baked into SVG" rule) — only the pure-graphic pieces (the
-// outlined "30", the marker dot, the measure arrow) stay as SVG.
+// label SVGs are used as-is; on MOBILE all copy is rendered as DOM text from
+// content/copy.json (per the "no text baked into SVG" rule) — only the pure-graphic
+// pieces (the outlined "30", the marker dot, the measure arrow) stay as SVG.
 import N30 from '../assets/parts/n30.svg?raw';            // "30" (outlined glyph — graphic)
 import EMPTY_INSIDE from '../assets/parts/empty-inside.svg?raw'; // "Empty inside" (desktop)
 import DOT from '../assets/parts/dot.svg?raw';            // green marker dot
@@ -18,9 +19,9 @@ import MEASURE_ARROW from '../assets/parts/measure-arrow.svg?raw'; // ↕ arrow 
  *
  * Two layouts, picked by viewport width (≤800px = mobile):
  *  - DESKTOP (Desktop-63.svg): labels drawn from their SVG assets, positions unchanged.
- *  - MOBILE (iPhone 17-16.svg): copy rendered as DOM text from i18n (`parts.*`), laid out
- *    to the phone mockup (horns note up top, the 5 cm measure + Empty inside mid, the big
- *    "30" bottom-left, two marker dots).
+ *  - MOBILE (iPhone 17-16.svg): copy rendered as DOM text from copy.json (`parts.*`), laid
+ *    out to the phone mockup (horns note up top, the 5 cm measure + Empty inside mid, the
+ *    big "30" bottom-left, two marker dots).
  *
  * Every piece is anchored to screen centre and positioned + sized in vh so it tracks the
  * bull on resize; base x/y are the piece's CENTRE from centre in vh (per-breakpoint), with
@@ -49,12 +50,12 @@ const COORDS_DESKTOP: Record<string, [number, number]> = {
 };
 const COORDS_MOBILE: Record<string, [number, number]> = {
   'parts.title': [-5.4, 27.6],       // "30" + subtitle, bottom-left
-  'parts.dot': [-12.4, 4.3],         // marker on the bull's cheek
+  'parts.dot': [-15.2, 7.4],         // nose / snout tip
   'parts.emptyInside': [12.2, 3.4],  // right of the head
-  'parts.measure5cm': [-0.1, -15.7], // 5 cm measure, upper-middle
+  'parts.measure5cm': [1.2, -21.8],  // 5 cm on the withers (холка)
   'parts.horns': [1.6, -30.7],       // horns note across the top
-  'parts.hornsDot1': [-18.9, -25.9], // marker by the horn
-  'parts.hornsDot2': [0, 0],         // (hidden on mobile — mockup has two dots)
+  'parts.hornsDot1': [-21.8, -11.5], // tip of the left horn fragment
+  'parts.hornsDot2': [0, 0],         // desktop-only second horns marker
 };
 // Per-piece scale, DESKTOP only (mobile = 1). Baked from the old tune layer: the "30"
 // title, "Empty inside" and "5 cm" measure were scaled down to fit the wide layout.
@@ -101,15 +102,23 @@ export default function PartsFrame() {
     if (!progress) return;
     const root = rootRef.current;
     if (!root) return;
-    // Static transforms (off/scale baked; depend on isMobile) — set ONCE per (re)render.
-    for (const pc of pieces) {
-      const el = pc.ref.current;
-      if (el) el.style.transform = `translate(${pc.x.toFixed(2)}vh, ${pc.y.toFixed(2)}vh) scale(${pc.s}) translate(-50%, -50%)`;
-    }
-    // Only opacity is scroll-driven → update on smoothed-scroll change (no forever loop).
-    // visible around the explode (cam stop @ f10.6 / 0.80): rise 0.80→0.835, hold,
-    // then «5 cm» + the rest START disappearing at f11.1 (0.842 → 0.877).
-    const apply = () => {
+
+    // Bake base + ✎ tuneStore nudge into each piece. While edit mode is on, run a
+    // rAF loop so drags show live; otherwise only refresh on scroll change.
+    const applyPieces = () => {
+      for (const pc of pieces) {
+        const el = pc.ref.current;
+        if (!el) continue;
+        const [ox, oy] = tuneStore.get(pc.id);
+        const ts = tuneStore.getScale(pc.id);
+        el.style.transform =
+          `translate(${(pc.x + ox).toFixed(2)}vh, ${(pc.y + oy).toFixed(2)}vh) ` +
+          `scale(${(pc.s * ts).toFixed(4)}) translate(-50%, -50%)`;
+      }
+    };
+    // Opacity is scroll-driven. Visible around the explode (cam stop @ f10.6 / 0.80):
+    // rise 0.80→0.835, hold, then dissolve at f11.1 (0.842 → 0.877).
+    const applyOpacity = () => {
       const p = progress.get();
       const rise = smoothstep(clamp01((p - 0.80) / 0.035));
       const fall = 1 - smoothstep(clamp01((p - 0.842) / 0.035));
@@ -117,8 +126,21 @@ export default function PartsFrame() {
       root.style.opacity = op.toFixed(3);
       root.style.visibility = op < 0.004 ? 'hidden' : 'visible';
     };
-    apply();
-    return progress.on('change', apply);
+
+    let raf = 0;
+    const stopRaf = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } };
+    const startRaf = () => {
+      stopRaf();
+      const tick = () => { applyPieces(); raf = requestAnimationFrame(tick); };
+      tick();
+    };
+
+    applyOpacity();
+    applyPieces();
+    if (tuneStore.active) startRaf();
+    const unsubScroll = progress.on('change', () => { applyOpacity(); if (!tuneStore.active) applyPieces(); });
+    const unsubEdit = tuneStore.onActiveChange((on) => { if (on) startRaf(); else { stopRaf(); applyPieces(); } });
+    return () => { unsubScroll(); unsubEdit(); stopRaf(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, isMobile]);
 
@@ -129,7 +151,7 @@ export default function PartsFrame() {
 
   return (
     <div ref={rootRef} className="absolute inset-0 pointer-events-none" style={{ opacity: 0 }}>
-      {/* "30" (outlined graphic) + subtitle (DOM text from i18n) — one draggable block */}
+      {/* "30" (outlined graphic) + subtitle (DOM text) — one draggable block */}
       <div ref={titleRef} data-tune="parts.title" data-tune-mode="store" className="absolute" style={anchor}>
         <div
           className="[&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
@@ -138,7 +160,7 @@ export default function PartsFrame() {
         />
         <div
           style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.75vh', '3vh'), lineHeight: 1.2, marginTop: mob('0.8vh', '1.2vh') }}
-          dangerouslySetInnerHTML={{ __html: t('parts.subtitle') }}
+          dangerouslySetInnerHTML={{ __html: copy.parts.subtitle }}
         />
       </div>
 
@@ -152,7 +174,7 @@ export default function PartsFrame() {
         dangerouslySetInnerHTML={{ __html: DOT }}
       />
 
-      {/* "Empty inside" — DOM text (i18n) on mobile, SVG on desktop */}
+      {/* "Empty inside" — DOM text on mobile, SVG on desktop */}
       <div
         ref={emptyRef}
         data-tune="parts.emptyInside"
@@ -161,7 +183,7 @@ export default function PartsFrame() {
         style={{ ...anchor, width: mob('9vh', '32vh') }}
       >
         {isMobile
-          ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75vh', lineHeight: 1.15 }}>{t('parts.emptyInside')}</div>
+          ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75vh', lineHeight: 1.15 }}>{copy.parts.emptyInside}</div>
           : <div dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }} />}
       </div>
 
@@ -176,7 +198,7 @@ export default function PartsFrame() {
         {isMobile
           ? (
             <>
-              <div style={{ color: green, fontFamily: 'var(--font-mono)', fontSize: '2.5vh', lineHeight: 1, textAlign: 'center' }}>{t('parts.measure')}</div>
+              <div style={{ color: green, fontFamily: 'var(--font-mono)', fontSize: '2.5vh', lineHeight: 1, textAlign: 'center' }}>{copy.parts.measure}</div>
               <div
                 className="[&>svg]:block [&>svg]:mx-auto [&>svg]:w-full [&>svg]:h-auto"
                 style={{ width: '1.9vh', margin: '0.6vh auto 0' }}
@@ -187,15 +209,15 @@ export default function PartsFrame() {
           : <div dangerouslySetInnerHTML={{ __html: MEASURE_5CM }} />}
       </div>
 
-      {/* horns note — "cast thicker, ~7.5 cm of bronze" (DOM text from i18n, both layouts) */}
+      {/* horns note — "cast thicker, ~7.5 cm of bronze" (DOM text, both layouts) */}
       <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: mob('34vh', '57vh') }}>
         <div
           style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06vh', '2.25vh'), lineHeight: 1.55 }}
-          dangerouslySetInnerHTML={{ __html: t('parts.horns') }}
+          dangerouslySetInnerHTML={{ __html: copy.parts.horns }}
         />
       </div>
 
-      {/* marker dot by the horn */}
+      {/* marker dots — horn + (desktop) second; mobile uses parts.dot for the nose */}
       <div
         ref={hornsDot1Ref}
         data-tune="parts.hornsDot1"
@@ -204,7 +226,6 @@ export default function PartsFrame() {
         style={{ ...anchor, width: mob('4.6vh', '4vh') }}
         dangerouslySetInnerHTML={{ __html: DOT }}
       />
-      {/* second horns dot — desktop only (the mobile mockup shows just two dots) */}
       {!isMobile && (
         <div
           ref={hornsDot2Ref}

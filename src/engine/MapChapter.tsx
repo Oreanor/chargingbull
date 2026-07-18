@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } from 'mapbox-gl';
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
-import { t, localizeAssetUrl } from '../i18n';
+import bullMapData from '../data/bullMapData.json';
 import './MapChapter.css';
 // Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
 // Desktop: the designer's one-line "The Bull's ROUTE" lockup, outlined straight from
@@ -56,6 +56,8 @@ type DeckLayers = {
 
 type LngLat = [number, number];
 const BULL_3D_MODEL_URL = '/chapters/bull/images/bull.glb';
+/** Public dir for step photos (paths in bullMapData are relative to this). */
+const BULL_ASSETS = '/chapters/bull/';
 // Mapbox is dynamically imported in createMap (it's ~1MB+ and the map appears
 // chapters in); the access token is stashed here for the Directions fetch.
 let mapboxToken = '';
@@ -236,7 +238,7 @@ interface MapCfg {
   bullScale: number;
 }
 
-// Fallback framings, used only until data.json's mapConfig loads (or if it's absent).
+// Fallback framings if bullMapData.mapConfig is missing.
 // Four chained stops: Foundry → NYSE → Queens impound → Bowling Green. (The Crosby
 // Street studio is a map landmark now, not a stop.)
 const DEFAULT_CAMERAS: CamStop[] = [
@@ -253,7 +255,7 @@ const DEFAULT_CFG: MapCfg = {
   subCams: [], headings: DEFAULT_HEADINGS, bullScale: DEFAULT_BULL_SCALE,
 };
 
-/** Read the drivable subset of data.json's mapConfig, falling back per-field. */
+/** Read the drivable subset of bullMapData.mapConfig, falling back per-field. */
 function readMapCfg(d: unknown): MapCfg {
   const mc = (d as { mapConfig?: Record<string, unknown> })?.mapConfig;
   if (!mc) return DEFAULT_CFG;
@@ -279,9 +281,14 @@ const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 
 // padding ≈ the card's right edge lands the framing centre in the open space; BULL_GUTTER
 // pushes it a bit further right so the bull (which frames slightly left of centre) reads
 // as ~mid free-area. Whole map + bull translate together — same principle everywhere.
-const CARD_MAX_W = 672;       // .mc-card width cap
+//
+// Hard guarantee every frame (desktop + mobile): corridor clamp pins the LIVE trail-head
+// into a viewport band. Authored cameras/subCams are the path; this is the safety rail.
+const CARD_MAX_W = 672;       // .mc-card width cap (desktop)
 const CARD_MARGIN_MAX = 80;   // .mc-card margin-left (clamp(24, 5vw, 80)) cap
 const BULL_GUTTER = 260;      // extra px past the card edge — tune to slide the bull left/right
+/** Bull screen corridor — fractions of viewport width/height. */
+const BULL_CORRIDOR = { x0: 0.70, x1: 0.80, y0: 0.25, y1: 0.75 } as const;
 /** Desktop journey left padding: shift the map right so the bull sits in the free area. */
 function journeyPadLeft(vw: number): number {
   const cardLeft = clamp(0.05 * vw, 24, CARD_MARGIN_MAX);
@@ -484,13 +491,11 @@ function pointInPolygon(pt: LngLat, poly: LngLat[]): boolean {
 const isFadeActiveForProgress = (p: number) => p >= 1.5 && p < 2.6;
 
 export default function MapChapter({
-  dataUrl = '/chapters/bull/data.json',
   introTitle,
   introBody,
   revealUnderlay = false,
   onDive,
 }: {
-  dataUrl?: string;
   /** Optional chapter title card shown FROM DARKNESS as stop 0 — types in, then
    *  dissolves into the map (so it never slides up from below). */
   introTitle?: string;
@@ -514,15 +519,13 @@ export default function MapChapter({
   const outroRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const poiUpdateRef = useRef<(() => void) | null>(null);
-  // Fetched road polylines — shared so the ?bullTrack=1 sampler can project the
-  // same trail-head the 3D bull uses (routes live in the deck.gl effect otherwise).
+  // Road polylines from Mapbox Directions — shared so the ?bullTrack=1 sampler can
+  // project the same trail-head the 3D bull uses.
   const routesRef = useRef<LngLat[][]>([]);
-  const [steps, setSteps] = useState<Step[]>([]);
-  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
-  // Camera choreography (stops / flyover waypoints / leg weights / bull facing) read
-  // from data.json's mapConfig. Defaults hold until the JSON lands. cfgRef mirrors it
-  // for the map-init effect, which runs once ([] deps) and can't re-capture state.
-  const [cfg, setCfg] = useState<MapCfg>(DEFAULT_CFG);
+  // Bundled map copy + camera config (src/data/bullMapData.json) — no fetch.
+  const [steps] = useState<Step[]>(() => (bullMapData.steps ?? []) as Step[]);
+  const [landmarks] = useState<Landmark[]>(() => (bullMapData.landmarks ?? []) as Landmark[]);
+  const [cfg] = useState<MapCfg>(() => readMapCfg(bullMapData));
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
   const [err, setErr] = useState<string | null>(null);
@@ -533,25 +536,6 @@ export default function MapChapter({
   // in lockstep with the rest of the page. The weighted stop bands (SEG_WEIGHTS)
   // still shape how much scroll each leg of the journey gets.
   const playhead = useSmoothProgress(sectionRef);
-
-  // load step data — prefer the active locale's variant (data.<locale>.json),
-  // falling back to the base file when no translation has been dropped in yet.
-  useEffect(() => {
-    let cancelled = false;
-    const localized = localizeAssetUrl(dataUrl);
-    const getJson = async (url: string) => {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-      return r.json();
-    };
-    const load = localized === dataUrl
-      ? getJson(dataUrl)
-      : getJson(localized).catch(() => getJson(dataUrl));
-    load
-      .then((d) => { if (!cancelled) { setSteps(d.steps ?? []); setLandmarks(d.landmarks ?? []); setCfg(readMapCfg(d)); } })
-      .catch((e) => { if (!cancelled) setErr(String(e)); });
-    return () => { cancelled = true; };
-  }, [dataUrl]);
 
   // init map — lazily, only once the section nears the viewport, so the container
   // is on-screen with a real size when mapbox is created (off-screen 0×0 init is
@@ -1036,20 +1020,28 @@ export default function MapChapter({
         head = center;
       }
 
-      // Corridor clamp (desktop journey only): keep the bull in the free right-half
-      // band [W/2 + body, W*0.9] at ANY viewport width. Authored cameras alone drift
-      // off the right edge when the window isn't the tuning size (e.g. not 1920).
-      // Dive pans to centre on purpose — don't fight it.
-      if (!isNarrow && dv < 0.02) {
+      // Corridor clamp (desktop + mobile): every frame, on the LIVE trail-head
+      // (same tip as the 3D bull) — not on authored camera keyframes.
+      // Band: X 70–80%, Y 25–75% of the viewport. Dive pans to centre — don't fight it.
+      if (dv < 0.02) {
         const W = window.innerWidth;
-        const BULL_W = 105; // ScenegraphLayer sizeMaxPixels
-        const lo = W * 0.5 + BULL_W;
-        const hi = W * 0.9;
-        const bp = map.project(head);
-        if (bp.x < lo || bp.x > hi) {
-          const err = bp.x < lo ? bp.x - lo : bp.x - hi;
+        const H = window.innerHeight;
+        const loX = W * BULL_CORRIDOR.x0;
+        const hiX = W * BULL_CORRIDOR.x1;
+        const loY = H * BULL_CORRIDOR.y0;
+        const hiY = H * BULL_CORRIDOR.y1;
+        // Pitch makes a single screen-space nudge imperfect — iterate a couple times.
+        for (let pass = 0; pass < 3; pass++) {
+          const bp = map.project(head);
+          let errX = 0;
+          let errY = 0;
+          if (bp.x < loX) errX = bp.x - loX;
+          else if (bp.x > hiX) errX = bp.x - hiX;
+          if (bp.y < loY) errY = bp.y - loY;
+          else if (bp.y > hiY) errY = bp.y - hiY;
+          if (errX === 0 && errY === 0) break;
           const c = map.project(center);
-          const n = map.unproject([c.x + err, c.y]);
+          const n = map.unproject([c.x + errX, c.y + errY]);
           center = [n.lng, n.lat];
           map.jumpTo({ center, zoom, pitch, bearing });
         }
@@ -1072,7 +1064,6 @@ export default function MapChapter({
       if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('bullTrack')) {
         const bp = map.project(head);
         const W = window.innerWidth, H = window.innerHeight;
-        const BULL_W = 105;
         (window as unknown as { __mapBullTrack: unknown }).__mapBullTrack = {
           ready: steps.length >= 2,
           prog: locProg,
@@ -1083,18 +1074,19 @@ export default function MapChapter({
           H,
           head,
           camCenter: center,
-          lo: W / 2 + BULL_W,
-          hi: W * 0.9,
-          bullW: BULL_W,
+          lo: W * BULL_CORRIDOR.x0,
+          hi: W * BULL_CORRIDOR.x1,
+          loY: H * BULL_CORRIDOR.y0,
+          hiY: H * BULL_CORRIDOR.y1,
           cameras: cfg.cameras,
           subCams: cfg.subCams,
           project: (ll: [number, number]) => {
             const p = map.project(ll);
             return { x: p.x, y: p.y };
           },
-          nudgeCenter: (ll: [number, number], errX: number): [number, number] => {
+          nudgeCenter: (ll: [number, number], errX: number, errY = 0): [number, number] => {
             const c = map.project(ll);
-            const n = map.unproject([c.x + errX, c.y]);
+            const n = map.unproject([c.x + errX, c.y + errY]);
             return [n.lng, n.lat];
           },
         };
@@ -1224,7 +1216,7 @@ export default function MapChapter({
                   <figure className="mc-figure">
                     <img
                       className="mc-photo"
-                      src={dataUrl.replace(/[^/]*$/, '') + s.image.replace(/^\.\//, '')}
+                      src={BULL_ASSETS + s.image.replace(/^\.\//, '')}
                       alt={s.imageCaption ?? s.title}
                       loading="lazy"
                       onError={(e) => { const f = e.currentTarget.closest('figure'); if (f) (f as HTMLElement).style.display = 'none'; }}
@@ -1246,12 +1238,12 @@ export default function MapChapter({
             style={{ opacity: 1 }}
           >
             {/* wide enough for the desktop wordmark (1177px at the 1440px design width) */}
-            <div className="max-w-[1180px]">
-              {/* mobile: the stacked lockup, ~30px side padding */}
+            <div className="max-w-[1180px] max-sm:w-full max-sm:flex max-sm:flex-col max-sm:items-center">
+              {/* mobile: stacked lockup — fill the phone width (20px gutters) so the mark reads big */}
               <img
                 src={THE_BULLS_ROUTE}
                 alt="The Bull's Route"
-                className="hidden max-sm:block mx-auto mb-6 w-[calc(100vw-60px)] h-auto"
+                className="hidden max-sm:block mb-8 w-[calc((100vw-40px)*0.68)] max-w-none h-auto"
               />
               {/* desktop: the designer's one-line lockup, outlined from the Figma slide.
                   Width + gap are the design's share of its 1440px frame (1177/1440 = 81.77vw,
@@ -1263,18 +1255,17 @@ export default function MapChapter({
               >
                 <img src={THE_BULLS_ROUTE_DESKTOP} alt="The Bull's Route" className="block w-full h-auto" />
               </div>
-              {/* Desktop type is the design's: 34px / 40px-leading (1.176) at the 1440px frame;
-                  max-w in em keeps the design's line breaks at every viewport width. */}
+              {/* Desktop: design 34/40 @ 1440 — do not squeeze. Mobile: wrap after «three tonnes». */}
               <p
                 ref={introBodyRef}
                 style={{ fontFamily: 'var(--font-struve)', color: '#FBC75F' }}
-                className="mx-auto text-center max-w-[24em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:max-w-[480px] max-sm:text-[clamp(16px,1.5vw,20px)] max-sm:leading-[1.3] max-sm:translate-x-[-1.8vh] max-sm:translate-y-[8.32vh] max-sm:scale-[1.676]"
+                className="mx-auto text-center max-w-[24em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:mx-0 max-sm:max-w-[248px] max-sm:w-[min(248px,calc(100vw-40px))] max-sm:text-[17px] max-sm:leading-[1.33]"
               />
             </div>
           </div>
         ) : null}
         {err ? (
-          <div className="absolute bottom-6 left-6 z-20 text-[11px] text-rose-300/80 font-mono">{t('map.errorPrefix')} {err}</div>
+          <div className="absolute bottom-6 left-6 z-20 text-[11px] text-rose-300/80 font-mono">map: {err}</div>
         ) : null}
       </div>
     </section>

@@ -5,6 +5,26 @@
    page scroll is released. If the bull outlasts the intro, a pinned bottom
    "loading" shows until it's ready. */
 
+/* 3D host: desktop fills the sticky viewport. ≤800px — freeze the scene at the
+   800px-wide framing and center it; narrower phones just clip the sides. */
+.mc-gl-host {
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 800px) {
+  .mc-gl-clip {
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+  }
+  .mc-gl-host {
+    width: 800px;
+    flex: 0 0 800px;
+    height: 100%;
+    max-width: none;
+  }
+}
+
 .mc-bullveil {
   position: absolute; inset: 0; z-index: 5; background: #000;
   transition: opacity 0.5s ease-out;

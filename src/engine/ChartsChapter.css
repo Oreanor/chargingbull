@@ -49,11 +49,15 @@
 }
 .cc-bm-fig {
   display: block;
-  width: clamp(120px, 14vw, 202px);
+  /* Desktop: fixed authored size — never vw-scale with the stage. */
+  width: 202px;
   height: auto;
   margin: 0;
   user-select: none;
   -webkit-user-drag: none;
+}
+@media (max-width: 720px) {
+  .cc-bm-fig { width: clamp(120px, 36vw, 160px); }
 }
 
 /* Chart caption — units & description, bottom-right of the pinned stage. */
@@ -69,9 +73,10 @@
 .cc-cards { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
 .cc-card {
   pointer-events: auto;
+  --cc-plaque-gap: 20px;
   position: absolute; top: 50%; left: clamp(24px, 4vw, 56px);
   transform: translateY(-50%);
-  /* same width as the other plaques (map / opener) — design: 672px card */
+  /* desktop 672; mobile: 362 + left gutter (matches .so-text / .mc-card) */
   width: min(672px, calc(100vw - 64px));
   /* Hugs its content with FIXED padding — identical internal spacing to the black
      map/opener plaques (text→edge + heading→body), per the mockups. No min-height /
@@ -86,12 +91,12 @@
 }
 .cc-title {
   font-family: var(--font-struve); font-weight: 700;
-  font-size: clamp(28px, 3.1vw, 40px); line-height: 1.0; letter-spacing: 0;
+  font-size: 40px; line-height: 1.0; letter-spacing: 0;
   color: #f14268; margin-bottom: 28px; /* heading→body gap = .mc-title / .so-eyebrow */
 }
 .cc-comment {
   font-family: var(--font-struve);
-  font-size: clamp(17px, 1.65vw, 24px); line-height: 1.33; color: #fff; font-weight: 400;
+  font-size: 24px; line-height: 1.33; color: #fff; font-weight: 400;
 }
 .cc-comment b { color: #fff; font-weight: 700; }
 
@@ -102,7 +107,13 @@
 .cc-card--bull .cc-comment b { color: #000; }
 
 @media (max-width: 720px) {
-  .cc-card { left: 16px; padding: 28px 28px 32px; } /* = .mc-card / .so-text mobile */
+  .cc-card {
+    left: var(--cc-plaque-gap);
+    padding: 28px 28px 32px;
+    width: min(362px, calc(100vw - 2 * var(--cc-plaque-gap)));
+    max-width: 362px;
+  }
   .cc-title { font-size: 28px; }
+  .cc-comment { font-size: 17px; }
   .cc-topbar { padding: 14px 18px; }
 }

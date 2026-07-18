@@ -15,6 +15,7 @@ import {
 import { stagesToTrack, type StagesFile } from './stagesToTrack';
 import { bullEditStore } from './editStore';
 import { tuneStore } from './tuneEditor';
+import { mobileProfileDistScale } from './mobileProfileFit';
 
 /** What ModelChapter needs from a renderer. Both DatumScene (splats) and
  *  GlbScene (three.js meshes) satisfy it, so the editor/runtime are renderer-
@@ -32,6 +33,10 @@ export interface ModelSceneHandle {
    *  so the subject shifts in frame. dx/dy are step units (+x = subject right, +y =
    *  subject up); distance-scaled internally. Used by the editor's arrow-key nudge. */
   panScreen?(dx: number, dy: number): void;
+  /** Absolute screen-space framing nudge (fraction of frame height). Mobile hero raise. */
+  setFrameNudge?(nx: number, ny: number): void;
+  /** Multiply live camera distance (mobile profile-fit pull). Optional — GlbScene only. */
+  setFitDistMul?(mul: number): void;
   /** Editor-only: notified when the USER starts/ends an orbit/zoom drag (OrbitControls
    *  'start'/'end'). Lets the editor bake a hand-tuned pose into the selected keyframe
    *  on release. Pass null to clear. */
@@ -76,6 +81,12 @@ const isMeshModel = (src: string) => /\.(glb|gltf)$/i.test(src);
 /** Delay before the bull is revealed from black. The title intro now shows all at
  *  once (no typed reveal), so the bull lifts as soon as it has loaded — no wait. */
 const LOADER_INTRO_MS = 0;
+
+/** Mobile (≤800) opener framing: raise the close-up bull so the muzzle clears the
+ *  wordmark, then ease back to dead-center once the camera has pulled away. */
+const MOBILE_MAX = 800;
+const MOBILE_HERO_RELEASE_T = 0.05; // matches OPENER_TRACK pull-back key
+const MOBILE_HERO_RAISE = 0.2; // fraction of frame height (+ = subject up) — muzzle clears wordmark
 
 /**
  * ModelChapter — native (no-iframe) scrollytelling chapter for a Datum SDK
@@ -316,8 +327,10 @@ function ModelScene({
   }, [src, bgKey, vignette, placementKey, extrasKey, rotate, pan, autoFrame, blockWheel]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-black">
-      <div ref={containerRef} className="w-full h-full" />
+    <div className="mc-gl-clip relative w-full h-full overflow-hidden bg-black">
+      {/* ≤800: host stays 800px wide & centered so the bull/car scene stops shrinking
+          and is only clipped — never FOV-blown to the phone edges. Desktop: full bleed. */}
+      <div ref={containerRef} className="mc-gl-host" />
       {status !== 'ready' ? (
         <div className="absolute bottom-6 left-6 text-[10px] uppercase tracking-[3px] text-fg/40 pointer-events-none">
           {status === 'error' ? `err: ${err}` : `loading ${pct}%`}
@@ -374,12 +387,31 @@ function TrackDriver({
         scene.setExtraOpacity?.(i, op);
       });
     };
+    const ss01 = (x: number) => {
+      const u = x < 0 ? 0 : x > 1 ? 1 : x;
+      return u * u * (3 - 2 * u);
+    };
+    /** Mobile-only: lift the hero close-up, then center once the bull pulls back. */
+    const applyMobileFrame = (t: number) => {
+      if (!scene.setFrameNudge) return;
+      const mobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_MAX;
+      if (!mobile) {
+        scene.setFrameNudge(0, 0);
+        return;
+      }
+      const u = MOBILE_HERO_RELEASE_T > 0 ? Math.min(1, Math.max(0, t / MOBILE_HERO_RELEASE_T)) : 1;
+      const raise = MOBILE_HERO_RAISE * (1 - ss01(u));
+      scene.setFrameNudge(0, raise);
+    };
+
     // Initial pose (force, even on a plateau) so the camera starts on the track.
     const first = sampleTrack(track, progress.get(), keys);
+    scene.setFitDistMul?.(mobileProfileDistScale(progress.get()));
     scene.setCameraSpherical(first);
     scene.setExplode?.(first.explode);
     scene.setModelPush?.(first.push);
     applyExtras(progress.get());
+    applyMobileFrame(progress.get());
     if (fadeRef.current) fadeRef.current.style.opacity = String(first.opacity);
 
     const apply = (t: number) => {
@@ -388,10 +420,27 @@ function TrackDriver({
       scene.setExplode?.(pose.explode);
       scene.setModelPush?.(pose.push);
       applyExtras(t);
-      if (!pose.holding) scene.setCameraSpherical(pose);
+      // Fit pull before pose so a non-holding update already sees the new mul.
+      // While fit is active, force-apply even on plateaus — otherwise the held
+      // profile pose never picks up the extra distance on mobile.
+      const fitMul = mobileProfileDistScale(t);
+      scene.setFitDistMul?.(fitMul);
+      if (!pose.holding || fitMul > 1.001) scene.setCameraSpherical(pose);
+      applyMobileFrame(t);
     };
+    const onResize = () => {
+      const t = progress.get();
+      scene.setFitDistMul?.(mobileProfileDistScale(t));
+      applyMobileFrame(t);
+    };
+    window.addEventListener('resize', onResize);
     const unsub = progress.on('change', apply);
-    return () => unsub();
+    return () => {
+      unsub();
+      window.removeEventListener('resize', onResize);
+      scene.setFrameNudge?.(0, 0);
+      scene.setFitDistMul?.(1);
+    };
   }, [scene, track, extras, progress, fadeRef]);
   return null;
 }

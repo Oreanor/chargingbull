@@ -104,18 +104,11 @@ export function bmFull3SvgX(i: number): number {
   return bmTimeSvgX(bmDrawdownT(i));
 }
 
-/**
- * Sample the designer drawdown polyline (BM_DD.line) at t∈[0,1] by arc length.
- * This is the smooth “broken” target the collapsed candles fly onto — not the
- * jagged daily-close path.
- */
-export function bmSampleDdLine(t01: number): [number, number] {
+/** Arc-length sample of BM_DD.line (designer X knees — used for tangent only). */
+function bmSampleDdLineX(t01: number): number {
   const pts = BM_DD.line;
-  if (t01 <= 0) return [pts[0][0], pts[0][1]];
-  if (t01 >= 1) {
-    const p = pts[pts.length - 1];
-    return [p[0], p[1]];
-  }
+  if (t01 <= 0) return pts[0][0];
+  if (t01 >= 1) return pts[pts.length - 1][0];
   let total = 0;
   const lens: number[] = [];
   for (let i = 0; i < pts.length - 1; i++) {
@@ -128,15 +121,30 @@ export function bmSampleDdLine(t01: number): [number, number] {
     const len = lens[i];
     if (d <= len || i === lens.length - 1) {
       const u = len < 1e-6 ? 0 : Math.min(1, d / len);
-      return [
-        pts[i][0] + (pts[i + 1][0] - pts[i][0]) * u,
-        pts[i][1] + (pts[i + 1][1] - pts[i][1]) * u,
-      ];
+      return pts[i][0] + (pts[i + 1][0] - pts[i][0]) * u;
     }
     d -= len;
   }
-  const p = pts[pts.length - 1];
-  return [p[0], p[1]];
+  return pts[pts.length - 1][0];
+}
+
+/**
+ * Target the collapsed candles fly onto at t∈[0,1].
+ * X follows the designer polyline (smooth knees / tilt); Y follows real Aug→Oct
+ * closes as % vs peak — so the stick line meets the data slide instead of
+ * sagging on the old Desktop-41 middle vertex.
+ */
+export function bmSampleDdLine(t01: number): [number, number] {
+  const t = t01 <= 0 ? 0 : t01 >= 1 ? 1 : t01;
+  const nDD = BM_OHLC.length - BM_AUG_I;
+  const f = t * Math.max(0, nDD - 1);
+  const i0 = Math.floor(f);
+  const i1 = Math.min(nDD - 1, i0 + 1);
+  const u = f - i0;
+  const c0 = BM_OHLC[BM_AUG_I + i0][4];
+  const c1 = BM_OHLC[BM_AUG_I + i1][4];
+  const close = c0 + (c1 - c0) * u;
+  return [bmSampleDdLineX(t), bmPctSvgY(bmClosePct(close))];
 }
 
 /** Unit tangent of BM_DD.line at t∈[0,1] (for collapsing stubs along the stroke). */

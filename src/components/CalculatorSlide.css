@@ -1,14 +1,17 @@
-/* S&P 500 investment calculator — ported from wallst-rodeo/calculator.html. */
-/* Pinned scene: a tall section holds the calculator sticky while a scripted intro plays
-   (left flag slides in, hint fades up), then it stays interactive, then scrolls on. */
+/* S&P 500 investment calculator — layout aligned with ChartsChapter:
+   full-bleed sticky stage, ~10vw side gutters, plot fills the band between. */
 .calc-section { width: 100%; background: #000; }
 .calc-sticky {
-  position: sticky; top: 0; height: 100vh; width: 100%; padding: clamp(16px, 3vh, 32px) 10px;
+  position: sticky; top: 0; height: 100vh; width: 100%;
+  /* Same horizontal inset as .cc-topbar / charts plot (padL/R ≈ 10%). */
+  padding: clamp(22px, 3.4vh, 44px) 10vw;
   display: flex; align-items: center; justify-content: center;
-  background: #000; color: #ECEFEC; font-family: var(--font-grotesk), 'Inter', system-ui, sans-serif;
+  background: #000; color: #ECEFEC;
+  font-family: var(--font-grotesk), 'Inter', system-ui, sans-serif;
+  box-sizing: border-box;
 }
-/* ~10% larger slide — widen the wrap + taller chart; fonts stay put (they key off vw/px, not the container). */
-.calc-wrap { width: 100%; max-width: min(1169px, 98vw); }
+/* Fill the padded stage — no extra max-width (charts plot is % of viewport too). */
+.calc-wrap { width: 100%; max-width: none; }
 .calc-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
 .calc-eyebrow { font: 500 clamp(14px, 1.5vw, 18px) var(--font-grotesk); letter-spacing: 0; color: #61E26B; }
 .calc-amt { font: 700 clamp(24px, 3.6vw, 34px)/1.2 var(--font-struve); letter-spacing: -0.01em; margin-top: 10px; color: #fff; }
@@ -55,7 +58,8 @@
 .calc-result .sub .ri { color: #61E26B; } /* "real $…" is the highlighted bit */
 
 .calc-viz { position: relative; margin: 28px 0 8px; touch-action: none; user-select: none; }
-.calc-chart { width: 100%; height: clamp(462px, 71vh, 788px); display: block; }
+/* Charts plot band ≈ 62% of stage (padT 18% + padB 20%); leave room for lead + note. */
+.calc-chart { width: 100%; height: clamp(280px, 54vh, 680px); display: block; }
 .calc-flag { position: absolute; top: 0; bottom: 0; width: 0; }
 .calc-flag .line { position: absolute; top: 0; bottom: 26px; left: -1px; width: 2px; background: #61E26B; }
 .calc-flag .grab { position: absolute; left: -15px; top: 0; bottom: 0; width: 30px; cursor: ew-resize; }
@@ -64,35 +68,69 @@
   font: 700 12px var(--font-mono); color: #06210b; background: #61E26B;
   padding: 5px 11px; border-radius: 8px; white-space: nowrap;
 }
+/* Round drag knobs — mobile only (desktop keeps the year pills). */
+.calc-flag .knob { display: none; }
 /* flags are inert during the scripted intro (no .active on the viz) */
 .calc-viz:not(.active) .calc-flag .grab { cursor: default; }
 
-/* Hint — sits just above the year axis at the lower-left of the chart, fades in (opacity in JS).
-   Width is the mockup's 348px, which is what makes it wrap onto three lines the same way. */
+/* Hint — child of the left flag (штанга). X follows the pole; bottom is set in JS to the axis. */
 .calc-hint {
-  position: absolute; left: clamp(6px, 2.5%, 34px); bottom: 44px;
-  max-width: min(352px, 46%); opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
+  position: absolute; left: 0; bottom: 46px; z-index: 2;
+  width: min(352px, 46vw); opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
   font: 400 clamp(17px, 1.9vw, 24px)/1.32 var(--font-struve); color: #61E26B;
-  transform: translate(10.42vh, -1.11vh); /* baked from ✎ editor */
+  /* fully left of the pole (+ gap) so text/arc never cross the штанга */
+  transform: translate(calc(-100% - 20px), -1.11vh);
 }
 /* White ↔ is the first character of the text — inline on the same line, with a space after it */
 .calc-hint .ar { display: inline-block; vertical-align: -0.02em; width: 1.15em; height: 0.66em; margin-right: 0.3em; fill: #fff; }
 /* Green curved arrow hangs off the text's right edge and dives at the year flag below.
    Absolute, so it can overhang the hint's max-width and drop past its bottom. */
-.calc-hint .arc { position: absolute; left: calc(100% + 4px); bottom: -32px; width: 2.9em; height: 3.07em; fill: #61E26B; transform: translate(-11vh, 1.31vh); /* baked from ✎ editor */ }
-.calc-note { font: 400 clamp(13px, 1.15vw, 16px)/1.5 var(--font-struve); color: rgba(255, 255, 255, 0.5); margin-top: 20px; }
+.calc-hint .arc {
+  position: absolute; left: calc(100% + 2px); bottom: -36px;
+  width: 2.9em; height: 3.07em; fill: #61E26B;
+  transform: translate(0, 0.4vh);
+}
+/* Credits tone close to .cc-legend on bull frames */
+.calc-note {
+  font: 400 clamp(11px, 1.05vw, 16px)/1.5 var(--font-struve);
+  color: rgba(245, 243, 238, 0.55);
+  margin-top: 20px;
+}
 @media (max-width: 560px) { .calc-top { align-items: flex-start; } .calc-result { text-align: left; } }
 
-/* Mobile: the calculator is vertically centred in a 100vh sticky, so when the tall chart +
-   header + note add up to more than one screen the whole thing gets squeezed off the top AND
-   bottom. Draw it a bit smaller — shorter chart, tighter margins, slightly smaller headline
-   type — so it fits within the height. */
+/* Mobile: keep 10vw sides (like charts); shorten the plot so the sticky still fits. */
 @media (max-width: 640px) {
-  .calc-sticky { padding: clamp(12px, 2vh, 20px) 10px; }
+  .calc-sticky { padding: clamp(14px, 2.5vh, 24px) 10vw; }
   .calc-amt { font-size: clamp(20px, 5.4vw, 28px); }
   .calc-result .big { font-size: clamp(27px, 7.4vw, 40px); }
-  .calc-chart { height: clamp(300px, 46vh, 520px); }
+  .calc-chart { height: clamp(240px, 42vh, 480px); }
   .calc-viz { margin: 16px 0 6px; }
   .calc-note { margin-top: 12px; }
-  .calc-hint { font-size: clamp(15px, 4vw, 20px); }
+
+  /* Year pills → round green knobs with the ↔ SVG; years move onto the canvas.
+     Axis floor is padB=40 (JS) — line stops there, knob is centred on it. */
+  .calc-flag .yr { display: none; }
+  .calc-flag .line { bottom: 40px; background: rgba(255, 255, 255, 0.92); }
+  .calc-flag .grab { left: -28px; width: 56px; }
+  .calc-flag .knob {
+    display: grid; place-items: center;
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #61E26B; pointer-events: none;
+  }
+  .calc-flag .knob svg { display: block; width: 22px; height: 12px; fill: #06210b; }
+
+  /* Same copy + both SVGs — only type + park vs the left штанга. */
+  .calc-hint {
+    width: min(200px, 54vw);
+    font-size: 15px; line-height: 1.28;
+    color: rgba(97, 226, 107, 0.4);
+    transform: translate(calc(-100% - 6px), 0);
+  }
+  .calc-hint .ar { fill: rgba(97, 226, 107, 0.55); width: 1em; height: 0.58em; }
+  .calc-hint .arc {
+    left: calc(100% - 4px); bottom: -40px;
+    width: 2.4em; height: 2.55em;
+    transform: none;
+  }
 }

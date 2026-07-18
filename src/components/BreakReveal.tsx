@@ -85,13 +85,15 @@ export function BreakReveal({
               </span>
             )}
           </div>
-          {/* Desktop type is the design's: 34px / 40px-leading (1.176) at the 1440px frame.
-              max-w is in em so the caption keeps the design's line breaks at every width. */}
+          {/* Desktop: design 34/40 @ 1440, centred block. Mobile: fixed 17px Struve,
+              no scale/shrink — width so lines wrap like the mockup, stays centred. */}
           <p
             ref={bodyRef}
-            style={{ fontFamily: 'var(--font-struve)' }}
-            className={`mx-auto text-fg max-w-[23.33em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:max-w-[480px] max-sm:text-[clamp(16px,1.5vw,20px)] max-sm:leading-[1.3] ${bodyClassName}`}
-          />
+            style={{ fontFamily: 'var(--font-struve)', opacity: 1 }}
+            className={`mx-auto text-center text-fg max-w-[23.33em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:w-[min(300px,calc(100vw-40px))] max-sm:max-w-[300px] max-sm:text-[17px] max-sm:leading-[1.33] ${bodyClassName}`}
+          >
+            {body}
+          </p>
         </div>
       </div>
     </section>

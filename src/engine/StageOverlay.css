@@ -10,17 +10,17 @@
    overlay one layer so plaques always sit on top of the bull's scene overlays. */
 .so-root { --so-accent: #e8c87c; z-index: 30; }
 
-/* narrative plaque, bottom-left — semi-transparent blurred card (per the mockup:
-   #25221E @ 85%, radius 30, padding 41/50/47/50, background-blur 12). */
+/* narrative plaque, bottom-left — desktop 672; mobile ≤1023: 362 + left gutter. */
 .so-text {
+  --so-plaque-gap: 20px;
   position: absolute; left: 56px; bottom: 9%; opacity: 0;
-  width: min(672px, calc(100vw - 64px)); /* match the map/chart cards */
+  width: min(672px, calc(100vw - 64px));
   background: rgba(37, 34, 30, 0.85);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   border-radius: 30px;
   padding: 40px 50px 46px 50px;
-  /* body text matches the map/chart cards (second part): clamp(17,1.65vw,24)/1.33 */
-  font: 400 clamp(17px, 1.65vw, 24px) / 1.33 var(--font-struve);
+  /* Desktop keeps design size; mobile media query may tighten type. */
+  font: 400 24px / 1.33 var(--font-struve);
   color: #fff;
   transform-origin: left bottom;
   will-change: opacity, transform;
@@ -40,13 +40,17 @@
 }
 .so-text .so-eyebrow {
   display: block; margin-bottom: 28px;
-  font: 700 clamp(28px, 3.1vw, 40px) / 1.0 var(--font-struve);
+  font: 700 40px / 1.0 var(--font-struve);
   letter-spacing: 0.01em; text-transform: none;
   color: #61e26b;
 }
 
 @media (max-width: 1023px) {
-  .so-text { padding: 28px 28px 32px; border-radius: 22px; }
+  .so-text {
+    padding: 28px 28px 32px; border-radius: 22px;
+    font-size: 17px;
+  }
+  .so-text .so-eyebrow { font-size: 28px; }
 }
 
 
@@ -62,7 +66,10 @@
 .so-anno.so-img img { display: block; opacity: 0.9; }
 
 @media (max-width: 1023px) {
-  /* slide up CENTERED, but NEVER wider than the desktop cap (672px) — on a narrow/mobile
-     viewport it shrinks to a 20px margin each side, on a wider one it stays 672 centred. */
-  .so-text { left: 20px; right: 20px; width: auto; max-width: 672px; margin-left: auto; margin-right: auto; }
+  /* Mobile only: 362 max, left gutter — no centering. Desktop stays 672. */
+  .so-text {
+    left: var(--so-plaque-gap); right: auto;
+    width: min(362px, calc(100vw - 2 * var(--so-plaque-gap)));
+    max-width: 362px; margin: 0;
+  }
 }

@@ -1,1 +1,32 @@
-{}
+{
+  "parts.hornsDot1": {
+    "mobile": [
+      -8.09,
+      -20.84
+    ]
+  },
+  "parts.dot": {
+    "mobile": [
+      -12.84,
+      -8.9
+    ]
+  },
+  "parts.measure5cm": {
+    "mobile": [
+      -13.15,
+      -3.14
+    ]
+  },
+  "parts.horns": {
+    "mobile": [
+      0,
+      -8.03
+    ]
+  },
+  "parts.emptyInside": {
+    "mobile": [
+      -1.42,
+      -6.98
+    ]
+  }
+}
