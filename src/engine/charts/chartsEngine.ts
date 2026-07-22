@@ -34,7 +34,7 @@ import {
 import {
   BM_PLATE_GAP,
   BM_PLATE_PATHS_PORT, BM_PLATE_ORIGIN_PORT, BM_PLATE_SIZE_PORT,
-  BM_PLATE_Y_PORT, BM_PLATE_W, BM_PLATE_W_PORT,
+  BM_PLATE_BASE_GAP, BM_PLATE_BASE_GAP_PORT, BM_PLATE_W, BM_PLATE_W_PORT,
 } from './blackMondayPlate';
 import { BULL_1989_PATH, BULL_1989_BOX } from './bull1989';
 import { isMobileViewport } from '../deviceBudget';
@@ -1437,12 +1437,18 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // The ART is the portrait layout on both breakpoints; the WIDTH it is drawn at is
       // still per-breakpoint. Taking the portrait width along with the portrait art shrank
       // the desktop plate by a quarter — the layout changed, the size shouldn't have.
-      const drawnW = isMobileViewport() ? BM_PLATE_W_PORT : BM_PLATE_W;
+      const mobile = isMobileViewport();
+      const drawnW = mobile ? BM_PLATE_W_PORT : BM_PLATE_W;
       const k = drawnW / size.w;
       const px = candleX(BM_CRASH_I) - BM_PLATE_GAP - drawnW;
+      // Vertical seat: the plate STANDS ON the white baseline, a clear gap above it. Its own
+      // y used to be an authored design coord per breakpoint, which drifted off the line
+      // whenever the plot box rescaled — the rule is the seat, the gap is the only knob.
+      const gap = mobile ? BM_PLATE_BASE_GAP_PORT : BM_PLATE_BASE_GAP;
+      const py = mapY(BM_GEOM.baselineY) - gap - size.h * k;
       ctx.save();
       ctx.globalAlpha = plateA;
-      ctx.translate(px, mapY(BM_PLATE_Y_PORT));
+      ctx.translate(px, py);
       if (k !== 1) ctx.scale(k, k);
       ctx.translate(-origin.x, -origin.y);
       ctx.fillStyle = '#000';

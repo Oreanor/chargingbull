@@ -35,6 +35,7 @@ export function CalculatorSlide() {
 
     const GREEN = '#61E26B';
     const GROUND = '#000';   // the slide's ground — what on-plot labels are knocked out of
+    const TICK_INK = '#fff'; // axis chrome: the year dots + their labels (mockup: white)
     const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
     const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); };
@@ -45,10 +46,23 @@ export function CalculatorSlide() {
     let MINY = 1928, MAXY = 2026, I0 = 0;
     let startY = 2000, endY = 2026;
     let tMin = 1928, tMax = 2026;
-    const PAD = { l: 12, r: 12, t: 16, b: 28 };
-    // Mobile: extra floor so the round drag knobs sit on the axis without eating labels.
-    const isMobile = () => window.innerWidth <= 640;
-    const padB = () => (isMobile() ? 40 : PAD.b);
+    const PAD = { l: 12, r: 12 };
+    // This is the SAME condition as the phone media query in CalculatorSlide.css, which
+    // sizes the dragger — asked via matchMedia so the two cannot drift. (They had: JS was
+    // still on 640 after the CSS moved to 800, so between 641 and 800 the knobs were
+    // seated for a floor the canvas never drew.)
+    const isMobile = () => window.matchMedia('(max-width: 800px)').matches;
+    // Below-axis chrome, taken straight off the mockups (desktop Frame 2087324971, phone
+    // iPhone 17-36). Every number is a distance DOWN FROM THE AXIS in css px: the white
+    // year dot, the year label's baseline, and where the green pole stops — which is the
+    // top edge of the dragger. The dragger sits ON the canvas floor, so the floor IS its
+    // height plus its own top gap; nothing here is a nudge on top of anything else.
+    const DOT_DY = 14.5, LABEL_DY = 37.3, POLE_END_DY = 11.5;
+    const PILL_H = 33, KNOB_D = 48, KNOB_TOP_DY = 6.5;
+    const padB = () => (isMobile() ? KNOB_TOP_DY + KNOB_D : POLE_END_DY + PILL_H);
+    // Headroom for the year the phone prints ABOVE the endpoint dot (13px type + its
+    // 10px lift); on desktop that year lives in the pill under the axis instead.
+    const padT = () => (isMobile() ? 30 : 16);
     // Slight X-domain gutter so edge years aren’t flush with the plot ends (matches charts).
     const X_EDGE_PAD = 0.02;
     const plotW = () => canvas.clientWidth - PAD.l - PAD.r;
@@ -86,24 +100,28 @@ export function CalculatorSlide() {
       hatch.clear(); // the resize invalidates the cached pattern — rebuild it this frame
       const ctx = canvas!.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
 
-      const floor = padB();
+      const floor = padB(), top = padT();
       const mobile = isMobile();
       let lo = Infinity, hi = -Infinity;
       for (let i = I0; i < rows.length; i++) { const l = Math.log(rows[i].tr); if (l < lo) lo = l; if (l > hi) hi = l; }
       const spanV = (hi - lo) || 1;
-      const yOf = (tr: number) => PAD.t + (1 - (Math.log(tr) - lo) / spanV) * (H - PAD.t - floor);
+      const yOf = (tr: number) => top + (1 - (Math.log(tr) - lo) / spanV) * (H - top - floor);
 
-      ctx.font = "11px 'Space Mono', monospace"; ctx.textAlign = 'center';
+      // The axis, then its chrome hanging UNDER it: a dot per decade mark and the year
+      // below it (mockup: white, Space Mono 14 — same on both breakpoints).
+      const ay = H - floor;
+      ctx.font = "14px 'Space Mono', monospace"; ctx.textAlign = 'center';
       for (let yr = 1940; yr < MAXY; yr += 20) {
         const gx = xOf(yr);
         ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(gx, PAD.t); ctx.lineTo(gx, H - floor); ctx.stroke();
-        ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillText(String(yr), gx, H - 9);
+        ctx.beginPath(); ctx.moveTo(gx, top); ctx.lineTo(gx, ay); ctx.stroke();
+        ctx.fillStyle = TICK_INK;
+        ctx.beginPath(); ctx.arc(gx, ay + DOT_DY, 3, 0, 7); ctx.fill();
+        ctx.fillText(String(yr), gx, ay + LABEL_DY);
       }
-      // solid white X axis along the plot floor (matches the charts chapter's baseline);
-      // the year labels sit just below it.
+      // solid white X axis along the plot floor (matches the charts chapter's baseline).
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(PAD.l, H - floor); ctx.lineTo(W - PAD.r, H - floor); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(PAD.l, ay); ctx.lineTo(W - PAD.r, ay); ctx.stroke();
 
       const drawSeg = (a: number, b: number, color: string, width: number) => {
         ctx.beginPath();
@@ -118,7 +136,7 @@ export function CalculatorSlide() {
       ctx.beginPath(); ctx.moveTo(xOf(rows[i0].t), H - floor);
       for (let i = i0; i <= i1; i++) ctx.lineTo(xOf(rows[i].t), yOf(rows[i].tr));
       ctx.lineTo(xOf(rows[i1].t), H - floor); ctx.closePath();
-      const grad = ctx.createLinearGradient(0, PAD.t, 0, H - floor);
+      const grad = ctx.createLinearGradient(0, top, 0, ay);
       grad.addColorStop(0, `rgba(97,226,107,${FILL_MAX})`); grad.addColorStop(1, 'rgba(97,226,107,0)');
       ctx.fillStyle = grad; ctx.fill();
       const pat = hatch.get(ctx, GREEN); // diagonal hatch over the same area (mockup signature)
@@ -142,15 +160,15 @@ export function CalculatorSlide() {
       const ax = xOf(rows[i0].t), bx = xOf(rows[i1].t);
       flagA!.style.left = ax + 'px'; flagA!.querySelector('.yr')!.textContent = String(startY);
       flagB!.style.left = bx + 'px'; flagB!.querySelector('.yr')!.textContent = String(endY);
-      const knobR = mobile ? 22 : 0; // half of 44px mobile knob
+      // The pole stops at the dragger's top edge — it runs THROUGH the axis, as in both
+      // mockups. The dragger itself needs no JS seat: the floor is cut to its height, so
+      // its CSS bottom:0 already lands it right under the axis.
       for (const el of [flagA!, flagB!]) {
         const line = el.querySelector('.line') as HTMLElement | null;
-        const knob = el.querySelector('.knob') as HTMLElement | null;
-        if (line) line.style.bottom = floor + 'px';
-        if (knob) knob.style.bottom = Math.max(0, floor - knobR) + 'px';
+        if (line) line.style.bottom = (floor - POLE_END_DY) + 'px';
       }
       // Hint is a child of flag A — lift above the axis / knob.
-      hintEl!.style.bottom = (floor + (mobile ? 28 : 18)) + 'px';
+      hintEl!.style.bottom = (floor + (mobile ? 28 : 13)) + 'px';
 
       const nomMult = rows[i1].tr / rows[i0].tr;
       const realMult = nomMult * (rows[i0].cpi / rows[i1].cpi);
@@ -163,7 +181,7 @@ export function CalculatorSlide() {
         `<div class="sub">${fmtX(nomMult)} · <b>${fmtPct(nomCAGR)}</b>/yr · <span class="ri">real ${fmtMoney(realFinal)}</span></div>` +
         `<div class="big">${fmtMoney(nomFinal)}</div>`;
       noteEl!.innerHTML =
-        `S&amp;P 500 total return (dividends reinvested), Shiller data. “Real” = value in ${startY}<br>purchasing power (CPI-adjusted). Excludes taxes and fees.`;
+        `S&amp;P 500 total return (dividends reinvested), Shiller data. “Real” = value in ${startY} purchasing power (CPI-adjusted). Excludes taxes and fees.`;
     }
 
     let drag: 'A' | 'B' | null = null;

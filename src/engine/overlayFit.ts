@@ -1,15 +1,27 @@
 /**
- * Mobile-only (≤800): extra framing pull for the bull+taxi dimensions beat.
- * Same GlbScene / track — only the scroll window squeezes the subject so the
- * profile + Checker cab fit with a little margin, then eases back after the cab leaves.
+ * How the green measurement overlays follow the 3D bull.
  *
- * Envelope (OPENER_TRACK):
- *   0.62→0.67  rise during turn to profile
- *   0.67→0.73  hold (Tonnes overlays + cab)
- *   0.73→0.80  fall after cab exit, before explode
+ * Two independent effects, both live here so an overlay never grows its own copy:
+ *
+ * 1. ASPECT MATCH (desktop, every stage). Below the ~16:9 design aspect GlbScene
+ *    widens the vertical fov (see GlbScene.effectiveFov) so the bull is framed by
+ *    WIDTH and shrinks as the window narrows. vh-laid overlays would keep their
+ *    height-based size and drift off the subject, so they take the same factor.
+ *
+ * 2. MOBILE PROFILE FIT (≤800, bull+taxi dimensions beat only). Same GlbScene /
+ *    track — only the scroll window pulls the camera back so the profile + Checker
+ *    cab fit with a little margin, then eases in after the cab leaves.
+ *
+ *    Envelope (OPENER_TRACK):
+ *      0.62→0.67  rise during turn to profile
+ *      0.67→0.73  hold (Tonnes overlays + cab)
+ *      0.73→0.80  fall after cab exit, before explode
  */
 
 const MOBILE_MAX = 800;
+
+/** Same REF as GlbScene.effectiveFov — bull + overlays shrink together below it. */
+const REF_ASPECT = 16 / 9;
 
 const FIT_IN0 = 0.62;
 const FIT_IN1 = 0.67;
@@ -25,6 +37,20 @@ const smoothstep = (t: number) => {
   t = clamp01(t);
   return t * t * (3 - 2 * t);
 };
+
+/**
+ * Desktop aspect match: 1 at/above the design aspect, shrinking with the window
+ * below it. Mobile is 1 — there the host is frozen at 800px (ModelChapter.css),
+ * so the bull is height-framed and vh overlays already track it.
+ */
+export function bullMatchScale(): number {
+  if (typeof window === 'undefined') return 1;
+  const W = window.innerWidth;
+  const H = window.innerHeight || 1;
+  if (W <= MOBILE_MAX) return 1;
+  const aspect = W / H;
+  return aspect >= REF_ASPECT ? 1 : aspect / REF_ASPECT;
+}
 
 /** 0 = normal framing, 1 = peak squeeze. Desktop always 0. */
 export function mobileProfileFitAmount(t: number): number {
@@ -54,4 +80,9 @@ export function mobileProfileOverlayScale(t: number): number {
   // Tighter than the caption column — green measures should sit inside ~36ch feel.
   const optical = 0.30 + 0.32 * crop;
   return optical / mobileProfileDistScale(t);
+}
+
+/** Full overlay scale for the bull+taxi dimensions beat (aspect match × profile fit). */
+export function tonnesOverlayScale(t: number): number {
+  return bullMatchScale() * mobileProfileOverlayScale(t);
 }

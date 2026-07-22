@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
 import { tuneStore } from './tuneEditor';
 import copy from '../content/copy.json';
+import { bullMatchScale } from './overlayFit';
 // Inlined (not <img>) so the SVG can use the page's @font-face fonts. On DESKTOP the
 // label SVGs are used as-is; on MOBILE all copy is rendered as DOM text from
 // content/copy.json (per the "no text baked into SVG" rule) — only the pure-graphic
@@ -25,7 +26,9 @@ import MEASURE_ARROW from '../assets/parts/measure-arrow.svg?raw'; // ↕ arrow 
  *
  * Every piece is anchored to screen centre and positioned + sized in vh so it tracks the
  * bull on resize; base x/y are the piece's CENTRE from centre in vh (per-breakpoint), with
- * the ✎ editor's saved vh offset + scale added each frame.
+ * the ✎ editor's saved vh offset + scale added each frame. All pieces live in ONE wrapper
+ * scaled from screen centre by the desktop aspect match (overlayFit.bullMatchScale), so
+ * below ~16:9 the labels shrink with the width-framed bull instead of sliding off it.
  */
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
@@ -78,6 +81,7 @@ export default function PartsFrame() {
   }, []);
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const greenRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLDivElement>(null);
   const emptyRef = useRef<HTMLDivElement>(null);
@@ -115,6 +119,11 @@ export default function PartsFrame() {
           `translate(${(pc.x + ox).toFixed(2)}vh, ${(pc.y + oy).toFixed(2)}vh) ` +
           `scale(${(pc.s * ts).toFixed(4)}) translate(-50%, -50%)`;
       }
+      const green = greenRef.current;
+      if (green) {
+        const k = bullMatchScale();
+        green.style.transform = Math.abs(k - 1) < 1e-4 ? '' : `scale(${k.toFixed(4)})`;
+      }
     };
     // Opacity is scroll-driven. Visible around the explode (cam stop @ f10.6 / 0.80):
     // rise 0.80→0.835, hold, then dissolve at f11.1 (0.842 → 0.877).
@@ -138,9 +147,11 @@ export default function PartsFrame() {
     applyOpacity();
     applyPieces();
     if (tuneStore.active) startRaf();
+    const onResize = () => applyPieces();
+    window.addEventListener('resize', onResize);
     const unsubScroll = progress.on('change', () => { applyOpacity(); if (!tuneStore.active) applyPieces(); });
     const unsubEdit = tuneStore.onActiveChange((on) => { if (on) startRaf(); else { stopRaf(); applyPieces(); } });
-    return () => { unsubScroll(); unsubEdit(); stopRaf(); };
+    return () => { window.removeEventListener('resize', onResize); unsubScroll(); unsubEdit(); stopRaf(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, isMobile]);
 
@@ -151,91 +162,93 @@ export default function PartsFrame() {
 
   return (
     <div ref={rootRef} className="absolute inset-0 pointer-events-none" style={{ opacity: 0 }}>
-      {/* "30" (outlined graphic) + subtitle (DOM text) — one draggable block */}
-      <div ref={titleRef} data-tune="parts.title" data-tune-mode="store" className="absolute" style={anchor}>
+      <div ref={greenRef} className="absolute inset-0" style={{ transformOrigin: '50% 50%' }}>
+        {/* "30" (outlined graphic) + subtitle (DOM text) — one draggable block */}
+        <div ref={titleRef} data-tune="parts.title" data-tune-mode="store" className="absolute" style={anchor}>
+          <div
+            className="[&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+            style={{ width: mob('12vh', '19.5vh') }}
+            dangerouslySetInnerHTML={{ __html: N30 }}
+          />
+          <div
+            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.75vh', '3vh'), lineHeight: 1.2, marginTop: mob('0.8vh', '1.2vh') }}
+            dangerouslySetInnerHTML={{ __html: copy.parts.subtitle }}
+          />
+        </div>
+
+        {/* green marker dot (points at the hollow cavity / cheek) */}
         <div
-          className="[&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ width: mob('12vh', '19.5vh') }}
-          dangerouslySetInnerHTML={{ __html: N30 }}
+          ref={dotRef}
+          data-tune="parts.dot"
+          data-tune-mode="store"
+          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+          style={{ ...anchor, width: mob('4.6vh', '4vh') }}
+          dangerouslySetInnerHTML={{ __html: DOT }}
+        />
+
+        {/* "Empty inside" — DOM text on mobile, SVG on desktop */}
+        <div
+          ref={emptyRef}
+          data-tune="parts.emptyInside"
+          data-tune-mode="store"
+          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+          style={{ ...anchor, width: mob('9vh', '32vh') }}
+        >
+          {isMobile
+            ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75vh', lineHeight: 1.15 }}>{copy.parts.emptyInside}</div>
+            : <div dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }} />}
+        </div>
+
+        {/* "5 cm" vertical measure (wall thickness) — DOM text + arrow on mobile, SVG on desktop */}
+        <div
+          ref={measureRef}
+          data-tune="parts.measure5cm"
+          data-tune-mode="store"
+          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+          style={{ ...anchor, width: mob('7vh', '11vh') }}
+        >
+          {isMobile
+            ? (
+              <>
+                <div style={{ color: green, fontFamily: 'var(--font-mono)', fontSize: '2.5vh', lineHeight: 1, textAlign: 'center' }}>{copy.parts.measure}</div>
+                <div
+                  className="[&>svg]:block [&>svg]:mx-auto [&>svg]:w-full [&>svg]:h-auto"
+                  style={{ width: '1.9vh', margin: '0.6vh auto 0' }}
+                  dangerouslySetInnerHTML={{ __html: MEASURE_ARROW }}
+                />
+              </>
+            )
+            : <div dangerouslySetInnerHTML={{ __html: MEASURE_5CM }} />}
+        </div>
+
+        {/* horns note — "cast thicker, ~7.5 cm of bronze" (DOM text, both layouts) */}
+        <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: mob('34vh', '57vh') }}>
+          <div
+            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06vh', '2.25vh'), lineHeight: 1.55 }}
+            dangerouslySetInnerHTML={{ __html: copy.parts.horns }}
+          />
+        </div>
+
+        {/* marker dots — both horn tips + the nose (parts.dot). All three on both
+            breakpoints: the second used to be desktop-only, with [0,0] standing in for its
+            mobile seat, so on a phone the frame showed two dots instead of three. */}
+        <div
+          ref={hornsDot1Ref}
+          data-tune="parts.hornsDot1"
+          data-tune-mode="store"
+          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+          style={{ ...anchor, width: mob('4.6vh', '4vh') }}
+          dangerouslySetInnerHTML={{ __html: DOT }}
         />
         <div
-          style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.75vh', '3vh'), lineHeight: 1.2, marginTop: mob('0.8vh', '1.2vh') }}
-          dangerouslySetInnerHTML={{ __html: copy.parts.subtitle }}
+          ref={hornsDot2Ref}
+          data-tune="parts.hornsDot2"
+          data-tune-mode="store"
+          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+          style={{ ...anchor, width: mob('4.6vh', '4vh') }}
+          dangerouslySetInnerHTML={{ __html: DOT }}
         />
       </div>
-
-      {/* green marker dot (points at the hollow cavity / cheek) */}
-      <div
-        ref={dotRef}
-        data-tune="parts.dot"
-        data-tune-mode="store"
-        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: mob('4.6vh', '4vh') }}
-        dangerouslySetInnerHTML={{ __html: DOT }}
-      />
-
-      {/* "Empty inside" — DOM text on mobile, SVG on desktop */}
-      <div
-        ref={emptyRef}
-        data-tune="parts.emptyInside"
-        data-tune-mode="store"
-        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: mob('9vh', '32vh') }}
-      >
-        {isMobile
-          ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75vh', lineHeight: 1.15 }}>{copy.parts.emptyInside}</div>
-          : <div dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }} />}
-      </div>
-
-      {/* "5 cm" vertical measure (wall thickness) — DOM text + arrow on mobile, SVG on desktop */}
-      <div
-        ref={measureRef}
-        data-tune="parts.measure5cm"
-        data-tune-mode="store"
-        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: mob('7vh', '11vh') }}
-      >
-        {isMobile
-          ? (
-            <>
-              <div style={{ color: green, fontFamily: 'var(--font-mono)', fontSize: '2.5vh', lineHeight: 1, textAlign: 'center' }}>{copy.parts.measure}</div>
-              <div
-                className="[&>svg]:block [&>svg]:mx-auto [&>svg]:w-full [&>svg]:h-auto"
-                style={{ width: '1.9vh', margin: '0.6vh auto 0' }}
-                dangerouslySetInnerHTML={{ __html: MEASURE_ARROW }}
-              />
-            </>
-          )
-          : <div dangerouslySetInnerHTML={{ __html: MEASURE_5CM }} />}
-      </div>
-
-      {/* horns note — "cast thicker, ~7.5 cm of bronze" (DOM text, both layouts) */}
-      <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: mob('34vh', '57vh') }}>
-        <div
-          style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06vh', '2.25vh'), lineHeight: 1.55 }}
-          dangerouslySetInnerHTML={{ __html: copy.parts.horns }}
-        />
-      </div>
-
-      {/* marker dots — both horn tips + the nose (parts.dot). All three on both
-          breakpoints: the second used to be desktop-only, with [0,0] standing in for its
-          mobile seat, so on a phone the frame showed two dots instead of three. */}
-      <div
-        ref={hornsDot1Ref}
-        data-tune="parts.hornsDot1"
-        data-tune-mode="store"
-        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: mob('4.6vh', '4vh') }}
-        dangerouslySetInnerHTML={{ __html: DOT }}
-      />
-      <div
-        ref={hornsDot2Ref}
-        data-tune="parts.hornsDot2"
-        data-tune-mode="store"
-        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-        style={{ ...anchor, width: mob('4.6vh', '4vh') }}
-        dangerouslySetInnerHTML={{ __html: DOT }}
-      />
     </div>
   );
 }

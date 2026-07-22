@@ -61,12 +61,16 @@
 /* Charts plot band ≈ 62% of stage (padT 18% + padB 20%); leave room for lead + note. */
 .calc-chart { width: 100%; height: clamp(280px, 54vh, 680px); display: block; }
 .calc-flag { position: absolute; top: 0; bottom: 0; width: 0; }
-.calc-flag .line { position: absolute; top: 0; bottom: 26px; left: -1px; width: 2px; background: #61E26B; }
+/* Pole: bottom is set in JS to the dragger's top edge, so it runs through the axis. */
+.calc-flag .line { position: absolute; top: 0; left: -1px; width: 2px; background: #61E26B; }
 .calc-flag .grab { position: absolute; left: -15px; top: 0; bottom: 0; width: 30px; cursor: ew-resize; }
+/* Dragger, desktop: the mockup's 51×33 pill. It sits ON the canvas floor (bottom: 0) —
+   the floor is cut to exactly its height + gap in JS, which is what puts it under the axis. */
 .calc-flag .yr {
   position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); cursor: ew-resize;
-  font: 700 12px var(--font-mono); color: #06210b; background: #61E26B;
-  padding: 5px 11px; border-radius: 8px; white-space: nowrap;
+  display: grid; place-items: center; width: 51px; height: 33px;
+  font: 700 14px var(--font-mono); color: #06210b; background: #61E26B;
+  border-radius: 8px; white-space: nowrap;
 }
 /* Round drag knobs — mobile only (desktop keeps the year pills). */
 .calc-flag .knob { display: none; }
@@ -76,19 +80,20 @@
 /* Hint — child of the left flag (штанга). X follows the pole; bottom is set in JS to the axis. */
 .calc-hint {
   position: absolute; left: 0; bottom: 46px; z-index: 2;
-  width: min(352px, 46vw); opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
-  font: 400 clamp(17px, 1.9vw, 24px)/1.32 var(--font-struve); color: #61E26B;
+  /* Fixed px, like the phone layout below: the hint is a plate at its design size on the
+     whole >800 range, not a fluid block that shrinks with the window. */
+  width: 352px; opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
+  font: 400 24px/1.32 var(--font-struve); color: #61E26B;
   /* fully left of the pole (+ gap) so text/arc never cross the штанга */
-  transform: translate(calc(-100% - 20px), -1.11vh);
+  transform: translate(calc(-100% - 22px), 0);
 }
 /* White ↔ is the first character of the text — inline on the same line, with a space after it */
 .calc-hint .ar { display: inline-block; vertical-align: -0.02em; width: 1.15em; height: 0.66em; margin-right: 0.3em; fill: #fff; }
 /* Green curved arrow hangs off the text's right edge and dives at the year flag below.
    Absolute, so it can overhang the hint's max-width and drop past its bottom. */
 .calc-hint .arc {
-  position: absolute; left: calc(100% + 2px); bottom: -36px;
+  position: absolute; left: calc(100% - 78px); bottom: -41px;
   width: 2.9em; height: 3.07em; fill: #61E26B;
-  transform: translate(0, 0.4vh);
 }
 /* Credits tone close to .cc-legend on bull frames */
 .calc-note {
@@ -96,10 +101,13 @@
   color: rgba(245, 243, 238, 0.55);
   margin-top: 20px;
 }
-@media (max-width: 560px) { .calc-top { align-items: flex-start; } .calc-result { text-align: left; } }
-
-/* Mobile: keep 10vw sides (like charts); shorten the plot so the sticky still fits. */
-@media (max-width: 640px) {
+/* Mobile: keep 10vw sides (like charts); shorten the plot so the sticky still fits.
+   ≤800 is the project-wide phone breakpoint (MOBILE_MAX in the engine, ModelChapter.css,
+   the `max-[800px]:` Tailwind layer) — this slide used to switch at 640, so 641–800 got
+   the desktop hint/pills fluid-scaled down instead of the phone layout. */
+@media (max-width: 800px) {
+  .calc-top { align-items: flex-start; }
+  .calc-result { text-align: left; }
   .calc-sticky { padding: clamp(14px, 2.5vh, 24px) 10vw; }
   .calc-amt { font-size: clamp(20px, 5.4vw, 28px); }
   .calc-result .big { font-size: clamp(27px, 7.4vw, 40px); }
@@ -108,29 +116,33 @@
   .calc-note { margin-top: 12px; }
 
   /* Year pills → round green knobs with the ↔ SVG; years move onto the canvas.
-     Axis floor is padB=40 (JS) — line stops there, knob is centred on it. */
+     Same seat as the pill: bottom: 0 on a floor cut to the knob's own height. */
   .calc-flag .yr { display: none; }
-  .calc-flag .line { bottom: 40px; background: rgba(255, 255, 255, 0.92); }
   .calc-flag .grab { left: -28px; width: 56px; }
   .calc-flag .knob {
     display: grid; place-items: center;
-    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
-    width: 44px; height: 44px; border-radius: 50%;
+    position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+    width: 48px; height: 48px; border-radius: 50%;
     background: #61E26B; pointer-events: none;
   }
   .calc-flag .knob svg { display: block; width: 22px; height: 12px; fill: #06210b; }
+}
 
-  /* Same copy + both SVGs — only type + park vs the left штанга. */
+/* The hint switches to the phone layout EARLIER than the rest of the slide: it is parked
+   to the LEFT of the left штанга, so it runs out of room long before the chart does — at
+   352px wide the desktop plate starts crossing the plot's left edge under ~1100.
+   Same copy + both SVGs — only type + park change.
+   ONE plate for the whole range: fixed px, no vw clause, so the smallest phone and an
+   1100-wide window get the identical block — same width, same wrap, same arc seat. */
+@media (max-width: 1100px) {
   .calc-hint {
-    width: min(200px, 54vw);
+    width: 200px;
     font-size: 15px; line-height: 1.28;
-    color: rgba(97, 226, 107, 0.4);
     transform: translate(calc(-100% - 6px), 0);
   }
-  .calc-hint .ar { fill: rgba(97, 226, 107, 0.55); width: 1em; height: 0.58em; }
+  .calc-hint .ar { width: 1em; height: 0.58em; }
   .calc-hint .arc {
-    left: calc(100% - 4px); bottom: -40px;
+    left: calc(100% - 60px); bottom: -40px;
     width: 2.4em; height: 2.55em;
-    transform: none;
   }
 }

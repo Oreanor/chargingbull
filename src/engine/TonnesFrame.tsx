@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
 import { tuneStore } from './tuneEditor';
-import { mobileProfileOverlayScale } from './mobileProfileFit';
+import { tonnesOverlayScale } from './overlayFit';
 // Inlined (not <img>) so the SVG <text> can use the page's @font-face fonts
 // (Space Mono for the m-labels, the display face for the headline). As <img>
 // these would render in an isolated context with no access to our webfonts.
@@ -22,8 +22,6 @@ import BASELINE from '../assets/tonnes/baseline.svg?raw';        // dashed groun
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); };
 
-/** Same REF as GlbScene.effectiveFov — bull + overlays shrink together below it. */
-const REF_ASPECT = 16 / 9;
 const MOBILE_MAX = 800;
 
 /** Mobile caption — line 1 = «Compare it with the Checker Marathon» (no «taxi»). */
@@ -37,18 +35,6 @@ const CAPTION_MOBILE = {
 } as const;
 
 const CAPTION_DESKTOP = { x: -12.63, y: 34.31, s: 0.801 };
-
-function desktopBullMatchScale(): number {
-  const W = window.innerWidth;
-  const H = window.innerHeight || 1;
-  if (W <= MOBILE_MAX) return 1;
-  const aspect = W / H;
-  return aspect >= REF_ASPECT ? 1 : aspect / REF_ASPECT;
-}
-
-function overlayFitScale(p: number): number {
-  return desktopBullMatchScale() * mobileProfileOverlayScale(p);
-}
 
 interface Piece { id: string; x: number; y: number; s: number; ref: React.RefObject<HTMLDivElement | null> }
 
@@ -115,7 +101,7 @@ export default function TonnesFrame() {
           `translate(${(base.x + ox).toFixed(2)}vh, ${(base.y + oy).toFixed(2)}vh) ` +
           `scale(${(base.s * ts).toFixed(4)}) translate(-50%, -50%)`;
       }
-      const k = overlayFitScale(progress.get());
+      const k = tonnesOverlayScale(progress.get());
       green.style.transform = Math.abs(k - 1) < 1e-4 ? '' : `scale(${k.toFixed(4)})`;
     };
 

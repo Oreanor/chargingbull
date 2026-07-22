@@ -12,18 +12,15 @@ export const BM_PLATE_PATHS: string[] = [
 ];
 
 /** Top-left of the plate ink inside its own export. Only used to zero the paths out
- *  before placing them — the placement itself is BM_PLATE_Y below. */
+ *  before placing them — the placement itself is BM_PLATE_BASE_GAP below. */
 export const BM_PLATE_ORIGIN = { x: 783.76, y: 484.04 };
 
-/** WHERE the plate sits vertically, as a y in the 1142×501.5 DESIGN box — the same
- *  coordinate system the candles and ticks live in, so it rides the chart instead of
- *  drifting off it. Only the SIZE is fixed (the art is drawn 1:1); the seat is mapped.
- *  One number, and that number IS the position — design units, which are px at the design
- *  width. The mockup seat was 484.04; the plate now hangs off the crash column instead of
- *  sitting right of it, and rides 20 up from there. Written as the coordinate, never as a
- *  nudge stacked on the old one. */
-export const BM_PLATE_Y = 483.04;
-export const BM_PLATE_Y_PORT = 464.04;
+/** Clear space between the white baseline and the BOTTOM of the plate — the plate stands
+ *  on the axis, so this gap IS its vertical seat (screen px, matching the art, which is
+ *  drawn 1:1). One number per breakpoint. Replaces the old design-space y: that was a
+ *  coordinate in the plot box, so it slid off the line as the box rescaled. */
+export const BM_PLATE_BASE_GAP = 9;
+export const BM_PLATE_BASE_GAP_PORT = 13;
 
 /** Ink size of the plate in its own (unscaled) units — it is drawn 1:1, so these are
  *  also its CSS pixels on screen. Used to flip it to the LEFT of the crash candle on a

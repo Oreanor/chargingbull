@@ -16,7 +16,7 @@ import {
 import { stagesToTrack, type StagesFile } from './stagesToTrack';
 import { bullEditStore } from './editStore';
 import { tuneStore } from './tuneEditor';
-import { mobileProfileDistScale } from './mobileProfileFit';
+import { mobileProfileDistScale } from './overlayFit';
 
 /** What ModelChapter needs from a renderer. Both DatumScene (splats) and
  *  GlbScene (three.js meshes) satisfy it, so the editor/runtime are renderer-
