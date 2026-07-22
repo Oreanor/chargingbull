@@ -34,16 +34,27 @@ function tuneSavePlugin(): Plugin {
 
 // Dev-only endpoint: auto-BAKE the layout editor's edits straight into SOURCE (no runtime
 // delta layer). Handles the opener candle plates — folds each edit into the constants in
-// CandleIntro.tsx, so the tuned plaque IS its source position/scale/width (dev + prod,
-// single source of truth). Body: { "<id>": { d?: [dx,dy] vh, s?: scaleMult, w?: px|null } }
-// for id ∈ { opener.candle.fact.0..2, opener.candle.crash }. Offset ADDS (delta), scale
-// MULTIPLIES, width SETS (absolute px, null = clear).
+// CandleIntro.tsx, so the tuned plaque IS its source position (dev + prod, single source
+// of truth). Body: { bp, edits: { "<id>": { d?: [dx,dy] vh, s?, w? } } } for
+// id ∈ { opener.candle.fact.0..2, opener.candle.crash }. BOTH breakpoints bake: `bp`
+// picks the landscape constants (FACT_XY / CRASH_X / CRASH_Y) or the portrait ones
+// (FACT_XY_PORT / CRASH_X_PORT / CRASH_Y_PORT). Mobile edits used to have no source
+// home and were left in tune-layout.json instead — that runtime delta is how a stray
+// ×0.92 ended up multiplying the portrait plate.
+// Only the OFFSET is bakeable: the constants are plain frame px, so the vh delta is
+// converted once (VH_PX) and added. Scale/width are not source constants at all — the
+// plates are designer exports drawn at their native size (CRASH_W / the .ci-fact CSS
+// width), so such an edit is refused loudly instead of being folded in somewhere.
 type CandleEdit = { d?: [number, number]; s?: number; w?: number | null };
 function tuneBakePlugin(): Plugin {
   const candleFile = fileURLToPath(new URL('./src/engine/CandleIntro.tsx', import.meta.url));
   const r2 = (n: number) => Math.round(n * 100) / 100;
-  const r3 = (n: number) => Math.round(n * 1000) / 1000;
   const fmt = (v: unknown) => JSON.stringify(v).replace(/,/g, ', '); // match "[a, b]" source style
+  // The editor drags in vh of the real viewport; the constants are FRAME px. Both frames
+  // are fit-height (k = viewportH / frameH), so 1 viewport vh is exactly frameH/100 frame
+  // px and the drag lands where it was dropped. (Portrait caps at k = 1, so on a viewport
+  // TALLER than 852 the portrait factor is off — check the number after such a drag.)
+  const VH_PX = { desktop: 800 / 100, mobile: 852 / 100 };
   return {
     name: 'tune-bake',
     apply: 'serve',
@@ -54,42 +65,49 @@ function tuneBakePlugin(): Plugin {
         req.on('data', (c) => { body += c; });
         req.on('end', async () => {
           try {
-            const edits = JSON.parse(body) as Record<string, CandleEdit>;
+            const { bp = 'desktop', edits = {} } =
+              JSON.parse(body) as { bp?: 'desktop' | 'mobile'; edits?: Record<string, CandleEdit> };
+            const port = bp === 'mobile';
+            const vhPx = VH_PX[port ? 'mobile' : 'desktop'];
             const fact = (i: number) => edits[`opener.candle.fact.${i}`];
             const crash = edits['opener.candle.crash'];
+            // A scale/width edit has nowhere to go now — say so instead of dropping it.
+            const refused = Object.entries(edits)
+              .filter(([, e]) => e.s != null || 'w' in e)
+              .map(([id]) => id);
             let src = await readFile(candleFile, 'utf8');
-            // FACT_OFFSET (+= delta), FACT_SCALE (*= mult), FACT_WIDTH (= px|null)
-            src = src.replace(/(const FACT_OFFSET: \[number, number\]\[\] = )(\[.*\])(;)/, (_m, pre, arr, semi) => {
-              const cur = JSON.parse(arr) as [number, number][];
-              cur.forEach((p, i) => { const e = fact(i); if (e?.d) { p[0] = r2(p[0] + e.d[0]); p[1] = r2(p[1] + e.d[1]); } });
+            // Landscape: one pair per fact. Portrait: one pair, for the only visible fact (16 Oct).
+            const factRe = port
+              ? /(const FACT_XY_PORT: \[number, number\] = )(\[.*\])(;)/
+              : /(const FACT_XY: \[number, number\]\[\] = )(\[.*\])(;)/;
+            src = src.replace(factRe, (_m, pre, arr, semi) => {
+              const cur = JSON.parse(arr) as number[] | [number, number][];
+              if (port) {
+                const p = cur as number[], e = fact(2);
+                if (e?.d) { p[0] = r2(p[0] + e.d[0] * vhPx); p[1] = r2(p[1] + e.d[1] * vhPx); }
+              } else {
+                (cur as [number, number][]).forEach((p, i) => {
+                  const e = fact(i);
+                  if (e?.d) { p[0] = r2(p[0] + e.d[0] * vhPx); p[1] = r2(p[1] + e.d[1] * vhPx); }
+                });
+              }
               return pre + fmt(cur) + semi;
             });
-            src = src.replace(/(const FACT_SCALE = )(\[.*\])(;)/, (_m, pre, arr, semi) => {
-              const cur = JSON.parse(arr) as number[];
-              cur.forEach((s, i) => { const e = fact(i); if (e?.s != null) cur[i] = r3(s * e.s); });
-              return pre + fmt(cur) + semi;
-            });
-            src = src.replace(/(const FACT_WIDTH: \(number \| null\)\[\] = )(\[.*\])(;)/, (_m, pre, arr, semi) => {
-              const cur = JSON.parse(arr) as (number | null)[];
-              cur.forEach((_w, i) => { const e = fact(i); if (e && 'w' in e) cur[i] = e.w == null ? null : Math.round(e.w); });
-              return pre + fmt(cur) + semi;
-            });
-            // CRASH_OFFSET / CRASH_SCALE / CRASH_WIDTH
-            src = src.replace(/(const CRASH_OFFSET: \[number, number\] = )(\[.*\])(;)/, (_m, pre, arr, semi) => {
-              const cur = JSON.parse(arr) as [number, number];
-              if (crash?.d) { cur[0] = r2(cur[0] + crash.d[0]); cur[1] = r2(cur[1] + crash.d[1]); }
-              return pre + fmt(cur) + semi;
-            });
-            src = src.replace(/(const CRASH_SCALE: number = )([\d.]+)(;)/, (_m, pre, val, semi) => {
-              const cur = parseFloat(val);
-              return pre + (crash?.s != null ? r3(cur * crash.s) : cur) + semi;
-            });
-            src = src.replace(/(const CRASH_WIDTH: number \| null = )(null|[\d.]+)(;)/, (_m, pre, val, semi) => {
-              const cur = crash && 'w' in crash ? (crash.w == null ? null : Math.round(crash.w)) : (val === 'null' ? null : parseFloat(val));
-              return pre + (cur == null ? 'null' : cur) + semi;
-            });
+            const bumpScalar = (name: string, axis: 0 | 1, sign = 1) => {
+              src = src.replace(new RegExp(`(const ${name} = )(-?[\\d.]+)(;)`), (_m, pre, val, semi) =>
+                pre + (crash?.d ? r2(parseFloat(val) + sign * crash.d[axis] * vhPx) : parseFloat(val)) + semi);
+            };
+            // Portrait hangs to the LEFT of the last candle (left = candle − width − gap),
+            // so dragging it RIGHT means a SMALLER gap — hence the flipped sign.
+            bumpScalar(port ? 'CRASH_X_PORT' : 'CRASH_X', 0, port ? -1 : 1);
+            bumpScalar(port ? 'CRASH_Y_PORT' : 'CRASH_Y', 1);
             await writeFile(candleFile, src, 'utf8');
-            res.statusCode = 200; res.end('ok');
+            // 200 either way: the offsets DID bake, so the editor must clear its scratch
+            // (otherwise the same nudge is persisted twice and comes back doubled). The
+            // refusal list rides along and is logged by the editor.
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: true, refused }));
           } catch (e) {
             res.statusCode = 500; res.end(String(e));
           }
@@ -157,6 +175,42 @@ function classBakePlugin(): Plugin {
   };
 }
 
+// luma.gl (via deck.gl, via the map chapter) STATICALLY imports its Khronos
+// WebGL debug tooling from webgl-adapter.js / webgl-device.js. Both call sites are
+// guarded by `props.debug || props.debugWebGL || props.debugSpectorJS`, which we
+// never set — but a static import can't be tree-shaken, so it ships anyway: a
+// 209 KB chunk (62 KB gzip) that is almost entirely the full GL enum table, kept
+// un-inlinable on purpose because it exists only to spell out constant NAMES in
+// debug traces. On a phone that's a third of a megabyte parsed for nothing, and
+// its one runtime effect would be fetching webgl-debug off unpkg.
+//
+// So in the client build we swap the module for a stub with the same two exports.
+// makeDebugContext already returns the untouched context unless a debug flag is
+// passed, and loadWebGLDeveloperTools is only ever awaited behind the same flags —
+// so the stub is what production already ran, minus the payload. Dev keeps the
+// real module, so `debug: true` still works while authoring the map.
+const LUMA_DEBUG_MODULE = '@luma.gl/webgl/dist/context/debug/webgl-developer-tools.js';
+function stubLumaDebugToolsPlugin(): Plugin {
+  let hit = false;
+  return {
+    name: 'stub-luma-debug-tools',
+    apply: 'build',
+    load(id) {
+      if (!id.replace(/\\/g, '/').endsWith(LUMA_DEBUG_MODULE)) return null;
+      hit = true;
+      return [
+        'export async function loadWebGLDeveloperTools() {}',
+        'export function makeDebugContext(gl) { return gl; }',
+      ].join('\n');
+    },
+    buildEnd() {
+      // Loud, not silent: a luma.gl upgrade that moves this file would otherwise
+      // just quietly put the 209 KB back with nobody noticing.
+      if (!hit) this.warn(`stub-luma-debug-tools: ${LUMA_DEBUG_MODULE} never resolved — did luma.gl move it? The debug-tools chunk is back in the bundle.`);
+    },
+  };
+}
+
 export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
     { enforce: 'pre', ...mdx() },
@@ -164,6 +218,7 @@ export default defineConfig(({ isSsrBuild }) => ({
     tuneSavePlugin(),
     tuneBakePlugin(),
     classBakePlugin(),
+    stubLumaDebugToolsPlugin(),
   ],
   // Datum SDK — CJS/ESM-смесь + WASM (spark-форк). Пре-бандлим в dev, иначе HMR ругается.
   optimizeDeps: {

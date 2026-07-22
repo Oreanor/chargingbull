@@ -18,7 +18,6 @@ const config: Config = {
         struve: ['var(--font-struve)'],
         ayer: ['var(--font-ayer)'],
         martina: ['var(--font-martina)'],
-        repose: ['var(--font-repose)'],
         mono: ['var(--font-mono)'],
         grotesk: ['var(--font-grotesk)'],
         // keep generic aliases pointing at the design fonts

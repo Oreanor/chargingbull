@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useInViewMount } from './useInViewMount';
 import { useSmoothProgress } from './smoothScroll';
-import { createChartsEngine, CHART_STEPS, type ChartsEngine } from './charts/chartsEngine';
+import { createChartsEngine, CHART_STEPS, DWELL_HOLD_FRAC, type ChartsEngine } from './charts/chartsEngine';
 import { tuneStore } from './tuneEditor';
 import copy from '../content/copy.json';
-import BM_MINUS_20 from '../assets/charts/bm-minus-20.png';
 import './ChartsChapter.css';
 
 /**
@@ -19,17 +18,50 @@ const N = CHART_STEPS.length;
 
 /** Extra scroll (vh) after the chart reaches its LAST frame: the chart holds while the
  *  final «Minus inflation» card slides straight up and off on its own, before the next
- *  slide (AnatomyCrisis) rises over the clean chart — all at plain 1:1 scroll speed. */
-const EXIT_VH = 70;
+ *  slide (AnatomyCrisis) rises over the clean chart — all at plain 1:1 scroll speed.
+ *  Was 70, which only carried the card ~45% of the way up: it was still on screen when
+ *  the section released and Anatomy started rising over it. The card now has to travel
+ *  ~1.9× further (see lastExitSpan), so the tail grew to match — same ride speed, just
+ *  enough room to finish the move and then hold the bare chart for a beat. */
+const EXIT_VH = 140;
+
+/** Scroll (vh) BEFORE the chart starts morphing: the chart holds its first frame while the
+ *  opening card rides up into place. Without it that card had nowhere to come from — every
+ *  other card rides in through the still window on the LEFT of its frame, and frame 0 has
+ *  no left. So it simply materialised with the stage's own crossfade instead of arriving. */
+const ENTRY_VH = 90;
+
+/** Fraction of the lead-in by which the opening card must be fully parked. */
+const ENTRY_CLEAR = 0.72;
+
+/** Fraction of the tail by which the final card must be COMPLETELY off the top.
+ *  The rest of the tail is the clean-chart beat before AnatomyCrisis rises. */
+const EXIT_CLEAR = 0.72;
+
+/** Minimum breathing room between the X labels and the credits block below them. */
+const LEGEND_CLEARANCE = 30;
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
-// Non-uniform scroll per transition. Overall chronometry is stretched (SEG_BASE) so
-// holds AND morphs both get more scroll — don’t steal morph budget via denser dwells.
-// bm→0a (k=0) slower candle rebuild; 0a→0b (k=1) long reveal→hold→compress.
-const SEG_BASE = 1.4;
+/** Views that show no card. Empty: every frame now carries one — the candle close-up gets
+ *  «From points to percent» (Note 2) and each drawdown its own crisis note (Notes 3–6),
+ *  with the Dotcom bust following them. Kept as a named set rather than deleted, because
+ *  the scroll budget below reads it: a step landing on a card has to pay for the plate's
+ *  ride, a bare one does not. */
+const CARDLESS_VIEWS = new Set<string>();
+
+// Scroll budget per transition. A step pays for what actually HAPPENS in it:
+//  · the candle rebuild (bm→0a) is three beats of animation — burn, daily line, straighten;
+//  · a step that lands on a card also has to carry the plate in, hold it, and carry it out;
+//  · a cardless drawdown step only plays its morph and lets it land.
+// They used to cost the same, so the five drawdown frames — none of which carry a card —
+// were mostly dead travel: 80% of each step spent scrolling a chart that never moved. And
+// 0a→0b carried an extra 2.4× left over from the widen-and-hold that no longer exists.
+const W_CANDLE = 3.6;
+const W_CARD = 2.5;
+const W_BARE = 1.0;
 const SEG_W = Array.from({ length: Math.max(1, N - 1) }, (_, k) => (
-  k === 0 ? 1.95 * SEG_BASE : k === 1 ? 2.4 * SEG_BASE : SEG_BASE
+  k === 0 ? W_CANDLE : CARDLESS_VIEWS.has(CHART_STEPS[k + 1].view) ? W_BARE : W_CARD
 ));
 const SEG_CUM = SEG_W.reduce<number[]>((a, w) => (a.push(a[a.length - 1] + w), a), [0]);
 const SEG_TOTAL = SEG_CUM[SEG_CUM.length - 1];
@@ -41,16 +73,10 @@ function warpIdx(chartRaw: number): number {
   return k + (u - SEG_CUM[k]) / SEG_W[k];
 }
 
-/** Candle close-up + the drawdown slides before the Dotcom bust show no card. */
-const CARDLESS_VIEWS = new Set(['bm', '0a', '0b', '0c', '0d']);
-
 /** Steps that carry a text card, with their step index (for opacity timing). */
 const CARD_STEPS = CHART_STEPS
   .map((s, i) => ({ s, i }))
   .filter(({ s }) => !CARDLESS_VIEWS.has(s.view));
-
-/** Black Monday plate text (HTML overlay on the candle frame). */
-const BM = copy.charts.blackMonday;
 
 export default function ChartsChapter() {
   // Series is bundled (no CSV fetch). Mount a bit early so the canvas is ready when
@@ -60,7 +86,6 @@ export default function ChartsChapter() {
   const brandRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
   const legendRef = useRef<HTMLDivElement>(null);
-  const bmPlateRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const progress = useSmoothProgress(ref);
@@ -94,6 +119,20 @@ export default function ChartsChapter() {
       setEngine(null);
     };
   }, [mounted]);
+
+  // Tell the engine how much room the credits block needs under the plot, so the X
+  // labels are laid out above it instead of across it. Measured, not a breakpoint guess:
+  // the block is fixed 16/24 text and wraps to six lines on a narrow phone.
+  useEffect(() => {
+    const eng = engine, el = legendRef.current;
+    if (!eng || !el) return;
+    const push = () => eng.setBottomReserve(el.offsetHeight + LEGEND_CLEARANCE);
+    push();
+    const ro = new ResizeObserver(push);
+    ro.observe(el);
+    window.addEventListener('resize', push);
+    return () => { ro.disconnect(); window.removeEventListener('resize', push); };
+  }, [engine]);
 
   // Stage CROSSFADE — driven by RAW scroll (not the section-clamped progress, which
   // stays pinned at 0 during the approach and so can't animate the entry). The stage is
@@ -176,41 +215,55 @@ export default function ChartsChapter() {
       const secEl = ref.current;
       const vh = window.innerHeight || 1;
       const rangePx = secEl ? Math.max(1, secEl.offsetHeight - vh) : 1;
+      // The section is three regions: a lead-in where the first card arrives, the morph
+      // itself, and a tail where the last card leaves. The chart only moves in the middle.
+      const rStart = clamp01((ENTRY_VH / 100) * vh / rangePx);
       const rEnd = clamp01((rangePx - (EXIT_VH / 100) * vh) / rangePx);
-      const chartRaw = rEnd > 0 ? clamp01(raw / rEnd) : raw;
+      const chartRaw = rEnd > rStart ? clamp01((raw - rStart) / (rEnd - rStart)) : raw;
+      // 0 while the first card is still riding in → 1 once the chart is free to morph.
+      const entryProg = rStart > 0 ? clamp01(raw / rStart) : 1;
       const idx = warpIdx(chartRaw);
       // 0 while the chart still morphs → 1 across the tail: drives the last card off.
       const exitProg = rEnd < 1 ? clamp01((raw - rEnd) / (1 - rEnd)) : 0;
       engine.draw(idx); // caption string is unused — the white per-frame caption was dropped
-      // Cards RIDE bottom→top at constant velocity through their step — exactly like the
-      // map/opener plaques (no fade-from-transparent): opacity is full and only fades at
-      // the off-screen edges, and a translateY sweeps them up. Card i parks a beat AFTER
-      // its chart frame has landed (CARD_LAG), so the bare plot hangs for ~⅓ step of
-      // scroll before the plate covers it; then rides off as the step continues
-      // (overall pace comes from SEG_W, not a squeezed morph window).
+      // Cards RIDE bottom→top at constant velocity (no fade-from-transparent — opacity is
+      // full and only fades at the off-screen edges, a translateY sweeps them up).
+      //
+      // The ride is SEQUENCED against the chart, not overlaid on it. Card i is centred on
+      // idx === i, which is exactly where its frame has landed, and the whole ride lives
+      // inside the window where the chart is STILL — the engine's dwell either side of
+      // that index. So a step reads: morph · bare chart · plate in, hold, out · morph.
+      // It used to park a third of a step LATE and exit across the next morph, so the
+      // plate was sliding while the chart was still redrawing underneath it.
+      //
+      // One set of numbers for every card — same speed, same moment, same everything.
       const fh = vh;
       const vhPx = fh / 100;
-      const CARD_LAG = 1 / 3; // clear-chart beat after the frame settles (~⅓ wheel)
-      const REACH = 0.35;     // ride off during the start-dwell / early morph
-      const FADE = 0.15;      // fade only over the outer (off-screen) edges
+      const CARD_HOLD = 0.10;   // parked, dead still
+      const MARGIN = 0.02;      // never touch the morph on either side
+      const CARD_RIDE = DWELL_HOLD_FRAC - CARD_HOLD - MARGIN; // travel, each side
+      const FADE = 0.15;        // fade only over the outer (off-screen) edges
+      /** Rest → fully off the top: what the final card's tail exit has to cover. */
+      const rideSpan = CARD_HOLD + CARD_RIDE;
+      const firstCardIdx = CARD_STEPS[0].i;
       for (const { i, s } of CARD_STEPS) {
         const el = cardRefs.current[i];
         if (!el) continue;
-        // The final «Minus inflation» card doesn't park at the end — across the tail it
-        // rides UP and OFF on its own (exitProg), leaving the clean chart before Anatomy rises.
-        // Enter across CARD_LAG (so at idx===i the plate is still fully off); exit across REACH.
-        const park = i + CARD_LAG;
-        const dist = idx - park + (i === lastCardIdx ? exitProg * 1.4 * REACH : 0);
-        const tt = dist < 0 ? dist / CARD_LAG : dist / REACH;
+        // The outer two cards borrow their missing half-window from the lead-in / tail:
+        // the first rides UP into place across the lead-in, the last rides UP and OFF across
+        // the tail. Same span and same speed as every card's own ride.
+        let d = idx - i;
+        if (i === firstCardIdx) d -= (1 - clamp01(entryProg / ENTRY_CLEAR)) * rideSpan;
+        if (i === lastCardIdx) d += clamp01(exitProg / EXIT_CLEAR) * rideSpan;
+        const off = Math.abs(d) - CARD_HOLD;
+        const tt = off <= 0 ? 0 : Math.sign(d) * (off / CARD_RIDE);
         const a = Math.abs(tt);
         const op = a < 1 ? (a > 1 - FADE ? (1 - a) / FADE : 1) : 0;
-        // Invest plates rest a bit lower so they don’t eat the 1987 purchase rule / $350K copy.
-        const bullNudge = (s.view === '2' || s.view === '3') ? fh * 0.08 : 0;
         const [ox, oy] = tuneStore.get(`charts.card.${s.view}`);
         const sc = tuneStore.getScale(`charts.card.${s.view}`);
         el.style.opacity = op.toFixed(3);
         el.style.visibility = op < 0.004 ? 'hidden' : 'visible';
-        const ty = bullNudge - tt * fh + oy * vhPx;
+        const ty = -tt * fh + oy * vhPx;
         const parts = [`translate(${(ox * vhPx).toFixed(1)}px, calc(-50% + ${ty.toFixed(1)}px))`];
         if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
         el.style.transform = parts.join(' ');
@@ -224,18 +277,6 @@ export default function ChartsChapter() {
       // Legend (credits) ink follows the ground: dark on the pink bear frames, light on bull.
       if (legendRef.current) {
         legendRef.current.style.color = bull ? 'rgba(245,243,238,0.55)' : 'rgba(0,0,0,0.5)';
-      }
-      // Black Monday plate: sits just after the crash candle, rides the stretch, fades out.
-      if (bmPlateRef.current) {
-        const pl = engine.candlePlate();
-        const [ox, oy] = tuneStore.get('charts.bmPlate');
-        const sc = tuneStore.getScale('charts.bmPlate');
-        const vh = (window.innerHeight || 1) / 100;
-        bmPlateRef.current.style.opacity = pl.a.toFixed(3);
-        bmPlateRef.current.style.visibility = pl.a < 0.004 ? 'hidden' : 'visible';
-        const parts = [`translate(${(pl.x + ox * vh).toFixed(1)}px, ${(pl.y + oy * vh).toFixed(1)}px)`];
-        if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
-        bmPlateRef.current.style.transform = parts.join(' ');
       }
       if (legendRef.current) {
         const [ox, oy] = tuneStore.get('charts.legend');
@@ -274,7 +315,7 @@ export default function ChartsChapter() {
   }, [engine, progress]);
 
   return (
-    <section ref={ref} style={{ height: `${N * 100 + SEG_EXTRA * 100 + EXIT_VH}dvh` }} className="cc-section relative w-full">
+    <section ref={ref} style={{ height: `${N * 100 + SEG_EXTRA * 100 + ENTRY_VH + EXIT_VH}dvh` }} className="cc-section relative w-full">
       <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100dvh] w-full overflow-hidden" style={{ opacity: 0, visibility: 'hidden', pointerEvents: 'none' }}>
         <canvas ref={canvasRef} className="cc-canvas" />
         <div className="cc-gradient" aria-hidden />
@@ -302,17 +343,6 @@ export default function ChartsChapter() {
           data-tune-mode="store"
           dangerouslySetInnerHTML={{ __html: copy.charts.footer }}
         />
-        {/* Black Monday plate — designer −20% glyph only (Frame 59); no leftover date/title) */}
-        <div
-          ref={bmPlateRef}
-          className="cc-bm-plate"
-          data-tune="charts.bmPlate"
-          data-tune-mode="store"
-          style={{ opacity: 0 }}
-          aria-hidden
-        >
-          <img className="cc-bm-fig translate-x-[-3.99vh] translate-y-[-1.78vh]" src={BM_MINUS_20} alt={BM.figure} draggable={false} />
-        </div>
         {/* Text cards — PINNED overlays (not scrolled). Each fades in only when its
             chart has settled and out during the morph (opacity driven in apply above),
             so only one shows at a time and the chart is visible in between. Cards start

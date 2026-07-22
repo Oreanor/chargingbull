@@ -55,7 +55,7 @@ const COORDS_MOBILE: Record<string, [number, number]> = {
   'parts.measure5cm': [1.2, -21.8],  // 5 cm on the withers (холка)
   'parts.horns': [1.6, -30.7],       // horns note across the top
   'parts.hornsDot1': [-21.8, -11.5], // tip of the left horn fragment
-  'parts.hornsDot2': [0, 0],         // desktop-only second horns marker
+  'parts.hornsDot2': [7.2, -26.5],   // tip of the right horn fragment
 };
 // Per-piece scale, DESKTOP only (mobile = 1). Baked from the old tune layer: the "30"
 // title, "Empty inside" and "5 cm" measure were scaled down to fit the wide layout.
@@ -217,7 +217,9 @@ export default function PartsFrame() {
         />
       </div>
 
-      {/* marker dots — horn + (desktop) second; mobile uses parts.dot for the nose */}
+      {/* marker dots — both horn tips + the nose (parts.dot). All three on both
+          breakpoints: the second used to be desktop-only, with [0,0] standing in for its
+          mobile seat, so on a phone the frame showed two dots instead of three. */}
       <div
         ref={hornsDot1Ref}
         data-tune="parts.hornsDot1"
@@ -226,16 +228,14 @@ export default function PartsFrame() {
         style={{ ...anchor, width: mob('4.6vh', '4vh') }}
         dangerouslySetInnerHTML={{ __html: DOT }}
       />
-      {!isMobile && (
-        <div
-          ref={hornsDot2Ref}
-          data-tune="parts.hornsDot2"
-          data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: '4vh' }}
-          dangerouslySetInnerHTML={{ __html: DOT }}
-        />
-      )}
+      <div
+        ref={hornsDot2Ref}
+        data-tune="parts.hornsDot2"
+        data-tune-mode="store"
+        className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+        style={{ ...anchor, width: mob('4.6vh', '4vh') }}
+        dangerouslySetInnerHTML={{ __html: DOT }}
+      />
     </div>
   );
 }

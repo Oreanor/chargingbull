@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } from 'mapbox-gl';
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
+import { isMobileViewport } from './deviceBudget';
 import bullMapData from '../data/bullMapData.json';
 import './MapChapter.css';
 // Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
@@ -75,16 +76,35 @@ function haversine(a: LngLat, b: LngLat) {
 }
 function segLength(seg: LngLat[]) { let t = 0; for (let j = 1; j < seg.length; j++) t += haversine(seg[j - 1], seg[j]); return t; }
 
-/** Fetch driving routes between consecutive stops (Mapbox Directions). Endpoints
- *  are forced to the documented stop coords so trail + markers coincide. */
-async function fetchAllRoutes(steps: { lng: number; lat: number }[]): Promise<LngLat[][]> {
+/** A stop, as far as routing is concerned. `approachVia`/`routeProfile` steer the leg that
+ *  ARRIVES at this stop — they are authored per destination in data.json. */
+interface RouteStop {
+  lng: number; lat: number;
+  /** Waypoints the leg into this stop must pass through (e.g. the Manhattan Bridge). */
+  approachVia?: LngLat[];
+  /** Per-leg profile override; walking ignores one-way streets in the dense grid. */
+  routeProfile?: string;
+}
+
+/** Fetch routes between consecutive stops (Mapbox Directions). Endpoints are forced to the
+ *  documented stop coords so trail + markers coincide.
+ *
+ *  The waypoints matter: without them Directions picks whatever is fastest out of
+ *  Greenpoint, which is not the bridge the truck actually took. This port used to ignore
+ *  `approachVia` / `routeProfile` entirely — the fields sat unread in data.json — so our
+ *  trail diverged from the source engine's even on identical data. */
+async function fetchAllRoutes(steps: RouteStop[]): Promise<LngLat[][]> {
   const segments: LngLat[][] = [];
   for (let i = 0; i < steps.length - 1; i++) {
-    const a: LngLat = [steps[i].lng, steps[i].lat];
-    const b: LngLat = [steps[i + 1].lng, steps[i + 1].lat];
+    const from = steps[i], to = steps[i + 1];
+    const a: LngLat = [from.lng, from.lat];
+    const b: LngLat = [to.lng, to.lat];
     if (Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5) { segments.push([a, b]); continue; }
+    const via = Array.isArray(to.approachVia) ? to.approachVia : [];
+    const coordsParam = [a, ...via, b].map((p) => `${p[0]},${p[1]}`).join(';');
+    const profile = to.routeProfile || 'driving';
     try {
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${a[0]},${a[1]};${b[0]},${b[1]}?geometries=geojson&overview=full&access_token=${mapboxToken}`;
+      const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordsParam}?geometries=geojson&overview=full&access_token=${mapboxToken}`;
       const j = await (await fetch(url)).json();
       const coords = j.routes?.[0]?.geometry?.coordinates as LngLat[] | undefined;
       if (coords && coords.length >= 2) { coords[0] = a; coords[coords.length - 1] = b; segments.push(coords); }
@@ -222,6 +242,8 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: numbe
 interface Step {
   id: number; date: string; title: string; location: string; address?: string;
   lng: number; lat: number; image?: string; imageCaption?: string; comment: string;
+  /** Routing hints for the leg ARRIVING here — see RouteStop / fetchAllRoutes. */
+  approachVia?: LngLat[]; routeProfile?: string;
 }
 interface CamStop { center: [number, number]; zoom: number; pitch: number; bearing: number }
 interface SubCam { at: number; camera: CamStop }
@@ -406,6 +428,18 @@ function stopProgressWith(jv: number, bounds: number[]): number {
 
 // Precise NYSE building footprint (11 Wall Street). Buildings whose centroid
 // falls inside get feature-state `nyse:true` → bright bronze highlight.
+// Building palette, from the source engine (wallst-rodeo/map/index.html): warm bronze-lit
+// stone that ramps with height, not the cool grey→white we had drifted to. The NYSE
+// footprint sits on top of it in bright bronze, which is what makes the exchange read as
+// *lit* rather than merely a lighter shade of the same grey.
+const BUILDING_RAMP: ExpressionSpecification = [
+  'interpolate', ['linear'], ['get', 'height'],
+  0, '#2c2632', 60, '#4a3e3a', 160, '#705541', 400, '#a07a4a',
+];
+const BUILDING_NYSE = '#d4a52a';
+/** Foreground structures moved to the see-through sister layer around the NYSE close-up. */
+const BUILDING_FADE = '#6c5a48';
+
 const NYSE_FOOTPRINT: LngLat[] = [
   [-74.011251, 40.7074775], [-74.0115968, 40.7069027], [-74.0110914, 40.7067031],
   [-74.0107881, 40.7071851], [-74.0108785, 40.7072476], [-74.0110222, 40.7073303],
@@ -598,7 +632,7 @@ export default function MapChapter({
           { id: 'directional', type: 'directional', properties: { color: '#eef2f8', intensity: 0.9, direction: [220, 35] } },
         ]);
       } catch { /* style may not accept lights */ }
-      // 3D building extrusions tinted to a cool grey→white palette (navy map)
+      // 3D building extrusions on the warm bronze-lit palette (see BUILDING_RAMP)
       try {
         if (!map.getLayer('building-3d')) {
           const labelLayer = map.getStyle()?.layers?.find((l) => l.type === 'symbol' && /label|place/.test(l.id))?.id;
@@ -607,8 +641,7 @@ export default function MapChapter({
             type: 'fill-extrusion', minzoom: 12,
             filter: ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']],
             paint: {
-              'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height'],
-                0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3'],
+              'fill-extrusion-color': BUILDING_RAMP,
               'fill-extrusion-height': ['get', 'height'],
               'fill-extrusion-base': ['get', 'min_height'],
               // Fully opaque: a translucent extrusion (0.92) uses Mapbox's transparent
@@ -636,9 +669,13 @@ export default function MapChapter({
 
     // create well ahead (~5 viewports) so the map is loaded by the time the title
     // card is reached — then no load-lock blocks the first stop-frame step.
+    // The section is many viewports tall, so 500% means "from the top of the page":
+    // on a phone that keeps a Mapbox GL context alive alongside the opener's GLB for
+    // the whole opener, and the tab dies at the seam (see deviceBudget). One viewport
+    // of lead is still the whole intro card + first leg of the journey to load in.
     const trigger = new IntersectionObserver(
       (ents) => { if (ents.some((x) => x.isIntersecting)) { void createMap(); trigger.disconnect(); } },
-      { rootMargin: '500% 0px' },
+      { rootMargin: isMobileViewport() ? '100% 0px' : '500% 0px' },
     );
     trigger.observe(section);
     return () => { alive = false; trigger.disconnect(); teardown(); };
@@ -802,9 +839,8 @@ export default function MapChapter({
     // Highlight the NYSE footprint in bronze on the main layer (faded buildings
     // are excluded from it, so the exchange stays solid and lit).
     const buildingColor: ExpressionSpecification = [
-      'case', ['boolean', ['feature-state', 'nyse'], false], '#d4a52a',
-      ['interpolate', ['linear'], ['get', 'height'],
-        0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3'],
+      'case', ['boolean', ['feature-state', 'nyse'], false], BUILDING_NYSE,
+      BUILDING_RAMP,
     ];
     try { map.setPaintProperty('building-3d', 'fill-extrusion-color', buildingColor); } catch { /* style not ready */ }
     // Force opaque even if the layer already existed (HMR / persisted map): a translucent
@@ -821,7 +857,7 @@ export default function MapChapter({
           type: 'fill-extrusion', minzoom: 13,
           filter: ['in', ['id'], ['literal', []]],
           paint: {
-            'fill-extrusion-color': '#5f6878',
+            'fill-extrusion-color': BUILDING_FADE,
             'fill-extrusion-height': ['get', 'height'],
             'fill-extrusion-base': ['get', 'min_height'],
             'fill-extrusion-opacity': 0.28,

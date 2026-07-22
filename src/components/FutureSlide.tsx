@@ -21,7 +21,7 @@ export function FutureSlide() {
     </>
   );
   return (
-    <section className="min-h-[100dvh] flex flex-col justify-center lg:px-6 py-16 md:py-32 bg-black">
+    <section className="min-h-[100dvh] flex flex-col justify-center px-5 lg:px-6 py-16 md:py-32 bg-black">
       {/* Mobile flows as one article (lede → portrait → prose) with modest spacing; the big
           gap-y-32 only applied to the desktop two-column split, so it's lg-only now. */}
       <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start gap-y-10 lg:gap-y-12 gap-x-[clamp(40px,8vw,130px)]">
@@ -33,16 +33,18 @@ export function FutureSlide() {
         >
           {aiLede}
         </p>
-        <aside className="xpl-aside lg:w-[348px] lg:shrink-0 translate-x-[-3.29vh] translate-y-[1.7vh] max-[800px]:translate-x-[-2.28vh] max-[800px]:translate-y-[3.62vh]" style={{ fontFamily: 'var(--font-struve)' }}>
+        <aside className="xpl-aside lg:w-[348px] lg:shrink-0 lg:translate-x-[-3.29vh] lg:translate-y-[1.7vh]" style={{ fontFamily: 'var(--font-struve)' }}>
           <img
             src="/chapters/closing/dimodica.png"
             alt="Arturo Di Modica"
-            className="w-[96px] h-[96px] rounded-full object-cover mb-7 translate-x-[6.92vh] translate-y-[3.3vh] scale-[1.876] max-[800px]:translate-x-[-17.16vh] max-[800px]:translate-y-[28.29vh]"
+            className="w-[136px] h-[136px] rounded-full object-cover mb-7 lg:w-[96px] lg:h-[96px] lg:translate-x-[6.92vh] lg:translate-y-[3.3vh] lg:scale-[1.876]"
             style={{ background: 'var(--color-grays-800, #292929)' }}
           />
           {/* Quote + name ride ONE baked translate together, so the name always sits
-              below the quote — one 24px baseline-step down (Frame 66), never overlapping. */}
-          <div className="translate-x-[1.75vh] translate-y-[8.48vh]">
+              below the quote — one 24px baseline-step down (Frame 66), never overlapping.
+              lg: ONLY — these offsets were authored for the two-column desktop layout, and
+              below it the aside is just the next block in a single column. */}
+          <div className="lg:translate-x-[1.75vh] lg:translate-y-[8.48vh]">
             <blockquote className="text-[clamp(14px,1.25vw,18px)] leading-[1.333]">
               &ldquo;My point was to show people that if you want to do something in a moment
               things are very bad, you can do it. You can do it by yourself. My point was

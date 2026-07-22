@@ -3,6 +3,7 @@ import { type MotionValue } from 'motion/react';
 import { DatumScene, type CameraSpherical } from './DatumScene';
 import { GlbScene, type ExtraModelSpec } from './GlbScene';
 import { useInViewMount } from './useInViewMount';
+import { isMobileViewport } from './deviceBudget';
 import { ChapterScrollContext } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
 import './ModelChapter.css';
@@ -149,12 +150,26 @@ export default function ModelChapter({
   const [bullEdit, setBullEdit] = useState(false);
   useEffect(() => bullEditStore.subscribe(() => setBullEdit(bullEditStore.active)), []);
 
+  // A reader must never STUMBLE into the keyframe editor, but the author has to be able
+  // to open it on the deployed build — that's where the camera track actually gets tuned.
+  // So the split is by how it's reached, not by build: `?edit` is an explicit, deliberate
+  // URL and works everywhere; the `edit` prop and the DevToolbar toggle are ambient and
+  // stay dev-only, so nothing can flip a production page into edit mode by accident.
+  // (Gating `?edit` on DEV too — as this did briefly — is what broke editing on Vercel.)
+  // Note editMode also forces `active` true, mounting the GLB regardless of viewport;
+  // that's intended while authoring and never reached by a plain reader.
   const editMode =
-    edit ||
     (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('edit')) ||
-    bullEdit;
+    (import.meta.env.DEV && (edit || bullEdit));
 
-  const { ref, mounted } = useInViewMount<HTMLElement>({ mountMargin: 1, unmountMargin: 1.5 });
+  // On a phone the opener's GLB context must be gone before the map + splat spin
+  // up, or the three of them overlap at the «Bulls Route» seam and iOS kills the
+  // tab (see deviceBudget). Margins stay ordered (mount < unmount) so the
+  // hysteresis band survives — it's just much narrower.
+  const tightGl = isMobileViewport();
+  const { ref, mounted } = useInViewMount<HTMLElement>(
+    tightGl ? { mountMargin: 0.25, unmountMargin: 0.5 } : { mountMargin: 1, unmountMargin: 1.5 },
+  );
   // Jump the page scroll to a chapter progress (0..1) — lets the editor's scrub
   // handle drag the real scrollbar (so overlays/plaques, which ride the scroll,
   // follow the green line on release).

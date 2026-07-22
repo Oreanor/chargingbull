@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Fonts are loaded by src/fonts.css (design typefaces + substitutes). -->
+    <!-- Fonts are all local, self-hosted, and loaded by src/fonts.css. No Google
+         Fonts preconnect: nothing is fetched from those hosts any more, so the two
+         warm-up handshakes were pure cost on the phone's first paint. -->
     <title>Charging Bull — Méridien</title>
     <!-- Mapbox public token for the native map chapter. Local & gitignored
          (public/chapters/bull/config.js sets window.MAPBOX_TOKEN). -->

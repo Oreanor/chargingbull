@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type ComponentProps } from 'react';
 import MapChapter from './MapChapter';
 import DatumSplat, { type DatumSplatHandle } from '../components/DatumSplat';
 import { useInViewMount } from './useInViewMount';
+import { isMobileViewport } from './deviceBudget';
 import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotate» hint (text is HTML)
 
 /**
@@ -101,8 +102,12 @@ export default function MapBullHandoff({
   // opener. Otherwise its WebGL engine renders 60fps behind the opener (off-screen)
   // and steals frames from the opener's 3D scene. mountMargin gives the (long) map
   // journey to stream it in before the dive reveals it; it never unmounts after.
+  // On a phone 1.5 viewports of lead lands the splat INSIDE the opener — three
+  // WebGL contexts at once and iOS kills the tab (see deviceBudget). The gate is
+  // the whole map block, so even 0.4 arms it at the map's intro card, leaving the
+  // entire five-stop journey to stream the splat in before the dive reveals it.
   const { ref: gateRef, mounted: armed } = useInViewMount<HTMLDivElement>({
-    mountMargin: 1.5,
+    mountMargin: isMobileViewport() ? 0.4 : 1.5,
     unmountMargin: Infinity,
   });
 

@@ -516,7 +516,7 @@ export function initTuneEditor() {
 
   const save = document.createElement('button');
   save.dataset.tuneUi = '';
-  save.title = 'Save: bakes every touched element into SOURCE — candle plates fold into their constants (FACT_/CRASH_OFFSET); other elements get tuned width/font/color/offset substituted into className. Dynamic/template-literal classNames can\'t be matched and are logged to the console.';
+  save.title = 'Save: bakes every touched element into SOURCE — candle plates fold into the current breakpoint\'s constants (FACT_XY / CRASH_X / CRASH_Y, or their *_PORT pair); other elements get tuned width/font/color/offset substituted into className. Dynamic/template-literal classNames can\'t be matched and are logged to the console.';
   save.textContent = 'Save';
   css(save, {
     position: 'fixed', top: '12px', right: '54px', height: '34px', padding: '0 14px',
@@ -923,6 +923,9 @@ export function initTuneEditor() {
         if (ov && ov.maxW != null) e.w = ov.maxW;
         if (Object.keys(e).length) candleEdits[id] = e;
       }
+      // /__bake folds candle edits into the constants for the CURRENT breakpoint —
+      // FACT_XY / CRASH_X / CRASH_Y on desktop, the *_PORT pair on mobile. Both layers
+      // have a source home now, so a candle plate never keeps a runtime delta.
       const hasCandle = Object.keys(candleEdits).length > 0;
       const classEdits: { old: string; new: string }[] = [];
       const bakedEls: { el: HTMLElement; id: string }[] = [];
@@ -938,20 +941,30 @@ export function initTuneEditor() {
       }
       const hasClass = classEdits.length > 0;
 
-      // Store-mode pieces (parts.dot, tonnes.*, …) live in tune-layout.json.
-      const tuneRes = await fetch('/__tune', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tuneStore.all()),
-      });
-      let ok = tuneRes.ok;
+      // ORDER MATTERS. A candle plate's position is owned by the CONSTANTS in
+      // CandleIntro.tsx (CRASH_X/CRASH_Y & co), which /__bake folds the edit into;
+      // the runtime store is only a scratch layer on top of them. This used to POST
+      // /__tune FIRST, so tune-layout.json was written while the store still held the
+      // very offset that /__bake was about to fold into the source — the nudge landed in
+      // BOTH places and came back doubled on reload (and grew by the same amount on every
+      // further save). Bake first, clear the scratch layer, and only then persist the
+      // store, so each edit is recorded exactly once.
+      let ok = true;
 
       if (hasCandle) {
         const br = await fetch('/__bake', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(candleEdits),
+          body: JSON.stringify({ bp: tuneStore.bp(), edits: candleEdits }),
         });
         ok = ok && br.ok;
+        try {
+          const j = await br.clone().json() as { refused?: string[] };
+          if (j.refused?.length) {
+            console.warn('[tune] candle plate scale/width is NOT bakeable — the plates are drawn at their'
+              + ' native export size (CRASH_W / CRASH_W_PORT / the .ci-fact CSS width). Edit that constant'
+              + ' or re-export the art. Refused for:', j.refused.join(', '));
+          }
+        } catch { /* non-JSON */ }
         if (br.ok) {
           for (const id of Object.keys(candleEdits)) {
             tuneStore.set(id, [0, 0]);
@@ -978,6 +991,22 @@ export function initTuneEditor() {
             el.style.transform = baseTransforms.get(el) || '';
           }
         }
+      }
+      // Store-mode pieces (parts.dot, tonnes.*, …) live in tune-layout.json. This runs
+      // LAST, after both bakes have cleared the scratch entries they took ownership of,
+      // so nothing that just went into source is persisted here a second time.
+      const tuneRes = await fetch('/__tune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tuneStore.all()),
+      });
+      ok = ok && tuneRes.ok;
+      if (hasCandle) {
+        console.log('[tune] candle bake — sent to /__bake:', JSON.stringify(candleEdits));
+        console.log('[tune] candle scratch after bake (should be all zero/1):',
+          JSON.stringify(Object.fromEntries(Object.keys(candleEdits).map((id) =>
+            [id, { d: tuneStore.get(id), s: tuneStore.getScale(id) }]))));
+        console.log('[tune] reload and compare: the panel must show exactly what you set.');
       }
       save.textContent = ok ? 'Saved ✓' : 'Failed';
     } catch {

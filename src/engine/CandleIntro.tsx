@@ -14,9 +14,9 @@ import { tuneStore } from './tuneEditor';
 import WORDMARK_MOBILE from '../assets/logos/wallst-rodeo-mobile.svg?url';
 import ICON_UP from '../assets/icons/candle-arrow-up.svg?raw';
 import ICON_DOWN from '../assets/icons/candle-arrow-down.svg?raw';
-import ICON_SKULL from '../assets/icons/candle-skull.svg?raw';
 // Mobile crash plate — Frame 181 with outlined −20.5% (designer export).
-import BM_FRAME_181 from '../assets/charts/bm-frame-181.png';
+import BM_FRAME_LAND from '../assets/charts/bm-frame-land.svg?url';
+import BM_FRAME_PORT from '../assets/charts/bm-frame-port.svg?url';
 import { BM_OHLC_OPENER as OHLC } from './charts/blackMondayOHLC';
 
 /**
@@ -68,18 +68,25 @@ const FACTS = [
 const CRASH = copy.opener.candles.crash;
 const INDEX_LABEL = copy.opener.candles.indexLabel;
 
-// Placement nudges for the fact callouts + crash block — offset (vh) from each block's
-// canvas anchor + scale. Baked from the old layout editor; no runtime layer.
-const FACT_OFFSET: [number, number][] = [[-23.06, 28.74], [2.32, 5.91], [2.28, -0.39]];
-const FACT_SCALE = [1, 0.999, 0.996];
-const FACT_WIDTH: (number | null)[] = [null, null, null]; // px max-width per fact plate (null = CSS default)
-const CRASH_OFFSET: [number, number] = [3.79, 1.67];
-const CRASH_SCALE: number = 0.965;
-const CRASH_WIDTH: number | null = null; // px max-width of the crash block (null = CSS default)
-// Portrait: 16 Oct stays absolute; crash plate tracks the last candle (left of it).
-const FACT2_ABS_MOBILE = { left: 24, top: 220 };
-const CRASH_TOP_MOBILE = 400; // px from top of the design frame
-const CRASH_GAP_MOBILE = 14;  // px between plaque right edge and last candle
+// Placement of the fact callouts + the crash plate. PLAIN FRAME PX — one pair per
+// element per breakpoint, and that pair IS the position (the frames are fixed:
+// landscape 1440×800, portrait 393×852, see LAND_FRAME/PORT_FRAME). Nothing is scaled
+// and nothing is added on top of these; to move a plate, edit its number.
+// Fact: px from the plate's own candle anchor (see the tick — x from the candle column,
+// y from that fact's top/bottom guard line).
+const FACT_XY: [number, number][] = [[-184.48, 229.92], [18.56, 47.28], [18.24, -3.12]];
+// Portrait: only 16 Oct is shown, and it sits at an absolute spot in the frame.
+const FACT_XY_PORT: [number, number] = [26.98, 220];
+// Crash plate — x = gap px from the last candle (right of it on landscape, left on
+// portrait), y = px down from the top of the frame.
+const CRASH_X = 22.08;
+const CRASH_Y = 400.56;
+const CRASH_X_PORT = 9.98;
+const CRASH_Y_PORT = 429.65;
+// On-screen width of the designer's plate export, per breakpoint. It is drawn at this
+// size and never scaled — two exports, two numbers.
+const CRASH_W = 248.3;
+const CRASH_W_PORT = 184;
 
 // month markers at the first trading day of each month
 const MONTHS = copy.opener.candles.months;
@@ -324,10 +331,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     Object.assign(mk('ci-index', gridEl), { textContent: INDEX_LABEL });
     const factItems = FACTS.map((f, i) => {
       const el = mk('ci-fact');
-      // store-mode tune id: the layout editor drags this live (its offset/scale add on
-      // top of the baked FACT_OFFSET/FACT_SCALE below, read each frame in the tick).
+      // store-mode tune id: dev-only scratch the layout editor drags live (empty in
+      // production; "Save" folds it into FACT_XY above via the /__bake plugin).
       el.dataset.tune = `opener.candle.fact.${i}`; el.dataset.tuneMode = 'store';
-      if (FACT_WIDTH[i] != null) el.style.maxWidth = `${FACT_WIDTH[i]}px`; // baked width (editor right-edge drag)
       const icon = f.marker === 'up' ? ICON_UP : ICON_DOWN;
       el.innerHTML =
         `<span class="ci-icon ci-icon-${f.marker}">${icon}</span>` +
@@ -337,18 +343,16 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       return { ...f, idx: candles.findIndex((c) => c.date === f.anchor), el };
     });
     const bmEl = mk('ci-bm');
-    bmEl.dataset.tune = 'opener.candle.crash'; bmEl.dataset.tuneMode = 'store'; // draggable via the layout editor (adds to CRASH_OFFSET/SCALE)
-    if (CRASH_WIDTH != null) bmEl.style.maxWidth = `${CRASH_WIDTH}px`; // baked width (editor right-edge drag)
-    // Desktop: skull + date + title + Druk −20.5%. Mobile: Frame 181 PNG (outlined −20.5%).
-    const dash = /^[‒–—−-]/.exec(CRASH.figure)?.[0] ?? '';
-    const figNum = CRASH.figure.slice(dash.length);
-    const BM_HTML_DESKTOP =
-      `<span class="ci-skull">${ICON_SKULL}</span>` +
-      `<div class="ci-bm-date">${CRASH.date}</div>` +
-      `<div class="ci-bm-title">${CRASH.title}</div>` +
-      `<div class="ci-bm-fig"><span class="ci-bm-sign">${dash}</span>${figNum}</div>`;
-    const BM_HTML_MOBILE =
-      `<img class="ci-bm-frame" src="${BM_FRAME_181}" alt="${CRASH.date} — ${CRASH.figure}" draggable="false" />`;
+    bmEl.dataset.tune = 'opener.candle.crash'; bmEl.dataset.tuneMode = 'store'; // draggable via the layout editor (bakes into CRASH_X/CRASH_Y)
+    // The whole Black Monday plate is the designer's OUTLINED export — one image, not a
+    // re-typeset stack of skull + date + title + a giant Druk numeral. Landscape and
+    // portrait are separate exports (same five shapes, re-laid-out by the designer: the
+    // portrait figure is 0.78 of the landscape one), so each breakpoint gets its own file
+    // at its native size. This is what killed the last Druk dependency.
+    const frameImg = (src: string, w: number) =>
+      `<img class="ci-bm-frame" src="${src}" alt="${CRASH.date} — ${CRASH.figure}" width="${w}" style="width:${w}px" draggable="false" />`;
+    const BM_HTML_DESKTOP = frameImg(BM_FRAME_LAND, CRASH_W);
+    const BM_HTML_MOBILE = frameImg(BM_FRAME_PORT, CRASH_W_PORT);
     let bmMobile = false;
     bmEl.innerHTML = BM_HTML_DESKTOP;
 
@@ -492,19 +496,19 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           : chartOn * smoothstep(clamp01((revealEdge - fi.idx) / 9)) * plateFade;
         fi.el.style.opacity = op.toFixed(3);
         if (op > 0.005) {
+          // tune = dev-only editor scratch, in vh of the frame; zero in production.
           const tune = tuneStore.get(`opener.candle.fact.${i}`);
           const vhPx = host.clientHeight / 100;
           let leftPx: number, topPx: number, base: string;
           if (isMobile) {
             // Absolute mockup coords — no candle projection / translateY(-100%).
-            leftPx = FACT2_ABS_MOBILE.left + (tune[0] * vhPx);
-            topPx = FACT2_ABS_MOBILE.top + (tune[1] * vhPx);
+            leftPx = FACT_XY_PORT[0] + (tune[0] * vhPx);
+            topPx = FACT_XY_PORT[1] + (tune[1] * vhPx);
             base = '';
           } else {
             const plateW = fi.el.offsetWidth || 300;
             const maxL = Math.max(8, host.clientWidth - plateW - 8);
-            const oxv = FACT_OFFSET[i][0] + tune[0], oyv = FACT_OFFSET[i][1] + tune[1];
-            const ox = oxv * vhPx, oy = oyv * vhPx;
+            const ox = FACT_XY[i][0] + tune[0] * vhPx, oy = FACT_XY[i][1] + tune[1] * vhPx;
             if (fi.pos === 'bottom') {
               const p = projX(fi.idx, priceToY(candles[fi.idx].l));
               base = '';
@@ -517,8 +521,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
               topPx = Math.max(fi.el.offsetHeight + 8, p.y - 10) + oy;
             }
           }
-          // Mobile: never scale plates down — keep CSS/design size.
-          const sc = isMobile ? 1 : FACT_SCALE[i] * tuneStore.getScale(`opener.candle.fact.${i}`);
+          // Plates are always at their authored size; this is the editor's live scratch only.
+          const sc = tuneStore.getScale(`opener.candle.fact.${i}`);
           fi.el.style.left = leftPx + 'px';
           fi.el.style.top = topPx + 'px';
           const flyT = flyTransform(leftPx, topPx, base, FACT_FLY_SPEED[i] ?? 1, FACT_FLY_SPIN[i] ?? 0);
@@ -539,24 +543,22 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       const bmOp = smoothstep(clamp01((sp - PH.bmIn[0]) / (PH.bmIn[1] - PH.bmIn[0]))) * plateFade;
       bmEl.style.opacity = bmOp.toFixed(3);
       if (bmOp > 0.005) {
+        // bTune = dev-only editor scratch, in vh of the frame; zero in production.
         const bTune = tuneStore.get('opener.candle.crash');
         const vhPx = host.clientHeight / 100;
         const cx = projX(N - 1).x;
-        const bmW = bmEl.offsetWidth || (isMobile ? 200 : 220);
+        const bmW = bmEl.offsetWidth || (isMobile ? CRASH_W_PORT : CRASH_W);
         let leftPx: number;
         let topPx: number;
-        let bsc: number;
+        // The plate is a native-size export: no baked scale, only the editor's scratch.
+        const bsc = tuneStore.getScale('opener.candle.crash');
         if (isMobile) {
           // Ride with the last column — plaque stays just to its left.
-          leftPx = Math.max(8, cx - bmW - CRASH_GAP_MOBILE) + bTune[0] * vhPx;
-          topPx = CRASH_TOP_MOBILE + bTune[1] * vhPx;
-          bsc = 1;
+          leftPx = Math.max(8, cx - bmW - CRASH_X_PORT) + bTune[0] * vhPx;
+          topPx = CRASH_Y_PORT + bTune[1] * vhPx;
         } else {
-          const bxv = CRASH_OFFSET[0] + bTune[0], byv = CRASH_OFFSET[1] + bTune[1];
-          bsc = CRASH_SCALE * tuneStore.getScale('opener.candle.crash');
-          const bx = bxv * vhPx, by = byv * vhPx;
-          leftPx = Math.min(host.clientWidth - 220, cx + 22) + bx;
-          topPx = host.clientHeight * 0.48 + by;
+          leftPx = Math.min(host.clientWidth - 220, cx + CRASH_X) + bTune[0] * vhPx;
+          topPx = CRASH_Y + bTune[1] * vhPx;
         }
         bmEl.style.left = leftPx + 'px';
         bmEl.style.top = topPx + 'px';

@@ -98,29 +98,9 @@
   font: 400 18px / 1.333 var(--font-struve); color: #fff;
 }
 
-/* Black Monday crash block: skull, date + headline, and the giant −20.5% figure. */
-/* whole crash block scaled down (~15% off the reference) — from the top-left so the
-   JS-set anchor stays put and it shrinks toward it. */
-.ci-overlay .ci-bm { position: absolute; opacity: 0; width: max-content; transform: scale(0.83); transform-origin: top left; }
-.ci-overlay .ci-skull {
-  display: block; width: 54px; height: 80px; color: var(--ci-pink); margin-bottom: 18px;
-}
-.ci-overlay .ci-skull svg { display: block; width: 100%; height: 100%; }
-.ci-overlay .ci-bm-date {
-  font: 700 18px var(--font-struve); color: #fff; margin-bottom: 6px;
-}
-.ci-overlay .ci-bm-title {
-  font: 700 24px / 1.33 var(--font-struve); color: #fff; margin-bottom: 6px;
-}
-.ci-overlay .ci-bm-fig {
-  position: relative;
-  /* a touch larger than the surrounding block so the figure dominates.
-     Fixed px at the landscape frame (was clamp(95,14vw,204) → 202 at 1440). */
-  font: 900 202px / 0.82 var(--font-druk);
-  color: var(--ci-pink); letter-spacing: 0.03em;
-}
-/* leading minus hung into the left margin so the "20" aligns with the date/title */
-.ci-overlay .ci-bm-sign { position: absolute; left: 0; top: 0; transform: translateX(-100%); }
+/* Black Monday crash block: skull, date + headline, and the giant −20.5% figure.
+   One native-size export per breakpoint, drawn 1:1 — nothing here scales it. */
+.ci-overlay .ci-bm { position: absolute; opacity: 0; width: max-content; transform-origin: top left; }
 
 /* ── hero: logo · coords · wordmark · subtitle (landscape frame) ─────────── */
 /* Meridian mark — pinned to the real VIEWPORT top-left corner. It's a direct child of
@@ -183,11 +163,13 @@
 }
 /* Fact plates — mockup width (not desktop 300), never viewport-squeezed. */
 .ci-stage--portrait .ci-overlay .ci-fact { width: 268px; max-width: none; }
-/* Mobile Frame 181 — outlined −20.5% plate as designer PNG. */
-.ci-overlay .ci-bm.ci-bm--mobile { width: 200px; }
+/* Black Monday plate — the designer's outlined export, one image per frame (separate
+   exports, not one scaled). Its width is set inline from CRASH_W / CRASH_W_PORT in
+   CandleIntro.tsx, so the drawn size lives next to the position it's drawn at.
+   The old PNG needed mix-blend-mode:lighten to knock out its black background; a
+   vector has real transparency, so the blend hack is gone. */
 .ci-overlay .ci-bm-frame {
-  display: block; width: 200px; height: auto;
-  mix-blend-mode: lighten;
+  display: block; height: auto;
   user-select: none; -webkit-user-drag: none;
 }
 

@@ -31,7 +31,8 @@
 /* Credits / legend — bottom-left, on every mockup frame. Ink color set per-frame
    in JS (dark on bear, light on bull). Two lines, Struve, like the design. */
 .cc-legend {
-  position: absolute; left: 10vw; bottom: clamp(16px, 3.2vh, 34px);
+  /* Sources sit closer to the chart (mockup: ~48px under the month labels). */
+  position: absolute; left: 10vw; bottom: clamp(20px, 5.4vh, 46px);
   z-index: 40; pointer-events: auto;
   font-family: var(--font-struve);
   font-size: clamp(11px, 1.05vw, 16px); line-height: 1.5;
@@ -39,26 +40,11 @@
 }
 .cc-legend a { color: inherit; text-decoration: underline; }
 
-/* Black Monday plate — anchored just after the crash candle (engine sets translate).
-   Near-black ink on pink; crash figure is the big Druk display face. No CSS
-   transition — opacity/pos scrub with the stretch. */
-.cc-bm-plate {
-  position: absolute; left: 0; top: 0; z-index: 42;
-  text-align: left; pointer-events: none; color: #15131a;
-  will-change: opacity, transform;
-}
-.cc-bm-fig {
-  display: block;
-  /* Desktop: fixed authored size — never vw-scale with the stage. */
-  width: 202px;
-  height: auto;
-  margin: 0;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-@media (max-width: 720px) {
-  .cc-bm-fig { width: clamp(120px, 36vw, 160px); }
-}
+/* The Black Monday plate used to be an HTML <img> pinned here by the engine. It is now
+   drawn as the designer's outlines on the canvas itself (see blackMondayPlate.ts), so
+   .cc-bm-plate / .cc-bm-fig and their raster are gone. The comment that lived here
+   claimed the engine anchored it "just after the crash candle" — it never did; the
+   engine only ever sent 0,0. */
 
 /* Chart caption — units & description, bottom-right of the pinned stage. */
 .cc-caption {
@@ -116,4 +102,18 @@
   .cc-title { font-size: 28px; }
   .cc-comment { font-size: 17px; }
   .cc-topbar { padding: 14px 18px; }
+  /* Credits, per the designer's portrait export (docs/3/Yahoo F.svg): Struve 16/24 at
+     50% ink. Fixed size, not the desktop's vw-scaled clamp. It spans the FULL plot
+     width and shares the chart's 10vw side margins, so its left edge lines up with the
+     y-axis and its right with the plot's right edge — and it sits below the month
+     labels rather than across them. */
+  .cc-legend {
+    left: 10vw;
+    right: 10vw;
+    bottom: 6px;
+    width: auto;
+    max-width: none;
+    font-size: 16px;
+    line-height: 24px;
+  }
 }

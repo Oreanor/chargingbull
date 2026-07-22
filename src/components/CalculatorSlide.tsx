@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { CALC_CPI, CALC_DIV, CALC_PRICE, CALC_T0 } from '../data/sp500Monthly';
+import {
+  FILL_MAX, HATCH_ALPHA, makeHatch, inkText,
+  LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, END_DOT_R_FOCUS,
+} from '../engine/charts/chartInk';
 import './CalculatorSlide.css';
 
 /**
@@ -29,6 +33,8 @@ export function CalculatorSlide() {
     const vizEl = vizRef.current, hintEl = hintRef.current;
     if (!canvas || !flagA || !flagB || !amountEl || !resultEl || !noteEl || !vizEl || !hintEl) return;
 
+    const GREEN = '#61E26B';
+    const GROUND = '#000';   // the slide's ground — what on-plot labels are knocked out of
     const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
     const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); };
@@ -64,24 +70,10 @@ export function CalculatorSlide() {
     const fmtPct = (p: number) => (p >= 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
     const fmtX = (m: number) => (m >= 100 ? Math.round(m).toLocaleString('en-US') : m.toFixed(1)) + '×';
 
-    // Diagonal-hatch pattern under the selected area — the mockup signature, same as the
-    // charts chapter. Cached once (its own 14px tile, independent of the resized canvas).
-    let hatchPat: CanvasPattern | null = null;
-    const getHatch = (ctx: CanvasRenderingContext2D) => {
-      if (hatchPat) return hatchPat;
-      const S = 14, tile = document.createElement('canvas'); tile.width = S; tile.height = S;
-      const tc = tile.getContext('2d');
-      if (tc) {
-        tc.strokeStyle = '#61E26B'; tc.lineWidth = 1.3; tc.lineCap = 'round';
-        tc.beginPath();
-        tc.moveTo(0, S); tc.lineTo(S, 0);
-        tc.moveTo(-1, 1); tc.lineTo(1, -1);
-        tc.moveTo(S - 1, S + 1); tc.lineTo(S + 1, S - 1);
-        tc.stroke();
-      }
-      hatchPat = ctx.createPattern(tile, 'repeat');
-      return hatchPat;
-    };
+    // Diagonal hatch under the selected area — literally the charts chapter's, now that
+    // both take it from chartInk. This file used to carry its own 45°/1.3px copy, which
+    // is why the calculator's hatch never matched the S&P frames.
+    const hatch = makeHatch();
 
     function render() {
       if (!rows.length) return;
@@ -91,7 +83,7 @@ export function CalculatorSlide() {
       const dpr = window.devicePixelRatio || 1;
       const W = canvas!.clientWidth, H = canvas!.clientHeight;
       canvas!.width = W * dpr; canvas!.height = H * dpr;
-      hatchPat = null; // the resize invalidates the cached pattern — rebuild it this frame
+      hatch.clear(); // the resize invalidates the cached pattern — rebuild it this frame
       const ctx = canvas!.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
 
       const floor = padB();
@@ -118,26 +110,30 @@ export function CalculatorSlide() {
         for (let i = a; i <= b; i++) { const px = xOf(rows[i].t), py = yOf(rows[i].tr); if (i === a) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
         ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.stroke();
       };
-      drawSeg(I0, rows.length - 1, 'rgba(255,255,255,0.22)', 1.4);
+      // Same weights as the S&P chapter (chartInk): the held stretch is thick, the rest is
+      // thin context at THIN_ALPHA. This file used to carry its own 1.4px at 22%.
+      ctx.save(); ctx.globalAlpha = THIN_ALPHA;
+      drawSeg(I0, rows.length - 1, '#ECEFEC', LINE_W_THIN);
+      ctx.restore();
       ctx.beginPath(); ctx.moveTo(xOf(rows[i0].t), H - floor);
       for (let i = i0; i <= i1; i++) ctx.lineTo(xOf(rows[i].t), yOf(rows[i].tr));
       ctx.lineTo(xOf(rows[i1].t), H - floor); ctx.closePath();
       const grad = ctx.createLinearGradient(0, PAD.t, 0, H - floor);
-      grad.addColorStop(0, 'rgba(97,226,107,0.22)'); grad.addColorStop(1, 'rgba(97,226,107,0.01)');
+      grad.addColorStop(0, `rgba(97,226,107,${FILL_MAX})`); grad.addColorStop(1, 'rgba(97,226,107,0)');
       ctx.fillStyle = grad; ctx.fill();
-      const hatch = getHatch(ctx); // faint diagonal hatch over the same area (mockup signature)
-      if (hatch) { ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = hatch; ctx.fill(); ctx.restore(); }
-      drawSeg(i0, i1, '#61E26B', 2.6);
+      const pat = hatch.get(ctx, GREEN); // diagonal hatch over the same area (mockup signature)
+      if (pat) { ctx.save(); ctx.globalAlpha = HATCH_ALPHA; ctx.fillStyle = pat; ctx.fill(); ctx.restore(); }
+      drawSeg(i0, i1, GREEN, LINE_W_THICK);
       for (const [i, label] of [[i0, startY], [i1, endY]] as const) {
         const px = xOf(rows[i].t), py = yOf(rows[i].tr);
-        ctx.beginPath(); ctx.arc(px, py, 4, 0, 7); ctx.fillStyle = '#61E26B'; ctx.fill();
+        ctx.beginPath(); ctx.arc(px, py, END_DOT_R_FOCUS, 0, 7); ctx.fillStyle = GREEN; ctx.fill();
         ctx.strokeStyle = '#06210b'; ctx.lineWidth = 1.5; ctx.stroke();
-        // Mobile: year sits above the endpoint (knobs replace the bottom pills).
+        // Mobile: year sits above the endpoint (knobs replace the bottom pills). Knocked
+        // out of the ground so it stays readable where it lands on the curve.
         if (mobile) {
-          ctx.font = "700 13px 'Space Mono', monospace";
-          ctx.fillStyle = '#61E26B';
+          ctx.fillStyle = GREEN;
           ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-          ctx.fillText(String(label), px, py - 10);
+          inkText(ctx, String(label), px, py - 10, "700 13px 'Space Mono', monospace", GROUND);
           ctx.textBaseline = 'alphabetic';
         }
       }

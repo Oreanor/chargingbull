@@ -73,7 +73,6 @@
     "alt": "CRISIS Curve",
     "body": "From a distance, a crash looks simple. One line drops. Then comes the explanation."
   },
-
   "explainer": {
     "aside": "Where did Wall Street get its animals? As The New York Times <a href=\"https://www.nytimes.com/1997/11/30/nyregion/fyi-328278.html\" target=\"_blank\" rel=\"noopener noreferrer\">noted</a>, bulls and bears were already market slang by 1817. “Bear” came from traders who sold shares before they owned them, like selling a skin before catching the bear. “Bull” appeared around the same time, though its origin is less certain.",
     "p1": "A <span class=\"xpl-pill xpl-pill-bull\">bull market</span> is when prices rise broadly and continue to rise, often for months or years. A <span class=\"xpl-pill xpl-pill-bear\">bear market</span> is when they fall by 20% or more from a recent peak. Today, these names allude to the way each animal attacks. A bull throws its horns upward. A bear swipes down.",
@@ -85,8 +84,8 @@
     "topbarTitle": "Bear Markets",
     "topbarTitleBull": "Bull Markets",
     "labels": {
-      "peak": "peak",
-      "months": "mo.",
+      "peak": "PEAK",
+      "months": "MONTHS",
       "investArrow": "$350K → ",
       "buyDate": "October 1987",
       "compareDate": "February 2021",
@@ -96,9 +95,9 @@
     "blackMonday": {
       "date": "19 October 1987",
       "title": "Black Monday",
-      "figure": "−20%"
+      "figure": "−20.5%"
     },
-    "footer": "© Méridien 2026 — <a href=\"https://creativecommons.org/licenses/by-nc/4.0/deed.en\">CC BY 4.0</a>. Data: Robert J. Shiller, U.S. Stock Markets 1871–Present and CAPE Ratio (Yale University) —<br>monthly S&P 500 price, dividends, earnings, and CPI; daily S&P 500 close prices from Yahoo Finance.",
+    "footer": "© Méridien 2026 — <a href=\"https://creativecommons.org/licenses/by-nc/4.0/deed.en\">CC BY 4.0</a>. Data: Robert J. Shiller, U.S. Stock Markets 1871–Present and CAPE Ratio (Yale University) — monthly S&P 500 price, dividends, earnings, and CPI; daily S&P 500 close prices from Yahoo Finance.",
     "crises": [
       {
         "troughMonth": "September",
@@ -143,8 +142,8 @@
       {
         "view": "bm",
         "date": "August — October 1987",
-        "title": "Black Monday",
-        "comment": "Daily S&P 500 close into the 1987 crash."
+        "title": "From points to percent",
+        "comment": "Up to here it's the S&P 500 in absolute index points. To compare this crash with every other one, we'll rebase it — peak = 100% — and let the line show how far the market fell."
       },
       {
         "view": "0a",

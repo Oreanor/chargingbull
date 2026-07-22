@@ -69,6 +69,24 @@ export interface ExtraModelSpec {
   tint?: number;
 }
 
+/**
+ * Per-unit outward push of each section along its home→centroid direction, and THE knob for
+ * how wide the bull comes apart. It is not uniform: the FRONT (head, horns, ears) throws
+ * much further than the body, which is what makes the reference read as an animal being
+ * taken apart rather than a uniform starburst — the horns clear the frame while the hind
+ * quarters barely separate. The keyframe explode value scales on top of these.
+ */
+const SPREAD_REAR = 0.4;
+const SPREAD_FRONT = 2.6;
+/** Shape of the ramp between them. Linear threw the whole shoulder and withers nearly as
+ *  far as the horns; cubed keeps the big travel for the very front — head, horns, ears —
+ *  while everything from the withers back barely separates. */
+const SPREAD_FALLOFF = 3;
+/** Which end of the model's long axis the head is on. Flip if the scatter comes out
+ *  back-to-front — the axis is found from the bounding box, its direction is not knowable
+ *  from geometry alone. */
+const FRONT_IS_AXIS_MAX = true;
+
 export class GlbScene {
   private readonly options: GlbSceneOptions;
   private renderer: THREE.WebGLRenderer | null = null;
@@ -81,7 +99,7 @@ export class GlbScene {
   private destroyed = false;
   /** Per-mesh explode anchors: local home position + outward unit direction from
    *  the model centroid. Captured once after load; drives setExplode(). */
-  private readonly meshHomes = new Map<THREE.Object3D, { origin: THREE.Vector3; dir: THREE.Vector3 }>();
+  private readonly meshHomes = new Map<THREE.Object3D, { origin: THREE.Vector3; dir: THREE.Vector3; front: number }>();
   private explodeAmount = 0;
   /** Loaded secondary models (index-aligned with options.extras); null until loaded. */
   private readonly extraObjects: (THREE.Object3D | null)[] = [];
@@ -480,9 +498,10 @@ export class GlbScene {
     // 0.6 → 1.1 for a much wider scatter (matching the Figma reference, sections reaching
     // the frame corners). This is THE scatter-strength knob — the keyframe explode value
     // (capped at the editor slider max) just scales on top of it.
-    const SPREAD = 1.1;
     for (const [mesh, home] of this.meshHomes) {
-      mesh.position.copy(home.origin).addScaledVector(home.dir, ex * SPREAD);
+      const k = Math.pow(home.front, SPREAD_FALLOFF);
+      const spread = SPREAD_REAR + (SPREAD_FRONT - SPREAD_REAR) * k;
+      mesh.position.copy(home.origin).addScaledVector(home.dir, ex * spread);
     }
   }
 
@@ -730,11 +749,17 @@ export class GlbScene {
     m.needsUpdate = true;
   }
 
-  /** Remember each mesh's home position + outward unit direction from the model
-   *  centroid, so setExplode() can push sections apart along stable directions. */
+  /** Remember each mesh's home position, its outward unit direction from the model
+   *  centroid, and how far FORWARD it sits (0 = tail end, 1 = nose end) — so setExplode()
+   *  can push sections apart along stable directions and throw the front further. */
   private captureMeshHomes(model: THREE.Object3D): void {
     this.meshHomes.clear();
-    const centre = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
+    const box = new THREE.Box3().setFromObject(model);
+    const centre = box.getCenter(new THREE.Vector3());
+    // The animal's long axis is simply the widest one of its bounding box.
+    const size = box.getSize(new THREE.Vector3());
+    const axis: 'x' | 'y' | 'z' = size.x >= size.z ? 'x' : 'z';
+    const span = size[axis] || 1;
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -742,7 +767,9 @@ export class GlbScene {
       const dir = meshCentre.clone().sub(centre);
       if (dir.lengthSq() < 1e-8) dir.set(0, 1, 0);
       else dir.normalize();
-      this.meshHomes.set(mesh, { origin: mesh.position.clone(), dir });
+      const t = (meshCentre[axis] - box.min[axis]) / span;      // 0…1 along the long axis
+      const front = FRONT_IS_AXIS_MAX ? t : 1 - t;
+      this.meshHomes.set(mesh, { origin: mesh.position.clone(), dir, front });
     });
   }
 

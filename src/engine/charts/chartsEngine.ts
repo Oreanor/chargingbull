@@ -18,9 +18,26 @@ import copy from '../../content/copy.json';
 import { CHART_NOM, CHART_REAL, CHART_T0 } from '../../data/sp500Monthly';
 import { BM_GEOM } from './blackMondayCandles';
 import {
-  BM_OHLC, BM_AUG_I, bmPriceSvgY, bmLeft3SvgX,
-  bmMonthMarks3, bmTimeSvgX, bmDrawdownT,
+  GRID_DASH, BASE_LINE_W, TICK_BELOW, TICK_ABOVE, tickAlphaPct, tickAlphaAbs,
+  FILL_MAX, HATCH_ALPHA, makeHatch, inkText,
+  LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, END_DOT_R, END_DOT_R_FOCUS,
+} from './chartInk';
+
+/** Bull-callout circle radius in the 1142-wide design box (Desktop-43). On screen it is
+ *  that proportion of the plot width — the mockup's ratio, not a span between two years,
+ *  which drifted with the x-domain and read ~3% large. */
+const BULL_CALLOUT_R_DESIGN = 283.5;
+import {
+  BM_OHLC, BM_AUG_I, BM_CRASH_I, bmPriceSvgY,
+  bmDrawdownMonthMarks, bmDrawdownT,
 } from './blackMondayOHLC';
+import {
+  BM_PLATE_GAP,
+  BM_PLATE_PATHS_PORT, BM_PLATE_ORIGIN_PORT, BM_PLATE_SIZE_PORT,
+  BM_PLATE_Y_PORT, BM_PLATE_W, BM_PLATE_W_PORT,
+} from './blackMondayPlate';
+import { BULL_1989_PATH, BULL_1989_BOX } from './bull1989';
+import { isMobileViewport } from '../deviceBudget';
 
 export interface ChartStep {
   /** View key the chart morphs to on this step. */
@@ -42,20 +59,31 @@ let GRID = '#1f1f28';
 let AXIS = 'rgba(245,243,238,0.55)';
 let CRISIS = '#ff6b5c';
 let LINE = '#f5f3ee'; // themed plotted-line color: white on bear (pink), grey on bull
-const LINE_DIM = 'rgba(245,243,238,0.5)'; // de-emphasized (unfocused) line — faint white, not grey
 // Match the mockup: axis numbers in Space Mono, value labels in Struve (both loaded
 // via fonts.css). Canvas falls back silently if a face isn't ready yet.
 const FONT = "14px 'Space Mono', ui-monospace, monospace";
-const FONT_BOLD = "bold 14px 'Struve', system-ui, sans-serif";
+/** Endpoint markers are Struve 18 on both lines. The DROP is bold, the year under it
+ *  regular (Desktop-39: «−19%» at weight 700 over «2020» at 400; on the drawdown frames
+ *  40/41 the year is 400 as well). The drop used to be bold 14 over an 18 year, so the
+ *  year read as the heavier of the two — the sizes were swapped, not the weights. */
+const FONT_MARK = "18px 'Struve', system-ui, sans-serif";
+const FONT_MARK_BOLD = "bold 18px 'Struve', system-ui, sans-serif";
 // Green invest labels (mockups Percent 1–3): both lines Struve 18, 22px baseline step.
 const FONT_INVEST = "18px 'Struve', system-ui, sans-serif";
 const FONT_INVEST_BOLD = "bold 18px 'Struve', system-ui, sans-serif";
 // Clearance above the plot top so "S&P 500 INDEX" sits over the topmost tick label, not on it.
 // ~2× line height: one gap above the top tick label, plus another full caption height.
 const INDEX_ABOVE = 40;
-const END_DOT_R = 5;
-const TROUGH_LINE_H = 16;
+/** Room under the plot line for the X labels themselves (two rows + gap). */
+const X_LABEL_BAND = 44;
 let BG = '#000000';
+
+/** Endpoint-marker baselines, off Desktop-41 (dot at cy 589, «November» 614.3, «1987»
+ *  634.3): first line a clear 25px under the dot, second 20px under that. */
+/** ASCII hyphen, U+2212 minus, en dash — whichever the copy or fmtPct produced. */
+const MINUS_RE = /^[-−–]/;
+const MARK_GAP = 25;
+const MARK_STEP = 20;
 
 /** Shared Y-axis title: right edge at plot right, parked above the top grid. */
 function drawIndexCaption(ctx: CanvasRenderingContext2D, xRight: number, plotTop: number) {
@@ -67,34 +95,158 @@ function drawIndexCaption(ctx: CanvasRenderingContext2D, xRight: number, plotTop
 }
 
 /**
- * Two-line label at an endpoint: lines left-aligned to each other,
- * block centered on the dot. Default below; `above` parks it over the dot.
+ * The drawdown (%) Y scale — Desktop-41. One solid white line at 0%, which is the top of
+ * this scale; every line under it dashed. Numbers hang clear under their line, right-flush
+ * with the plot, and ink up as they descend away from the baseline.
+ * Walks top→down so the row index IS the distance from the baseline.
+ */
+function drawPctGrid(
+  ctx: CanvasRenderingContext2D,
+  x0: number, x1: number,
+  sy: (pct: number) => number,
+  pFrom: number, pTo: number, step: number,
+) {
+  const a0 = ctx.globalAlpha;
+  ctx.font = FONT;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  const rows = Math.floor((pTo - pFrom) / step) + 1;
+  let row = 0;
+  for (let p = pTo; p >= pFrom - 0.1; p -= step) {
+    const y = sy(p);
+    const isBase = p === 100;
+    ctx.strokeStyle = isBase ? LINE : GRID;
+    ctx.lineWidth = isBase ? BASE_LINE_W : 1;
+    ctx.setLineDash(isBase ? [] : GRID_DASH);
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    ctx.globalAlpha = a0 * tickAlphaPct(row, rows);
+    ctx.fillStyle = AXIS;
+    ctx.fillText(fmtPct(p), x1, y + TICK_BELOW);
+    ctx.globalAlpha = a0;
+    row++;
+  }
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1;
+}
+
+/** Seats under the plot line: the tick dot, then its label. */
+const X_DOT_DY = 14;
+const X_LABEL_DY = 28;
+
+/**
+ * Year ticks under the plot — a dot per year with its label beneath it.
+ *
+ * Owns its own font ON PURPOSE. Callers draw this right after a grid block, and those
+ * blocks live inside save()/restore(), so the font the grid set is rolled back before we
+ * get here. Inheriting it meant these labels rendered in whatever was left on the context —
+ * and on the 1 ↔ 1a morph, where both grids can be invisible at the same instant, nothing
+ * had set it at all, so they fell to the canvas default 10px sans until the next frame.
+ */
+function drawYearAxis(
+  ctx: CanvasRenderingContext2D,
+  sx: (v: number) => number,
+  y1: number, xMin: number, xMax: number,
+) {
+  ctx.font = FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = AXIS;
+  const span = xMax - xMin;
+  const step = span > 30 ? 10 : span > 10 ? 5 : 1;
+  for (let yr = Math.ceil(xMin / step) * step; yr <= xMax; yr += step) {
+    const x = sx(yr);
+    ctx.beginPath(); ctx.arc(x, y1 + X_DOT_DY, 3, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillText(String(yr), x, y1 + X_LABEL_DY);
+  }
+}
+
+/** Price ticks, bottom→top: through nice round tops (5000), not the headroom ceiling (6000). */
+function absTicks(yClip: number): number[] {
+  const step = yClip >= 4500 ? 1000 : yClip > 2000 ? 500 : yClip > 400 ? 100 : 50;
+  const top = Math.floor(yClip / step) * step;
+  const out: number[] = [];
+  for (let v = 0; v <= top + 0.1; v += step) out.push(v);
+  return out;
+}
+
+/**
+ * The absolute (price / $) Y scale — Desktop-43. Mirror image of drawPctGrid: here the
+ * solid white baseline is 0 at the BOTTOM (the caller draws it, over the plot floor), so
+ * the dashed lines and the ink ramp run upward from it. Numbers park above their line.
+ * `values` must be ordered bottom→top, so the index is the distance from the baseline.
+ */
+function drawAbsGrid(
+  ctx: CanvasRenderingContext2D,
+  x0: number, x1: number,
+  values: number[],
+  sy: (v: number) => number,
+  baseValue: number,
+) {
+  const a0 = ctx.globalAlpha;
+  ctx.font = FONT;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  ctx.setLineDash(GRID_DASH);
+  ctx.lineWidth = 1;
+  values.forEach((v, i) => {
+    const y = sy(v);
+    if (v !== baseValue) {   // the baseline's own rule is the solid white one
+      ctx.strokeStyle = GRID;
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    }
+    ctx.globalAlpha = a0 * tickAlphaAbs(i);
+    ctx.fillStyle = AXIS;
+    ctx.fillText(String(v), x1, y - TICK_ABOVE);
+    ctx.globalAlpha = a0;
+  });
+  ctx.setLineDash([]);
+}
+
+/**
+ * Two-line marker at an endpoint: the lines are left-aligned to each other and the block
+ * hangs so the DOT sits over the SECOND character of the year (line 2) — the designer's
+ * anchor. Centring the block on the dot, which is what this used to do, drifts with the
+ * width of the month above it, so «September 2002» and «March 2009» sat differently
+ * relative to their own dots. Default below the dot; `above` parks it over.
  * Optional maxRight keeps the block clear of the Y-axis ticks.
  */
-function drawCenteredTwoLine(
+function drawMarkerTwoLine(
   ctx: CanvasRenderingContext2D,
   line1: string, line2: string, px: number, py: number,
   font1: string, font2: string,
   maxRight?: number,
   above = false,
+  halo = true,
 ) {
-  const blockH = TROUGH_LINE_H * 2;
-  const top = above
-    ? py - END_DOT_R - 4 - blockH
-    : py + END_DOT_R + 4;
-  ctx.font = font1;
-  const w1 = ctx.measureText(line1).width;
   ctx.font = font2;
-  const w = Math.max(w1, ctx.measureText(line2).width);
-  let left = px - w / 2;
+  const w2 = ctx.measureText(line2).width;
+  // Measure the pair, not the glyph alone, so any kerning is included.
+  const lead = ctx.measureText(line2.slice(0, 1)).width;
+  const second = ctx.measureText(line2.slice(0, 2)).width - lead;
+  ctx.font = font1;
+  // A leading minus HANGS: it is set outside the block so the digits of «−42%» keep the
+  // same left edge as the year under them. Inside the block it shunts the whole number
+  // right by a glyph and the two lines stop lining up.
+  const sign = MINUS_RE.test(line1) ? line1[0] : '';
+  const body1 = line1.slice(sign.length);
+  const signW = sign ? ctx.measureText(sign).width : 0;
+  const w = Math.max(ctx.measureText(body1).width, w2);
+  // Short line 2 (nothing to anchor on) falls back to centring the block.
+  let left = line2.length >= 2 ? px - (lead + second / 2) : px - w / 2;
   if (maxRight != null && left + w > maxRight) left = maxRight - w;
+  const base = above ? py - MARK_GAP - MARK_STEP : py + MARK_GAP;
   ctx.fillStyle = CRISIS;
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.font = font1;
-  ctx.fillText(line1, left, top);
-  ctx.font = font2;
-  ctx.fillText(line2, left, top + TROUGH_LINE_H);
+  ctx.textBaseline = 'alphabetic';
+  // The knockout is only for markers that sit ON the plotted line — the trough dates on
+  // the drawdown frames (41 / 40 stroke them in the ground colour). The crisis percentages
+  // on the price frames are never stroked in the mockups (39 / 43 carry none): they hang in
+  // clear space above their peak, so the halo bought nothing and just fattened the type.
+  const ground = halo ? BG : '';
+  if (sign) inkText(ctx, sign, left - signW, base, font1, ground);
+  inkText(ctx, body1, left, base, font1, ground);
+  inkText(ctx, line2, left, base + MARK_STEP, font2, ground);
+  ctx.lineWidth = 1;
 }
 
 type YM = [number, number];
@@ -155,7 +307,7 @@ const BULL_PATH =
 // DARK for the bull-market / "$350K invested" views. theme: 0 = bear (pink), 1 = bull (dark).
 // GRID: dark dashed on bear (≈black, mockup 38/39/40), light dashed on bull (≈white,
 // mockup 46/47). AXIS labels: dark on pink, near-white on black.
-const THEME_BEAR = { BG: '#f14268', GRID: '#26090f', AXIS: '#3a0d18', CRISIS: '#2a0a12', LINE: '#f5f3ee' };
+const THEME_BEAR = { BG: '#f14268', GRID: '#26090f', AXIS: '#3a0d18', CRISIS: '#000000', LINE: '#f5f3ee' };
 const THEME_BULL = { BG: '#000000', GRID: '#8a8884', AXIS: '#d8d6d2', CRISIS: '#ff6b5c', LINE: '#8a8884' };
 function applyTheme(theme: number) {
   const k = theme < 0 ? 0 : theme > 1 ? 1 : theme;
@@ -170,14 +322,49 @@ const INVEST = 350000;
 const PURCHASE_M: YM = [1987, 10];
 const COMPARE_M: YM = [2021, 2];
 
-// xMax = months-from-peak shown. 0a keeps 1987 on the LEFT HALF (3 mo ≈ half plot ⇒
-// xMax≈6); 0b…0e paint on at that density then widen to 24 so crises compress left.
-const SLIDE_DATA: Record<string, { years: number[]; focus: number; yMin: number; xMax: number }> = {
-  '0a': { years: [1987], focus: 1987, yMin: 70, xMax: 6 },
-  '0b': { years: [1987, 2020], focus: 2020, yMin: 70, xMax: 24 },
-  '0c': { years: [1987, 2020, 2007], focus: 2007, yMin: 40, xMax: 24 },
-  '0d': { years: [1987, 2020, 2007, 1973], focus: 1973, yMin: 40, xMax: 24 },
-  '0e': { years: [1987, 2020, 2007, 1973, 2000], focus: 2000, yMin: 40, xMax: 24 },
+/** Months from peak to trough, per crisis. */
+const drawdownM = (c: Crisis) => (c.trough[0] - c.peak[0]) * 12 + (c.trough[1] - c.peak[1]);
+/** The wide slide domain: exactly the LONGEST drawdown on the chart (dotcom, 2000-08 →
+ *  2002-09 = 25 months). It used to be a round 24, one month short — the dotcom line ran
+ *  off the right edge and its trough marker was clipped away. Read from the data so the
+ *  domain can never fall behind the series again. */
+const SLIDE_XMAX = Math.max(...CRISES.map(drawdownM));
+/** Domain of a slide: exactly the longest drawdown IT shows. So each newly revealed crisis
+ *  arrives at full width and the scale steps out only when a longer one joins. It used to
+ *  jump to the widest domain on 0b already, which squashed 1987 and 2020 into a tenth of
+ *  the plot and held them there while the remaining three painted on. */
+const slideXMax = (years: number[]) =>
+  Math.max(...CRISES.filter((c) => years.includes(c.peak[0])).map(drawdownM));
+
+/** Ceiling of the price scale: the series maximum plus 5% air, rounded up to a round 100.
+ *  It was hardcoded at 6000 while CHART_NOM runs to 7215 — the top of the growth curve was
+ *  simply cut off, and the axis could not show 6000 or 7000 at all. Derived, so the scale
+ *  cannot fall behind the data again. */
+const PRICE_CLIP =
+  Math.ceil(Math.max(...CHART_NOM.filter(Number.isFinite)) * 1.05 / 100) * 100;
+
+/** Peak→trough of 1987 — the span the candle stage and the first drawdown slide show. */
+const BM_SPAN_M = drawdownM(CRISES[1]);
+/**
+ * X-domain of the TIGHT window — the candle stage and slide 0a/0b, which share a scale.
+ * It is exactly the span they show, so those frames fill the plot edge to edge on every
+ * breakpoint. Landscape used to show twice the span, parking the drawdown in the left half
+ * with an empty right one; that half existed for the «−20.5%» plate, and the plate now
+ * hangs off the crash column instead, so nothing needs it. The compression comes later and
+ * gradually, as longer crises join (see slideXMax).
+ */
+const tightXMax = () => BM_SPAN_M;
+
+// No slide carries an x-domain of its own — it is derived, so it can never disagree with
+// the lines actually on the slide. `tight` marks the two opening frames, which share the
+// candle stage's per-breakpoint window; the rest step out with their longest drawdown.
+const SLIDE_DATA: Record<string, { years: number[]; focus: number; yMin: number; tight?: boolean }> = {
+  '0a': { years: [1987], focus: 1987, yMin: 70, tight: true },
+  // 0b adds COVID, which is SHORTER than 1987 — the span doesn't move, only the reveal.
+  '0b': { years: [1987, 2020], focus: 2020, yMin: 70, tight: true },
+  '0c': { years: [1987, 2020, 2007], focus: 2007, yMin: 40 },
+  '0d': { years: [1987, 2020, 2007, 1973], focus: 1973, yMin: 40 },
+  '0e': { years: [1987, 2020, 2007, 1973, 2000], focus: 2000, yMin: 40 },
 };
 
 // Loose config type — views carry different fields and are lerp-merged dynamically.
@@ -196,7 +383,7 @@ function viewConfig(key: string): Cfg {
   if (key === '1a') {
     return { kind: 'state2', mode: 'nominal', modeBlend: 0,
       // Headroom above ~5000 so recent peaks / hatch aren’t clipped at the plot top.
-      xMin: 1970, xMax: 2026, yClip: 6000,
+      xMin: 1970, xMax: 2026, yClip: PRICE_CLIP,
       visibleYears: [1973, 1987, 2000, 2007, 2020],
       showCrisisSegments: true, bullAlpha: 0, investAlpha: 0 };
   }
@@ -210,7 +397,7 @@ function viewConfig(key: string): Cfg {
     const isReal = key === '3';
     return { kind: 'state2', mode: isReal ? 'real' : 'nominal',
       modeBlend: isReal ? 1 : 0,
-      xMin: 1970, xMax: 2026, yClip: 6000,
+      xMin: 1970, xMax: 2026, yClip: PRICE_CLIP,
       visibleYears: [1973, 1987, 2000, 2007, 2020],
       showInvestment: true, showCrisisSegments: false,
       isReal, bullAlpha: 0, investAlpha: 1 };
@@ -219,7 +406,7 @@ function viewConfig(key: string): Cfg {
   // yMax = 100 puts the peak (0% drawdown) line at the very top of the plot, exactly like
   // the exact single-1987 drawdown (BM_DD: 0% at y≈box-top) — so the 0% line and the −10/
   // −20/−30 ticks DON'T jump between drawCandleStage and the slide, nor between slides.
-  return { kind: 'slide', xMin: 0, xMax: s.xMax, yMin: s.yMin, yMax: 100,
+  return { kind: 'slide', xMin: 0, xMax: s.tight ? tightXMax() : slideXMax(s.years), yMin: s.yMin, yMax: 100,
     visibleYears: s.years, focusYear: s.focus, focusAll: false };
 }
 
@@ -250,21 +437,33 @@ function lerpState2Cfg(a: Cfg, b: Cfg, t: number): Cfg {
 function xValueIn(crisis: Crisis, m: number, cfg: Cfg) {
   return cfg.kind === 'state1' ? (ymToX(crisis.peak) + m / 12) : m;
 }
-function colorIn(crisis: Crisis, cfg: Cfg) {
-  // Focused drawdown lines are the themed LINE color — white on the pink bear
-  // frames (mockup 38/39/41), not the near-black CRISIS (that's for the labels).
-  if (cfg.focusAll) return LINE;
-  if (cfg.focusYear === crisis.peak[0]) return LINE;
-  return LINE_DIM;
+/** The crisis this view is ABOUT — the one that just arrived. */
+const isFocus = (crisis: Crisis, cfg: Cfg) => !!cfg.focusAll || cfg.focusYear === crisis.peak[0];
+/**
+ * Ink by AGE. Desktop-40 wraps each crisis in its own opacity — 1 for the one being told,
+ * then 0.7 / 0.5 / 0.3 / 0.2 going back — so the plot reads as a stack where the newest
+ * story is on top and the earlier ones recede. We had a single flat dim for every
+ * unfocused line, which made five crises look like one grey thicket.
+ * Index 0 = the focus, 1 = the crisis before it, and so on.
+ */
+const DIM_LADDER = [1, 0.7, 0.5, 0.3, 0.2];
+function dimIn(crisis: Crisis, cfg: Cfg) {
+  if (cfg.focusAll) return 1;
+  const years = (cfg.visibleYears as number[]) ?? [];
+  const i = years.indexOf(crisis.peak[0]);
+  if (i < 0) return DIM_LADDER[DIM_LADDER.length - 1];
+  // visibleYears is the reveal order, so distance from its END is the crisis's age.
+  return DIM_LADDER[Math.min(years.length - 1 - i, DIM_LADDER.length - 1)];
 }
-const LINE_W_THICK = 4;
-const LINE_W_THIN = 2;
 /** Gap between series/hatch and the right-edge Y labels. Grid still reaches x1.
  *  Sized so trough date labels under the end-dot don’t collide with the % ticks. */
 const PLOT_RIGHT_INSET = 52;
+/** %-grid spacing. The overview spans 0…−100% and is drawn sparse (Desktop-38: five lines
+ *  at 25%); the drawdown slides cover a third of that and step at 10% (Desktop-40/41). */
+const PCT_STEP_WIDE = 25;
+const PCT_STEP_TIGHT = 10;
 function widthIn(crisis: Crisis, cfg: Cfg) {
-  if (cfg.focusAll || cfg.focusYear === crisis.peak[0]) return LINE_W_THICK;
-  return LINE_W_THIN;
+  return isFocus(crisis, cfg) ? LINE_W_THICK : LINE_W_THIN;
 }
 
 export interface ChartsEngine {
@@ -272,17 +471,15 @@ export interface ChartsEngine {
   draw(progress: number): string;
   /** 0..1 bull-phase factor (the $350k views) — drives the React topbar tint/label. */
   bullFactor(): number;
-  /** 0..1 — 1 on the Black Monday candle frame; drives the HTML "−20%" plate. */
-  candleAlpha(): number;
-  /** Plate anchor in stage/CSS px (just after the crash candle) + opacity. */
-  candlePlate(): { x: number; y: number; a: number };
+  /** px reserved under the plot for the HTML credits, so X labels never overlap them. */
+  setBottomReserve(px: number): void;
   resize(): void;
   ready(): boolean;
 }
 
 /** Fraction of each step's travel spent dwelling (held) on the view, per end.
  *  Keep morph budget (~20%); longer “sit” comes from SEG_W chronometry, not denser dwells. */
-const DWELL_HOLD_FRAC = 0.4;
+export const DWELL_HOLD_FRAC = 0.4;
 // On-graph labels wait for the line to finish building: they stay hidden through the morph
 // and slide in a beat AFTER the view settles (LABEL_DELAY into the end-dwell), so a label
 // never sits on a still-moving line. The leaving label fades over the first slice of the morph.
@@ -290,16 +487,11 @@ const LABEL_DELAY = 0.28;     // fraction of the end-dwell held before the label
 const LABEL_FADE_OUT = 0.35;  // fraction of the morph over which the leaving label fades out
 const smoothstep = (x: number) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
 
-// 0a → 0b is a TWO-BEAT move. Hand off from left-half 1987 (drawCandleStage) to the data
-// slide EARLY at the same density (xMax≈6: 3 mo in the left half); beat 1 reveals COVID
-// at that scale; beat 2 widens to 24 so both crises compress left.
+// 0a → 0b hands off from the candle stage to the data slide EARLY, at the same density,
+// then reveals COVID on its own beat. There is no widening left in this move: 0b spans the
+// same three months as 0a, and the scale first steps out on 0c, when a longer crisis joins.
 const A0_HANDOFF = 0.08;      // morph fraction at which 0a's static drawdown yields to the slide
 const COMPRESS_REVEAL = 0.28;  // sub-progress by which the COVID line has FULLY drawn
-// Hold with COVID labeled before the xMax widen — “подсветил → подписал → постоял”.
-const COMPRESS_START = 0.68;   // sub-progress at which the xMax widening (compression) begins
-// Match left-half candle/drawdown stage: month 3 at ~50% of plot ⇒ xMax = 6.
-const COMPRESS_XTIGHT = 6;
-const COMPRESS_XWIDE = 24;    // = SLIDE_DATA['0b'].xMax — the two-crisis comparison scale
 /** bm morph handoff: candles → numbered-month slide (shared by drawNow guard + stage). */
 const BM_TO_SLIDE = 0.82;
 
@@ -310,14 +502,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   const yReal: number[] = CHART_REAL.slice();
   for (let i = 0; i < CHART_NOM.length; i++) xs[i] = CHART_T0 + i / 12;
   let mode: 'nominal' | 'real' = 'nominal';
-  let scale: 'lin' | 'log' = 'lin';
   let fromKey = CHART_STEPS[0].view, toKey = CHART_STEPS[0].view, animT = 0;
   let lastLinear = 0; // last scrub index — resize must re-apply this (not bare drawNow)
   let scrubReady = false; // true after the first scroll-driven draw(); blocks premature resize paints
   let lastBull = 0; // 0..1 bull-phase factor for the React topbar, set each draw
-  let lastCandle = 0; // 0..1 — 1 on the Black Monday candle frame (drives the HTML plate)
-  // −20% plate: sits just after the last candle; tracks stretch X and fades with it.
-  let lastPlate = { x: 0, y: 0, a: 0 };
   let entryFade = 1;  // 0..1 — the very first frame's content fades IN over the pink ground
   // Gates invest-overlay copy only. Crisis trough/drop labels ride with their lines
   // (appear when the bold series appears, never blink out during morphs).
@@ -325,6 +513,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   let paintAlpha = 1; // 0..1 — multiplies slide paint (bm→0a crossfade)
   let skipBgClear = false; // when true, setupCtx keeps the previous layer (crossfade overlay)
   let bullPath: Path2D | null = null; // cached Charging Bull figurine
+  let numPath: Path2D | null = null;   // cached «1989» outline
+  let platePaths: Path2D[] | null = null;
+  // px the page reserves under the plot (the HTML credits block). Set from ChartsChapter.
+  let bottomReserve = 0;                // which breakpoint platePaths was built for // cached Black Monday plate outlines
 
   // Bull marker (Desktop-43): gold dot + the bull figurine + a big "1989" above it,
   // anchored at (dx,dy) = the Dec-1989 point, scaled to the plot so it tracks the zoom.
@@ -332,18 +524,27 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
    * Halo disc + “The financial crisis” + bull figurine (Desktop-43).
    * Circle + label share one transform (design space r=283.5), so they scale as a unit.
    */
+  /**
+   * The translucent disc behind the bull marker — painted BEFORE the grid, the axis and the
+   * series. It is white at 0.2 over most of a plot width, so on top it washed out everything
+   * it covered: the dashed grid faded and the solid white rule at zero turned into a bright
+   * smear where the disc crossed it. As a backdrop it does what it is for — lifting the
+   * ground under the marker — without touching the chart's own ink.
+   */
+  function drawBullHalo(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number) {
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, 2 * Math.PI); ctx.fill();
+  }
+
   function drawBullCallout(
     ctx: CanvasRenderingContext2D,
     cx: number, cy: number, radius: number,
     dx: number, dy: number, plotW: number,
   ) {
-    const R = 283.5; // Desktop-43 circle radius
-    const k = radius / R;
+    const k = radius / BULL_CALLOUT_R_DESIGN;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(k, k);
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.beginPath(); ctx.arc(0, 0, R, 0, 2 * Math.PI); ctx.fill();
     // SVG seat (487.3, 208.4) vs circle centre (593.5, 382), +1 line down.
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.textAlign = 'left';
@@ -366,35 +567,21 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     ctx.fillStyle = '#bca371'; ctx.strokeStyle = '#f5f3ee'; ctx.lineWidth = 2; // gold dot + white ring
     ctx.beginPath(); ctx.arc(1000.5, 305.5, 8.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#f5f3ee'; ctx.fill(bullPath); // the bull figurine
-    ctx.font = "127px 'Druk Condensed', 'Druk XXCond', system-ui, sans-serif";
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.fillText('1989', 941.145, 250.488); // big Druk number above the bull
+    // «1989» as the designer's outline, parked where the old fillText's left edge and
+    // alphabetic baseline were (941.145, 250.488) — the numeral has no descenders, so
+    // its baseline is the bottom of the ink box. Native size, no scale: the export is
+    // already in this design space.
+    if (!numPath) numPath = new Path2D(BULL_1989_PATH);
+    ctx.save();
+    ctx.translate(941.145, 250.488 - BULL_1989_BOX.h);
+    ctx.fill(numPath);
+    ctx.restore();
     ctx.restore();
   }
 
   const ys = () => (mode === 'nominal' ? yNom : yReal);
 
-  // Diagonal-hatch patterns (mockup signature), cached per fill color.
-  const hatchCache: Record<string, CanvasPattern | null> = {};
-  function hatchPattern(ctx: CanvasRenderingContext2D, color: string): CanvasPattern | null {
-    if (color in hatchCache) return hatchCache[color];
-    const S = 14;
-    const tile = document.createElement('canvas');
-    tile.width = S; tile.height = S;
-    const tc = tile.getContext('2d');
-    if (tc) {
-      tc.strokeStyle = color; tc.lineWidth = 1.3; tc.lineCap = 'round';
-      // one diagonal + its wrap-around halves so the tile repeats seamlessly
-      tc.beginPath();
-      tc.moveTo(0, S); tc.lineTo(S, 0);
-      tc.moveTo(-1, 1); tc.lineTo(1, -1);
-      tc.moveTo(S - 1, S + 1); tc.lineTo(S + 1, S - 1);
-      tc.stroke();
-    }
-    const p = ctx.createPattern(tile, 'repeat');
-    hatchCache[color] = p;
-    return p;
-  }
+  const hatch = makeHatch();
 
   // Translucent area under a polyline: vertical gradient (denser at the curve,
   // fading to the axis) + faint diagonal hatch on top. pts = [[x,y],…].
@@ -411,20 +598,27 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     ctx.lineTo(pts[pts.length - 1][0], baseY);
     ctx.closePath();
     const g = ctx.createLinearGradient(0, topY, 0, baseY);
-    g.addColorStop(0, withAlpha(color, 0.22));
+    g.addColorStop(0, withAlpha(color, FILL_MAX));
     g.addColorStop(1, withAlpha(color, 0));
     ctx.fillStyle = g; ctx.fill();
-    const pat = hatchPattern(ctx, color);
-    if (pat) { ctx.globalAlpha = 0.1; ctx.fillStyle = pat; ctx.fill(); }
+    const pat = hatch.get(ctx, color);
+    if (pat) { ctx.globalAlpha = HATCH_ALPHA; ctx.fillStyle = pat; ctx.fill(); }
     ctx.restore();
   }
 
   // Drawdown area for the slides (Desktop-41): the region between the line and the
   // 0% line ABOVE it — gradient transparent at 0% → white toward the trough, + hatch.
+  // The gradient spans the SHAPE (0% line → deepest point of this drawdown), like the
+  // mockup's own paint bounds, not the full plot height.
+  //
+  // hatchK gates the stripes. Desktop-40 hatches exactly ONE of its five areas — the
+  // crisis the slide is about — and leaves the ones already told as plain gradient. So the
+  // hatch marks what's NEW, instead of turning the plot into a solid weave as the crises
+  // stack up.
   function fillDrawdownArea(
     ctx: CanvasRenderingContext2D,
     pts: [number, number][],
-    topY: number, botY: number, color: string, k = 1,
+    topY: number, color: string, k = 1, hatchK = 1,
   ) {
     if (pts.length < 2 || k <= 0) return;
     ctx.save();
@@ -435,12 +629,16 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     for (const [px, py] of pts) ctx.lineTo(px, py);
     ctx.lineTo(pts[pts.length - 1][0], topY);
     ctx.closePath();
+    let botY = topY;
+    for (const [, py] of pts) if (py > botY) botY = py;
     const g = ctx.createLinearGradient(0, topY, 0, botY);
-    g.addColorStop(0, withAlpha(color, 0));    // transparent at the 0% line
-    g.addColorStop(1, withAlpha(color, 0.5));  // white toward the drawdown
+    g.addColorStop(0, withAlpha(color, 0));         // transparent at the 0% line
+    g.addColorStop(1, withAlpha(color, FILL_MAX));  // barely white at the trough
     ctx.fillStyle = g; ctx.fill();
-    const pat = hatchPattern(ctx, color);
-    if (pat) { ctx.globalAlpha = a0 * 0.22 * k; ctx.fillStyle = pat; ctx.fill(); }
+    if (hatchK > 0.01) {
+      const pat = hatch.get(ctx, color);
+      if (pat) { ctx.globalAlpha = a0 * HATCH_ALPHA * k * hatchK; ctx.fillStyle = pat; ctx.fill(); }
+    }
     ctx.restore();
   }
 
@@ -453,10 +651,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     return { nomVal: INVEST * nomMult, realVal: INVEST * realMult, nomMult, realMult };
   }
 
-  function applyAutoModeScale(key: string) {
-    if (key === '3') { mode = 'real'; scale = 'lin'; }
-    else if (key === '1a' || key === '1b' || key === '2') { mode = 'nominal'; scale = 'lin'; }
-    else { mode = 'real'; scale = 'lin'; }
+  /** Nominal dollars on the growth/invest frames; real (inflation-adjusted) everywhere else. */
+  function applyAutoMode(key: string) {
+    mode = (key === '1a' || key === '1b' || key === '2') ? 'nominal' : 'real';
   }
 
   function setupCtx() {
@@ -468,7 +665,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // (so the hatch cache had to be rebuilt each frame). Guarded, the cache now survives.
     if (canvas.width !== needW || canvas.height !== needH) {
       canvas.width = needW; canvas.height = needH;
-      for (const k in hatchCache) delete hatchCache[k];
+      hatch.clear();
     }
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -479,7 +676,13 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // — the header & footer/legend live in those bands).
     const padL = Math.round(W * 0.1), padR = Math.round(W * 0.1);
     // Extra bottom band so lowered X-axis labels stay above the HTML footer.
-    const padT = Math.round(H * 0.18), padB = Math.round(H * 0.20);
+    // The bottom band holds the X labels AND the HTML credits that sit under the chart.
+    // 20% of the height is the mockup's proportion, but the credits are fixed 16/24 text:
+    // on a narrow phone they wrap to six lines and grow past that band, so the year
+    // labels ended up printed across them. Take whichever is larger — the design band, or
+    // what the page says it actually needs (measured, not a magic breakpoint fraction).
+    const padT = Math.round(H * 0.18);
+    const padB = Math.max(Math.round(H * 0.20), bottomReserve + X_LABEL_BAND);
     const x1 = W - padR;
     // Series + hatch stop here; Y labels / grid continue to x1.
     const xData1 = x1 - PLOT_RIGHT_INSET;
@@ -496,7 +699,6 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       return;
     }
     // Line/slide painter — drop any stale −20% unless a bm crossfade will re-paint it.
-    if (paintAlpha >= 1) lastPlate.a = 0;
     const cfgA = viewConfig(fromKey);
     const cfgB = viewConfig(toKey);
     const t = animT;
@@ -521,21 +723,18 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       drawState2(cfgB.kind === 'state2' ? cfgB : cfgA);
       return;
     }
-    // 0a ↔ 0b two-beat: hand off from left-half 1987 (xMax≈6), reveal COVID at that
-    // density, then widen to 24 so both compress left. null on every other slide morph.
+    // 0a ↔ 0b: COVID reveals on its OWN early beat. The scale no longer moves here — 0b
+    // shows the same span as 0a — so this is just the reveal, not the old widen-and-hold.
     let compressToB: number | null = null;
     if (fromKey === '0a' && toKey === '0b') compressToB = (t - A0_HANDOFF) / (1 - A0_HANDOFF);
     else if (fromKey === '0b' && toKey === '0a') compressToB = 1 - t / (1 - A0_HANDOFF);
-    let revealK: number | null = null, widen = t;
+    let revealK: number | null = null;
     if (compressToB !== null) {
       const q = compressToB < 0 ? 0 : compressToB > 1 ? 1 : compressToB;
       revealK = smoothstep(q / COMPRESS_REVEAL);
-      widen = smoothstep((q - COMPRESS_START) / (1 - COMPRESS_START));
     }
     const xMin = lerp(cfgA.xMin as number, cfgB.xMin as number, t);
-    const xMax = compressToB !== null
-      ? lerp(COMPRESS_XTIGHT, COMPRESS_XWIDE, widen)
-      : lerp(cfgA.xMax as number, cfgB.xMax as number, t);
+    const xMax = lerp(cfgA.xMax as number, cfgB.xMax as number, t);
     const yMin = lerp(cfgA.yMin as number, cfgB.yMin as number, t);
     const yMax = lerp(cfgA.yMax as number, cfgB.yMax as number, t);
     const Y = ys();
@@ -545,45 +744,41 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const pa = paintAlpha;
 
     ctx.globalAlpha = pa;
-    ctx.font = FONT;
-    // Y labels: right edge flush with plot’s right edge, hanging under each grid line.
-    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     const labelCfg = t < 0.5 ? cfgA : cfgB;
-    const yStep = labelCfg.kind === 'state1' ? 50 : 10;
-    for (let p = Math.ceil(yMin / 10) * 10; p <= yMax + 0.1; p += 10) {
-      if (p > 100 + 5) break;
-      const y = sy(p);
-      ctx.strokeStyle = p === 100 ? 'rgba(245,243,238,0.35)' : GRID;
-      ctx.setLineDash(p === 100 ? [] : [2, 3]);
-      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-      if (p % yStep === 0) {
-        ctx.fillStyle = AXIS;
-        ctx.fillText(fmtPct(p), x1, y + 3);
-      }
-    }
-    ctx.setLineDash([]);
+    // Every grid line carries its own number (41 / 40 / 38 all do). What changes between
+    // views is the STEP: the 0…−100% overview breathes at 25%, the drawdown slides at 10%.
+    const pctStep = labelCfg.kind === 'state1' ? PCT_STEP_WIDE : PCT_STEP_TIGHT;
+    drawPctGrid(
+      ctx, x0, x1, sy,
+      Math.ceil(yMin / pctStep) * pctStep, Math.min(100, Math.floor(yMax / pctStep) * pctStep),
+      pctStep,
+    );
 
     // Dots under x labels, no vertical grid lines (mockup).
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = AXIS;
     if (labelCfg.kind === 'slide') {
       // step in months: 1 when zoomed in (0a left-half density), 6 when wide
       const mStep = xMax <= 8 ? 1 : 6;
-      for (let m = 0; m <= 24; m += mStep) {
+      // Desktop-40: «PEAK · 6 · 12 · 18 · 24 MONTHS» — the unit is spelled out ONCE, on
+      // the last tick, and the ones between it and the peak are bare numerals.
+      // Mirror the loop's own visibility guard, so the unit always lands on the tick that
+      // is actually drawn last — mid-morph xMax is fractional and flooring it alone put
+      // «MONTHS» one tick short of the end.
+      const lastTick = Math.min(SLIDE_XMAX, Math.floor((xMax + 0.5) / mStep) * mStep);
+      for (let m = 0; m <= SLIDE_XMAX; m += mStep) {
         if (m < xMin - 0.5 || m > xMax + 0.5) continue;
         const x = sx(m);
         ctx.beginPath(); ctx.arc(x, y1 + 14, 3, 0, 2 * Math.PI); ctx.fill();
-        ctx.fillText(m === 0 ? LBL.peak : (m + ' ' + LBL.months), x, y1 + 28);
+        const label = m === 0 ? LBL.peak
+          : m === lastTick ? `${m} ${LBL.months}`
+          : String(m);
+        ctx.fillText(label, x, y1 + 28);
       }
     } else {
-      for (let yr = 1970; yr <= 2030; yr += 10) {
-        if (yr < xMin - 1 || yr > xMax + 1) continue;
-        const x = sx(yr);
-        ctx.beginPath(); ctx.arc(x, y1 + 14, 3, 0, 2 * Math.PI); ctx.fill();
-        ctx.fillText(String(yr), x, y1 + 28);
-      }
+      drawYearAxis(ctx, sx, y1, xMin, xMax);
     }
-    ctx.strokeStyle = LINE; ctx.beginPath();
-    ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
+    // No white rule along the bottom: on the drawdown scale the solid baseline is 0% at
+    // the TOP (drawPctGrid), and the plot floor is just the last dashed Y line.
 
     ctx.save();
     // Clip series + hatch short of the Y labels; grids above already span to x1.
@@ -616,13 +811,13 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       if (!isFinite(peakPrice)) continue;
       const lastM = iT - iP;
 
-      const colA = colorIn(c, cfgA), colB = colorIn(c, cfgB);
-      const wdA = widthIn(c, cfgA), wdB = widthIn(c, cfgB);
-      // colA/colB are now themed LINE (rgb()) or LINE_DIM (rgba()) — not always hex,
-      // so the old '#'-only lerp fell through to grey. Both are white-family; pick the
-      // dominant side (the in/out crossfade is handled by `alpha` + the width lerp).
-      const stroke = colA === colB ? colA : (t < 0.5 ? colA : colB);
-      const width = lerp(wdA, wdB, t);
+      // Every drawdown is the same white; what separates them is WEIGHT and INK — the
+      // focused one is thick and fully opaque, the ones behind it thin and stepped back
+      // down the ladder. Both lerp, so the emphasis slides over as the focus moves.
+      const width = lerp(widthIn(c, cfgA), widthIn(c, cfgB), t);
+      const dim = lerp(dimIn(c, cfgA), dimIn(c, cfgB), t);
+      // The focus also owns the hatch and the fatter end dot (Desktop-40: r7 vs r5).
+      const focusK = lerp(isFocus(c, cfgA) ? 1 : 0, isFocus(c, cfgB) ? 1 : 0, t);
 
       const inA = (cfgA.visibleYears as number[]).includes(c.peak[0]);
       const inB = (cfgB.visibleYears as number[]).includes(c.peak[0]);
@@ -633,7 +828,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // on its OWN early beat, at the tight scale, before the compression starts.
       if (revealK !== null && inA !== inB) alpha = revealK;
       if (alpha <= 0) continue;
-      ctx.globalAlpha = alpha * pa;
+      ctx.globalAlpha = alpha * pa * dim;
 
       const pts: [number, number][] = [];
       for (let m = 0; m <= lastM; m++) {
@@ -649,15 +844,19 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // drawn first, under the line. EVERY visible crisis on a slide view keeps its fill (none
       // vanish one-by-one as the next crisis is added); fillK only removes them on the way out
       // to the overview (frame 07). Each fades in with its own line via ctx.globalAlpha=alpha.
-      if (isSlide) fillDrawdownArea(ctx, pts, sy(100), y1, FILL_BEAR, fillK);
+      // Stripes ride the FOCUS, so the new crisis picks the hatch up exactly as the
+      // previous one hands it over.
+      if (isSlide) fillDrawdownArea(ctx, pts, sy(100), FILL_BEAR, fillK, focusK);
 
-      ctx.strokeStyle = stroke; ctx.lineWidth = width;
+      ctx.strokeStyle = LINE; ctx.lineWidth = width;
       ctx.beginPath();
       pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
       ctx.stroke();
       const [lastSx, lastSy] = pts[pts.length - 1];
-      ctx.fillStyle = stroke;
-      ctx.beginPath(); ctx.arc(lastSx, lastSy, END_DOT_R, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = LINE;
+      ctx.beginPath();
+      ctx.arc(lastSx, lastSy, lerp(END_DOT_R, END_DOT_R_FOCUS, focusK), 0, 2 * Math.PI);
+      ctx.fill();
     }
     ctx.globalAlpha = pa;
     ctx.restore();
@@ -683,11 +882,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       else if (!inA && inB) alpha = t;
       if (revealK !== null && inA !== inB) alpha = revealK;
       if (alpha <= 0) continue;
-      // Label rides with the line: appears as soon as the (bold) series is drawn,
-      // and never fades out during morphs — only with the line’s own alpha.
-      ctx.globalAlpha = alpha * pa;
+      // Label rides with the line: appears as soon as the (bold) series is drawn, never
+      // fades out during morphs, and recedes down the SAME ink ladder as its line — so an
+      // old crisis's date doesn't shout over the one the slide is actually about.
+      ctx.globalAlpha = alpha * pa * lerp(dimIn(c, cfgA), dimIn(c, cfgB), t);
       if (px >= x0 + 30 && px <= x1 + 4 && py >= y0 && py <= y1) {
-        drawCenteredTwoLine(ctx, c.troughMonth, c.troughYear, px, py, FONT, FONT, xData1);
+        drawMarkerTwoLine(ctx, c.troughMonth, c.troughYear, px, py, FONT, FONT_MARK, xData1);
       }
     }
     ctx.globalAlpha = 1;
@@ -709,54 +909,25 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const xMin = cfg.xMin as number, xMax = cfg.xMax as number;
     const yClip = cfg.yClip as number;
     const sx = makeSx(xMin, xMax, x0, xData1);
-    let sy: (v: number) => number;
-    if (scale === 'log') {
-      const lyMin = Math.log10(Math.max(1, yClip / 1000)), lyMax = Math.log10(yClip);
-      sy = (v) => y1 - (Math.log10(Math.max(1, v)) - lyMin) / (lyMax - lyMin) * (y1 - y0);
-    } else {
-      sy = (v) => y1 - v / yClip * (y1 - y0);
+    const sy = (v: number) => y1 - v / yClip * (y1 - y0);
+
+    // Bull halo FIRST — it is a backdrop, not an overlay (see drawBullHalo).
+    const bullAlpha = (cfg.bullAlpha as number) || 0;
+    const bullCx = sx(1988), bullCy = sy(Y[ymToIdx(xs, [1988, 6])] || 320);
+    const bullR = BULL_CALLOUT_R_DESIGN / BM_GEOM.box.w * (x1 - x0);
+    if (bullAlpha > 0.01) {
+      ctx.save(); ctx.globalAlpha = bullAlpha;
+      drawBullHalo(ctx, bullCx, bullCy, bullR);
+      ctx.restore();
     }
 
-    ctx.font = FONT;
-    // Absolute index/$ ticks sit ABOVE their grid line; % ticks (slides) sit below.
-    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillStyle = AXIS;
-    ctx.setLineDash([2, 6]); // dashed horizontal grid, like the mockup
-    if (scale === 'log') {
-      const lyMin = Math.log10(Math.max(1, yClip / 100)), lyMax = Math.log10(yClip);
-      for (let p = Math.ceil(lyMin); p <= lyMax; p++) {
-        const v = Math.pow(10, p), y = sy(v);
-        ctx.strokeStyle = GRID; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-        ctx.fillText(String(v), x1, y - 3);
-      }
-    } else {
-      // Tick through nice round tops (5000), not the headroom ceiling (6000).
-      const tickMax = yClip >= 5000 ? 5000 : yClip > 500 ? Math.floor(yClip / 100) * 100 : yClip;
-      const step = yClip >= 4500 ? 1000 : yClip > 2000 ? 500 : yClip > 400 ? 100 : 50;
-      for (let v = 0; v <= tickMax + 0.1; v += step) {
-        const y = sy(v);
-        ctx.strokeStyle = GRID; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-        ctx.fillText(String(v), x1, y - 3);
-      }
-    }
-    ctx.setLineDash([]);
+    drawAbsGrid(ctx, x0, x1, absTicks(yClip), sy, 0);
 
     // Y-axis title — same seat/ink as the candle close-up (above top tick, AXIS color).
     drawIndexCaption(ctx, x1, y0);
 
     // No vertical grid lines in the mockup — a dot under each year label instead.
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = AXIS;
-    const xSpan = xMax - xMin;
-    const xStep = xSpan > 30 ? 10 : xSpan > 10 ? 5 : 1;
-    const xStart = Math.ceil(xMin / xStep) * xStep;
-    for (let yr = xStart; yr <= xMax; yr += xStep) {
-      const x = sx(yr);
-      ctx.beginPath(); ctx.arc(x, y1 + 14, 3, 0, 2 * Math.PI); ctx.fill();
-      ctx.fillText(String(yr), x, y1 + 28);
-    }
-    ctx.strokeStyle = LINE; ctx.beginPath();
-    ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
-
+    drawYearAxis(ctx, sx, y1, xMin, xMax);
     const iPurchase = ymToIdx(xs, PURCHASE_M);
     const iCompare = ymToIdx(xs, COMPARE_M);
     const iStart = Math.max(0, ymToIdx(xs, [Math.floor(xMin), 1]));
@@ -796,7 +967,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     };
 
     const GROWTH = '#61e26b'; // bull/invest highlight — GREEN, not the bear pink/crisis red
-    const GROWTH_THIN = 'rgba(97,226,107,0.4)'; // thin series: same green, semi-transparent
+    // The thin series is CONTEXT under the highlighted stretch, so it runs at 60%.
+    const GROWTH_THIN = withAlpha(GROWTH, THIN_ALPHA);
     const investAlpha = (cfg.investAlpha as number) || 0;
     if (investAlpha > 0.01) {
       // Thin = translucent green; thick hold = solid. investAlpha fades the pair in.
@@ -806,10 +978,19 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       drawSegment(Math.max(iPurchase, iStart), Math.min(iCompare, iEnd), GROWTH, LINE_W_THICK);
       ctx.restore();
     } else {
+      ctx.save(); ctx.globalAlpha = THIN_ALPHA;
       drawSegment(iStart, iEnd, LINE, LINE_W_THIN);
+      ctx.restore();
     }
 
-    if (cfg.showCrisisSegments) {
+    // Crisis segments + their «−26% / 1987» labels belong to the PINK frames — no dark
+    // mockup carries them (46 has none). They used to ride the morph at full strength and
+    // then vanish on a hard boolean flip at t=0.5, which is why they were last seen in
+    // salmon on the already-dark ground. Faded out with the pink instead.
+    const crisisK = 1 - ((cfg.investAlpha as number) || 0);
+    if (cfg.showCrisisSegments && crisisK > 0.01) {
+      ctx.save();
+      ctx.globalAlpha *= crisisK;
       ctx.font = FONT;
       for (const c of CRISES) {
         const iP = ymToIdx(xs, c.peak), iT = ymToIdx(xs, c.trough);
@@ -827,18 +1008,26 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         // Dot only at the trough (right end of the segment).
         ctx.fillStyle = LINE;
         ctx.beginPath();
-        ctx.arc(sx(xs[iT]), sy(Y[iT]), END_DOT_R, 0, 2 * Math.PI);
+        ctx.arc(sx(xs[iT]), sy(Y[iT]), END_DOT_R_FOCUS, 0, 2 * Math.PI);
         ctx.fill();
         // Label above the peak (left of the drop) so it doesn’t cross the line.
         const drop = ((Y[iT] - Y[iP]) / Y[iP]) * 100;
-        drawCenteredTwoLine(
+        drawMarkerTwoLine(
           ctx, `${drop.toFixed(0)}%`, c.label,
-          sx(xs[iP]), sy(Y[iP]), FONT_BOLD, FONT, xData1, true,
+          sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK, xData1, true, false,
         );
       }
+      ctx.restore();
     }
 
     ctx.restore();
+
+    // The price scale's solid white baseline: 0 at the bottom (Desktop-43). Drawn AFTER
+    // the series, like the candle stage does it — a trough dot sitting near zero (1973 is
+    // 7px off it) overlapped the rule and washed a bright blob through it.
+    ctx.strokeStyle = LINE; ctx.lineWidth = BASE_LINE_W;
+    ctx.beginPath(); ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.lineWidth = 1;
 
     if (investAlpha > 0.01 && iPurchase >= 0 && iCompare >= 0) {
       ctx.save(); ctx.globalAlpha = investAlpha;
@@ -847,9 +1036,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // Desktop-46/47: solid green purchase rule, full plot height (not the translucent series).
       ctx.strokeStyle = GROWTH; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(xP, y0); ctx.lineTo(xP, y1); ctx.stroke();
+      // Only the END of the hold is dotted (Desktop-46: one green r7 circle at the compare
+      // point, nothing at the purchase). The purchase already has the full-height rule
+      // marking it — a dot on top of it was a second marker for the same moment.
       ctx.fillStyle = GROWTH;
-      ctx.beginPath(); ctx.arc(xP, yP, 5, 0, 2 * Math.PI); ctx.fill();
-      ctx.beginPath(); ctx.arc(xC, yC, 5, 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(xC, yC, END_DOT_R_FOCUS, 0, 2 * Math.PI); ctx.fill();
       // Labels wait for the line to finish building (marker line + dots above stay at full
       // investAlpha; only the text is gated by labelReveal so it slides in a beat later).
       ctx.globalAlpha = investAlpha * labelReveal;
@@ -862,24 +1053,29 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       const pLabelY = Math.min(y1 - 52, Math.max(y0 + (y1 - y0) * 0.72, yP - 52));
       ctx.font = FONT_INVEST_BOLD; ctx.fillText(LBL.investArrow, labelX, pLabelY);
       ctx.font = FONT_INVEST; ctx.fillText(LBL.buyDate, labelX, pLabelY + 22);
-      // End: "$4.85M" / real "$2.13M" bold over "February 2021", right-aligned above the dot.
+      // End: "$4.85M" / real "$2.13M" bold over "February 2021", parked above the dot.
+      // The two lines are flush LEFT against each other and the BLOCK is what clears the
+      // dot (Desktop-46: both lines start at x=1031, the block's right edge stopping short
+      // of the end point). Right-aligning each line on its own left the shorter one
+      // starting further right — a ragged left edge inside the label.
       const inv = getInvest();
       const endVal = inv ? (cfg.isReal ? fmtMln(inv.realVal) : fmtMln(inv.nomVal)) : '—';
-      ctx.textAlign = 'right';
-      ctx.font = FONT_INVEST_BOLD; ctx.fillText(endVal, xC - 10, yC - 28);
-      ctx.font = FONT_INVEST; ctx.fillText(LBL.compareDate, xC - 10, yC - 6);
+      ctx.textAlign = 'left';
+      ctx.font = FONT_INVEST_BOLD;
+      const wVal = ctx.measureText(endVal).width;
+      ctx.font = FONT_INVEST;
+      const endLeft = xC - 10 - Math.max(wVal, ctx.measureText(LBL.compareDate).width);
+      ctx.font = FONT_INVEST_BOLD; ctx.fillText(endVal, endLeft, yC - 28);
+      ctx.font = FONT_INVEST; ctx.fillText(LBL.compareDate, endLeft, yC - 6);
       ctx.restore();
     }
 
-    const bullAlpha = (cfg.bullAlpha as number) || 0;
     if (bullAlpha > 0.01) {
       ctx.save(); ctx.globalAlpha = bullAlpha;
-      const cx = sx(1988), cy = sy(Y[ymToIdx(xs, [1988, 6])] || 320);
-      const radius = Math.abs(sx(1989) - sx(1987)) / 1.5;
       const iDec1989 = ymToIdx(xs, [1989, 12]);
       const dec89Price = isFinite(Y[iDec1989]) ? Y[iDec1989] : 350;
       const dx = sx(1989 + 11 / 12), dy = sy(dec89Price);
-      drawBullCallout(ctx, cx, cy, radius, dx, dy, x1 - x0);
+      drawBullCallout(ctx, bullCx, bullCy, bullR, dx, dy, x1 - x0);
       ctx.restore();
     }
   }
@@ -912,53 +1108,39 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       pieceT = ss((t - 0.38) / 0.34);     // (2)  pieces slide down over 0.38 → 0.72
       a2Alpha = ss((t - 0.64) / 0.36);    // (3)  growth curve comes last, after the pieces land
     }
+    // '1' marks every crisis as focused, so every dot is the FAT one — and it stays fat
+    // through this morph and into '1a', which shows the same five troughs. The small dot
+    // is only for the crises standing BEHIND the focused one on the drawdown slides.
+    const dotR = END_DOT_R_FOCUS;
     const state2Cfg = isAState2 ? cfgA : cfgB;
     const yClip = state2Cfg.yClip as number;
 
-    ctx.font = FONT;
-    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    // Bull halo FIRST — backdrop, not overlay (see drawBullHalo).
+    const bullAlpha = ((state2Cfg.bullAlpha as number) || 0) * a2Alpha;
+    const bullCx = sx(1988), bullCy = sy2(Y[ymToIdx(xs, [1988, 6])] || 320, yClip);
+    const bullR = BULL_CALLOUT_R_DESIGN / BM_GEOM.box.w * (x1 - x0);
+    if (bullAlpha > 0.02) {
+      ctx.save(); ctx.globalAlpha = bullAlpha;
+      drawBullHalo(ctx, bullCx, bullCy, bullR);
+      ctx.restore();
+    }
+
     if (a1Alpha > 0.02) {
       ctx.save(); ctx.globalAlpha = a1Alpha;
-      for (let p = 0; p <= 100; p += 10) {          // 10% grid to match drawNow — the old 25%
-        const y = sy1(p);                            // step dropped half the lines at the '1' handoff
-        ctx.strokeStyle = p === 100 ? 'rgba(245,243,238,0.35)' : GRID;
-        ctx.setLineDash(p === 100 ? [] : [2, 3]);
-        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-        if (p % 50 === 0) { ctx.fillStyle = AXIS; ctx.fillText(fmtPct(p), x1, y + 3); }
-      }
-      ctx.setLineDash([]);
+      // 10% grid to match drawNow — the old 25% step dropped half the lines at the '1' handoff.
+      drawPctGrid(ctx, x0, x1, sy1, 0, 100, PCT_STEP_WIDE);
       ctx.restore();
     }
 
     if (gridAlpha > 0.02) {
-      const tickMax = yClip >= 5000 ? 5000 : yClip > 500 ? Math.floor(yClip / 100) * 100 : yClip;
-      const step = yClip >= 4500 ? 1000 : yClip > 2000 ? 500 : yClip > 400 ? 100 : 50;
       ctx.save(); ctx.globalAlpha = gridAlpha;
-      ctx.setLineDash([2, 6]); // dotted, like the settled '1a' grid — was inheriting stray state
-      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-      for (let v = 0; v <= tickMax + 0.1; v += step) {
-        const y = sy2(v, yClip);
-        ctx.strokeStyle = GRID;
-        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-        ctx.fillStyle = AXIS;
-        ctx.fillText(String(v), x1, y - 3);
-      }
+      drawAbsGrid(ctx, x0, x1, absTicks(yClip), (v) => sy2(v, yClip), 0);
       // Y-axis title fades in with the price grid it belongs to (see drawState2).
       drawIndexCaption(ctx, x1, y0);
       ctx.restore();
     }
 
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = AXIS;
-    const xSpan = xMax - xMin;
-    const xStep = xSpan > 30 ? 10 : xSpan > 10 ? 5 : 1;
-    const xStart = Math.ceil(xMin / xStep) * xStep;
-    for (let yr = xStart; yr <= xMax; yr += xStep) {
-      const x = sx(yr);
-      ctx.beginPath(); ctx.arc(x, y1 + 14, 3, 0, 2 * Math.PI); ctx.fill();
-      ctx.fillText(String(yr), x, y1 + 28);
-    }
-    ctx.strokeStyle = LINE; ctx.beginPath();
-    ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
+    drawYearAxis(ctx, sx, y1, xMin, xMax);
 
     ctx.save();
     ctx.beginPath(); ctx.rect(x0, y0, xData1 - x0, y1 - y0); ctx.clip();
@@ -1005,17 +1187,28 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       }
       ctx.stroke();
       ctx.fillStyle = LINE;
-      ctx.beginPath(); ctx.arc(lastSx, lastSy, END_DOT_R, 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(lastSx, lastSy, dotR, 0, 2 * Math.PI); ctx.fill();
       if (a2Alpha > 0.02) {
         ctx.save(); ctx.globalAlpha = a2Alpha;
         const pyA = screenYAt(iP, peakPrice, cfgA.kind);
         const pyB = screenYAt(iP, peakPrice, cfgB.kind);
         const py = lerp(pyA, pyB, pieceT);
-        ctx.beginPath(); ctx.arc(sx(xs[iP]), py, END_DOT_R, 0, 2 * Math.PI); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx(xs[iP]), py, dotR, 0, 2 * Math.PI); ctx.fill();
         ctx.restore();
       }
     }
     ctx.restore();
+
+    // The arriving price scale's solid white baseline at 0 (the % scale it replaces carries
+    // its baseline at the TOP instead — see drawPctGrid). Painted here, OVER the pieces, so
+    // a trough dot landing near zero can't wash a bright blob through the rule.
+    if (gridAlpha > 0.02) {
+      ctx.save();
+      ctx.globalAlpha = gridAlpha;
+      ctx.strokeStyle = LINE; ctx.lineWidth = BASE_LINE_W;
+      ctx.beginPath(); ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.restore();
+    }
 
     // Crisis date labels — fade out with a1Alpha as the growth chart arrives, instead of
     // popping the instant drawNow hands the '1' overview off to drawMixed (which drew none).
@@ -1029,30 +1222,36 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         const peakPrice = Y[iP];
         if (!isFinite(peakPrice)) continue;
         const py = lerp(screenYAt(iT, peakPrice, cfgA.kind), screenYAt(iT, peakPrice, cfgB.kind), pieceT);
-        drawCenteredTwoLine(
-          ctx, c.troughMonth, c.troughYear, sx(xs[iT]), py, FONT, FONT, xData1,
+        drawMarkerTwoLine(
+          ctx, c.troughMonth, c.troughYear, sx(xs[iT]), py, FONT, FONT_MARK, xData1,
         );
       }
       ctx.restore();
     }
 
-    const bullAlpha = ((state2Cfg.bullAlpha as number) || 0) * a2Alpha;
     if (bullAlpha > 0.02) {
       ctx.save(); ctx.globalAlpha = bullAlpha;
-      const cx = sx(1988), cy = sy2(Y[ymToIdx(xs, [1988, 6])] || 320, yClip);
-      const radius = Math.abs(sx(1989) - sx(1987)) / 1.5;
       const iDec1989 = ymToIdx(xs, [1989, 12]);
       const dec89Price = isFinite(Y[iDec1989]) ? Y[iDec1989] : 350;
       const dx = sx(1989 + 11 / 12), dy = sy2(dec89Price, yClip);
-      drawBullCallout(ctx, cx, cy, radius, dx, dy, x1 - x0);
+      drawBullCallout(ctx, bullCx, bullCy, bullR, dx, dy, x1 - x0);
       ctx.restore();
     }
   }
 
-  // Black Monday candle stage. p in [0,1] until handoff to the numbered-month slide:
-  //  0–5%   squash on verticals → stubs
-  //  5–70%  fly on Y onto the SAME monthly curve 0a will paint (no X travel)
-  //  ≥82%   tilt + crossfade into the data slide — stubs must already sit on the line
+  // Black Monday candle stage. p in [0,1] until handoff to the numbered-month slide. The
+  // candles do NOT jump onto the monthly curve — they become the DAILY line first:
+  //  0 → BURN_END        each candle burns down onto its own close and dissolves, while a
+  //                      polyline through those closes fades in — the chart "of itself",
+  //                      Aug→Nov, Black Monday still a deep V
+  //  hold               that daily line stands on its own for a beat
+  //  STRAIGHTEN_0 → _1  every vertex slides from its daily close to the monthly drawdown
+  //                      curve at the same date, so the jagged line straightens into the
+  //                      smooth one the 0a slide paints
+  //  ≥ BM_TO_SLIDE      crossfade into that slide, by which point the shapes match
+  const BURN_END = 0.18;
+  const STRAIGHTEN_0 = 0.34;
+  const STRAIGHTEN_1 = 0.80;   // straight before the crossfade starts, never during it
   function drawCandleStage(p: number) {
     const { ctx, x0, y0, x1, y1 } = setupCtx();
     const B = BM_GEOM.box;
@@ -1061,15 +1260,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const gx0 = mapX(B.x), gx1 = mapX(B.x + B.w);
     const gy0 = mapY(B.y), gy1 = mapY(B.y + B.h);
     const leftSpan = (gx1 - gx0) * 0.5;
-    const squash = p <= 0 ? 0 : p >= 0.05 ? 1 : smoothstep(p / 0.05);
-    // Park on the line BEFORE the slide fades in (BM_TO_SLIDE), not during the crossfade.
-    const SETTLE_END = 0.70;
-    const settle = p <= 0.05 ? 0 : p >= SETTLE_END ? 1 : smoothstep((p - 0.05) / (SETTLE_END - 0.05));
+    // Candles burn down onto their closes and dissolve; the daily line takes over.
+    const burn = smoothstep(p / BURN_END);
+    // …then that line straightens into the monthly curve.
+    const straighten = smoothstep((p - STRAIGHTEN_0) / (STRAIGHTEN_1 - STRAIGHTEN_0));
     const fadeOut = p <= BM_TO_SLIDE ? 0 : smoothstep((p - BM_TO_SLIDE) / (1 - BM_TO_SLIDE));
     const cAlpha = 1 - fadeOut;
     const N = BM_OHLC.length;
     const nDD = N - BM_AUG_I;
-    const STUB_H = 4;
 
     // Target = 0a monthly drawdown curve (real), same sy as drawNow — NOT daily closes
     // (those stay high until Oct 19 and make stubs look stuck above the line).
@@ -1079,6 +1277,15 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const iTrough = ymToIdx(xs, crisis87.trough);
     const peakPx = (iPeak >= 0 && isFinite(Yslide[iPeak])) ? Yslide[iPeak] : BM_OHLC[BM_AUG_I][4];
     const lastM = Math.max(1, iTrough - iPeak);
+    // X: the candle window is laid out ON the slide it becomes — t=0 sits on the slide's
+    // PEAK tick, t=1 on its trough — so the straightened line and the slide's line are the
+    // same segment and nothing slides sideways at the crossfade. This used to be a pair of
+    // hand-measured fractions of the plot box (0.0175 … 0.539) calibrated when the series
+    // stopped at Black Monday; extending it to November left the end overshooting the
+    // trough by ~70px. Derived, so the two can't drift apart again.
+    const sxSlide = makeSx(0, tightXMax(), x0, x1 - PLOT_RIGHT_INSET);
+    const candleXAtT = (t01: number) => lerp(sxSlide(0), sxSlide(lastM), t01);
+    const candleX = (i: number) => candleXAtT(bmDrawdownT(i));
     const yMinS = SLIDE_DATA['0a'].yMin, yMaxS = 100;
     const sySlide = (pct: number) => y1 - (pct - yMinS) / (yMaxS - yMinS) * (y1 - y0);
     const slideYAtT = (t01: number) => {
@@ -1096,20 +1303,32 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // ---- price grid + AUG/SEP/OCT (candle chrome only; no %-drawdown interim) ----
     if (cAlpha > 0.01) {
       ctx.globalAlpha = cAlpha * entryFade;
-      ctx.font = FONT; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-      for (const tk of BM_GEOM.ticks) {
+      ctx.font = FONT; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+      // Y grid + numbers. Same price scale as Desktop-43: the numbers ink up as they climb
+      // AWAY from the white baseline, and sit a clear line ABOVE their grid line (not
+      // hugging it). The bottom tick (225) shares the baseline, so it gets no dashed line.
+      const nTicks = BM_GEOM.ticks.length;
+      BM_GEOM.ticks.forEach((tk, i) => {
         const y = mapY(tk.y);
-        ctx.strokeStyle = GRID; ctx.setLineDash([2, 6]);
-        ctx.beginPath(); ctx.moveTo(gx0, y); ctx.lineTo(gx1, y); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = AXIS; ctx.fillText(String(tk.v), gx1, y - 3);
-      }
+        const isBase = Math.abs(tk.y - BM_GEOM.baselineY) < 0.5;
+        if (!isBase) {
+          ctx.strokeStyle = GRID; ctx.setLineDash(GRID_DASH);
+          ctx.beginPath(); ctx.moveTo(gx0, y); ctx.lineTo(gx1, y); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        // ticks run top→bottom here, so the distance from the baseline is n-1-i
+        ctx.globalAlpha = cAlpha * entryFade * tickAlphaAbs(nTicks - 1 - i);
+        ctx.fillStyle = AXIS; ctx.fillText(String(tk.v), gx1, y - 12);
+        ctx.globalAlpha = cAlpha * entryFade;
+      });
       drawIndexCaption(ctx, gx1, gy0);
-      ctx.strokeStyle = LINE; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(gx0, mapY(BM_GEOM.baselineY)); ctx.lineTo(gx1, mapY(BM_GEOM.baselineY)); ctx.stroke();
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      for (const mo of bmMonthMarks3()) {
-        const mx = mapX(bmTimeSvgX(mo.t * 0.5));
+      // Month dots + AUG/SEP/OCT — label baseline pulled up close to the dot (mockup baseline
+      // ≈689, ~9px under the dot) while staying UNDER the white line.
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = AXIS;
+      // Month dots strictly data-driven — same inset mapping as the candles, so each dot
+      // sits exactly under its month's candles (axis inset gives AUG its left margin).
+      for (const mo of bmDrawdownMonthMarks()) {
+        const mx = candleXAtT(mo.t);
         ctx.beginPath(); ctx.arc(mx, mapY(BM_GEOM.dotY), 3, 0, 2 * Math.PI); ctx.fill();
         ctx.fillText(mo.l, mx, mapY(BM_GEOM.monthY));
       }
@@ -1118,87 +1337,116 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
 
     const colW0 = Math.max(2, leftSpan / Math.max(nDD - 1, 1) * 0.62);
 
-    // −20% tip: left of the last candle, 20px above the X-axis.
-    // Desktop size is fixed (202×167) — ride the last column, don't scale with plot width.
-    {
-      const mobile = (typeof window !== 'undefined' ? window.innerWidth : 1440) <= 720;
-      const figW = mobile
-        ? Math.min(160, Math.max(120, (gx1 - gx0) * 0.36))
-        : 202;
-      const figH = figW * (167 / 202);
-      const lastX = mapX(bmLeft3SvgX(N - 1));
-      lastPlate = {
-        x: lastX - colW0 / 2 - 10 - figW,
-        y: mapY(BM_GEOM.baselineY) - figH - 20,
-        a: entryFade * cAlpha * Math.pow(1 - Math.max(squash, settle), 4),
-      };
-    }
-
-    // ---- candles: squash on verticals → Y settle → tilt ----
+    // ---- candles burn down → daily line → straighten ----
     if (cAlpha > 0.02) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(gx0, Math.min(gy0, gy1), gx1 - gx0, Math.abs(gy1 - gy0) + 40);
+      // Clip to the plot box (down to the baseline) so nothing spills BELOW the white line.
+      ctx.rect(gx0, Math.min(gy0, gy1), gx1 - gx0, Math.abs(gy1 - gy0));
       ctx.clip();
-      const lerpAng = (a0: number, a1: number, k: number) => {
-        let d = a1 - a0;
-        while (d > Math.PI) d -= Math.PI * 2;
-        while (d < -Math.PI) d += Math.PI * 2;
-        return a0 + d * k;
-      };
-      for (let i = BM_AUG_I; i < N; i++) {
-        const [, o, h, l, c] = BM_OHLC[i];
-        const a = entryFade * cAlpha;
-        if (a < 0.02) continue;
-        const t = bmDrawdownT(i);
-        const x = mapX(bmLeft3SvgX(i)); // stay on the candle vertical (left half)
-        const yHS = mapY(bmPriceSvgY(h)), yLS = mapY(bmPriceSvgY(l));
-        const yOS = mapY(bmPriceSvgY(o)), yCS = mapY(bmPriceSvgY(c));
-        const yT = slideYAtT(t); // exact 0a monthly curve Y
-        // Tangent from the monthly curve (left-half X, slide Y)
-        const yTa = slideYAtT(Math.max(0, t - 0.02));
-        const yTb = slideYAtT(Math.min(1, t + 0.02));
-        const tLen = Math.hypot(leftSpan * 0.04, yTb - yTa) || 1;
-        const tnx = (leftSpan * 0.04) / tLen, tny = (yTb - yTa) / tLen;
 
-        // 1) Squash onto the close → short stub (same vertical)
-        const hScale = 1 - squash;
-        const midS = yCS;
-        const wickTopS = midS + (Math.min(yHS, yLS) - midS) * hScale;
-        const wickBotS = midS + (Math.max(yHS, yLS) - midS) * hScale;
-        let bodyTopS = midS + (Math.min(yOS, yCS) - midS) * hScale;
-        let bodyBotS = midS + (Math.max(yOS, yCS) - midS) * hScale;
-        if (bodyBotS - bodyTopS < STUB_H) {
-          const cy = (bodyTopS + bodyBotS) / 2;
-          bodyTopS = cy - STUB_H / 2; bodyBotS = cy + STUB_H / 2;
+      // 1) The candles. Each one collapses DOWNWARD onto its own close — the value the line
+      //    is made of — and dissolves as it gets there. No X travel, no tilt: the shape that
+      //    survives this beat is the polyline below, not the candle.
+      const candleA = entryFade * cAlpha * (1 - burn);
+      if (candleA > 0.02) {
+        for (let i = BM_AUG_I; i < N; i++) {
+          const [, o, h, l, c] = BM_OHLC[i];
+          const x = candleX(i);
+          const yCS = mapY(bmPriceSvgY(c));
+          // Everything shrinks toward the close, so the candle burns down to the line's seat.
+          const k = 1 - burn;
+          const top = (v: number) => yCS + (mapY(bmPriceSvgY(v)) - yCS) * k;
+          const wickTop = Math.min(top(h), top(l)), wickBot = Math.max(top(h), top(l));
+          const bodyTop = Math.min(top(o), yCS), bodyBot = Math.max(top(o), yCS);
+          const ink = c >= o ? '#f5f3ee' : lerpColor('#15131a', '#f5f3ee', burn * 0.35);
+          ctx.globalAlpha = candleA;
+          ctx.fillStyle = ink; ctx.strokeStyle = ink;
+          if (wickBot - wickTop > 0.5) {
+            ctx.lineWidth = Math.max(1, colW0 * 0.2);
+            ctx.beginPath(); ctx.moveTo(x, wickTop); ctx.lineTo(x, wickBot); ctx.stroke();
+          }
+          ctx.fillRect(x - colW0 / 2, bodyTop, colW0, Math.max(1, bodyBot - bodyTop));
         }
-
-        // 2) Fly on Y only onto the 0a line (no X travel)
-        const midY = midS + (yT - midS) * settle;
-        const bodyH = Math.max(STUB_H, bodyBotS - bodyTopS);
-        const bodyOff = ((bodyTopS + bodyBotS) / 2 - midS) * (1 - squash) * (1 - settle);
-        const thick = colW0;
-        // 3) Tilt only on the final crossfade — during settle they stay upright and slide in Y
-        const ang = lerpAng(0, Math.atan2(tny, tnx), fadeOut);
-        const up = c >= o;
-        const ink = up ? '#f5f3ee' : lerpColor('#15131a', '#f5f3ee', Math.max(squash * 0.35, settle));
-        ctx.globalAlpha = a;
-        ctx.fillStyle = ink;
-        ctx.strokeStyle = ink;
-        ctx.save();
-        ctx.translate(x, midY + bodyOff);
-        ctx.rotate(ang);
-        if ((wickBotS - wickTopS) * (1 - settle) > 0.5) {
-          ctx.lineWidth = Math.max(1, thick * 0.2);
-          const wScale = 1 - settle;
-          ctx.beginPath();
-          ctx.moveTo(0, (wickTopS - midS) * wScale);
-          ctx.lineTo(0, (wickBotS - midS) * wScale);
-          ctx.stroke();
-        }
-        ctx.fillRect(-thick / 2, -bodyH / 2, thick, bodyH);
-        ctx.restore();
       }
+
+      // 2) The line the candles turn into: a vertex per trading day, at that day's close —
+      //    then each vertex slides to the monthly curve for the same date, which is what
+      //    straightens the Black Monday V out of it.
+      const lineA = entryFade * cAlpha * smoothstep(burn * 1.4);
+      if (lineA > 0.02) {
+        ctx.globalAlpha = lineA;
+        ctx.strokeStyle = LINE;
+        ctx.lineWidth = lerp(LINE_W_THIN, LINE_W_THICK, straighten);
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.beginPath();
+        let lastX = 0, lastY = 0;
+        for (let i = BM_AUG_I; i < N; i++) {
+          const t = bmDrawdownT(i);
+          const x = candleX(i);
+          const yDaily = mapY(bmPriceSvgY(BM_OHLC[i][4]));
+          const y = lerp(yDaily, slideYAtT(t), straighten);
+          if (i === BM_AUG_I) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          lastX = x; lastY = y;
+        }
+        ctx.stroke();
+        // End dot arrives with the straightening, so the handoff to 0a is dot-to-dot.
+        if (straighten > 0.01) {
+          ctx.globalAlpha = lineA * straighten;
+          ctx.fillStyle = LINE;
+          ctx.beginPath(); ctx.arc(lastX, lastY, END_DOT_R, 0, 2 * Math.PI); ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    // White baseline drawn ON TOP of the candles — the chart sits UNDER the white line (mockup).
+    if (cAlpha > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = cAlpha * entryFade;
+      ctx.strokeStyle = LINE; ctx.lineWidth = BASE_LINE_W;
+      const by = mapY(BM_GEOM.baselineY);
+      ctx.beginPath(); ctx.moveTo(gx0, by); ctx.lineTo(gx1, by); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Black Monday plate — the designer's OUTLINES (Desktop-36 outlined export), drawn in
+    // design coords via the plot-box transform: «19 October 1987» + «Black Monday» + the
+    // giant −20.5% (Druk), parked to the RIGHT of the crash candle. Crisp, font-independent;
+    // fades out as the candles burn down into the daily line — the plate belongs to the
+    // candle frame, so it is gone before the straightening starts.
+    const plateA = entryFade * cAlpha * Math.pow(1 - burn, 4);
+    if (plateA > 0.01) {
+      // ONE export on both breakpoints — the designer's portrait re-layout, whose type is
+      // set right-aligned inside the block, which is what this seat needs. (The landscape
+      // export was a second, left-aligned layout for the old right-of-the-candle seat.)
+      if (!platePaths) platePaths = BM_PLATE_PATHS_PORT.map((d) => new Path2D(d));
+      const origin = BM_PLATE_ORIGIN_PORT;
+      const size = BM_PLATE_SIZE_PORT;
+      // NEVER scaled — the export is the mockup, so it is drawn at its native size and
+      // only ever MOVES. It used to ride the plot-box transform (and then a uniform
+      // version of it), which rubber-banded the outlined type with the chart: the plate
+      // grew and shrank with the viewport for no reason, and the type distorted whenever
+      // the aspect drifted from 1440×800.
+      //
+      // The seat is the CRASH COLUMN: the plate's right edge sits a gap to the left of the
+      // Black Monday candle, so it reads as annotating that column and travels with it. A
+      // flat «20% of the canvas» doesn't — the candle window is laid out from the plot and
+      // rescales per breakpoint, so the plate drifted away from the thing it labels.
+      //
+      // The ART is the portrait layout on both breakpoints; the WIDTH it is drawn at is
+      // still per-breakpoint. Taking the portrait width along with the portrait art shrank
+      // the desktop plate by a quarter — the layout changed, the size shouldn't have.
+      const drawnW = isMobileViewport() ? BM_PLATE_W_PORT : BM_PLATE_W;
+      const k = drawnW / size.w;
+      const px = candleX(BM_CRASH_I) - BM_PLATE_GAP - drawnW;
+      ctx.save();
+      ctx.globalAlpha = plateA;
+      ctx.translate(px, mapY(BM_PLATE_Y_PORT));
+      if (k !== 1) ctx.scale(k, k);
+      ctx.translate(-origin.x, -origin.y);
+      ctx.fillStyle = '#000';
+      for (const p of platePaths) ctx.fill(p);
       ctx.restore();
     }
   }
@@ -1241,7 +1489,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     toKey = CHART_STEPS[toIdx].view;
     animT = p;
     const dominantKey = p < 0.5 ? fromKey : toKey;
-    applyAutoModeScale(dominantKey);
+    applyAutoMode(dominantKey);
     // bm → numbered-month slide (0a): squash candles, then crossfade into the data
     // slide (peak / N months) — skip the AUG–OCT designer interim.
     if (fromKey === 'bm') {
@@ -1250,7 +1498,6 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         : smoothstep((animT - BM_TO_SLIDE) / (1 - BM_TO_SLIDE));
       if (xf <= 0) {
         drawCandleStage(animT);
-        lastCandle = lastPlate.a;
       } else {
         // Slide fades in under the candles; candles keep fading via drawCandleStage.fadeOut.
         const sf = fromKey, st = toKey, sa = animT;
@@ -1263,18 +1510,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
           skipBgClear = true;
           drawCandleStage(animT);
           skipBgClear = false;
-          lastCandle = lastPlate.a;
-        } else {
-          lastCandle = 0;
-          lastPlate.a = 0;
         }
       }
       return CAPTION[animT < 0.5 ? 'bm' : '0a'] || '';
     }
     // 0a is the numbered-month data slide (xMax≈6). 0a→0b reveals COVID at that
     // density then compresses to 24 — no separate candle-stage rest view.
-    lastCandle = 0;
-    lastPlate.a = 0;
     drawNow();
     return CAPTION[dominantKey] || '';
   }
@@ -1285,11 +1526,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       return applyProgress(progress);
     },
     bullFactor() { return lastBull; },
-    candleAlpha() { return lastCandle; },
-    candlePlate() { return lastPlate; },
     // Re-paint via applyProgress only after the scrubber has drawn once. Early RO/window
     // resize (mount, stage reveal, heavy-scene teardown) must not paint bm→0a stand-in
     // or flash −20% before scroll owns the frame.
+    setBottomReserve(px: number) { bottomReserve = Math.max(0, Math.round(px)); },
     resize() {
       if (!scrubReady) return;
       applyProgress(lastLinear);

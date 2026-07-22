@@ -8,8 +8,8 @@
       "title": "A workshop on Crosby Street",
       "location": "54 Crosby Street",
       "address": "SoHo, Manhattan",
-      "lng": -73.950749,
-      "lat": 40.732929,
+      "lng": -73.9507258,
+      "lat": 40.7327859,
       "comment": "Di Modica <a href=\"https://arturodimodica.com/works/charging-bull/\" target=\"_blank\" rel=\"noopener noreferrer\">built</a> the bull in a cramped, semi-legal loft on Crosby Street. For almost two years, the sculpture was formed in clay, plaster and wax. The bronze was cast across the river at Bedi-Makky Art Foundry in Brooklyn, the family-run shop that <a href=\"https://www.bklynlibrary.org/blog/2012/02/24/greenpoint-iwo-jima\" target=\"_blank\" rel=\"noopener noreferrer\">had cast</a> the Iwo Jima Memorial decades earlier."
     },
     {
@@ -18,8 +18,8 @@
       "title": "Night raid on Wall Street",
       "location": "Broad Street, by 11 Wall Street",
       "address": "New York Stock Exchange",
-      "lng": -74.01123,
-      "lat": 40.70641,
+      "lng": -74.01095,
+      "lat": 40.706754,
       "approachVia": [
         [
           -73.9906,
@@ -37,9 +37,9 @@
       "title": "Towed to a Queens impound",
       "location": "NYPD impound lot",
       "address": "Queens, NY",
-      "lng": -73.842571,
-      "lat": 40.76874,
-      "image": "./images/impound.png",
+      "lng": -73.7949,
+      "lat": 40.7282,
+      "image": "./images/impound.jpg",
       "imageCaption": "Photo: arturodimodica.com",
       "comment": "The bull lasted less than a day outside the exchange. By evening, the NYSE chairman <a href=\"https://www.nytimes.com/1989/12/16/nyregion/soho-gift-to-wall-st-a-3-1-2-ton-bronze-bull.html\" target=\"_blank\" rel=\"noopener noreferrer\">had ordered</a> it removed, and the NYPD had hauled it to an impound lot in Queens. Then the newspapers joined in. The New York Post <a href=\"https://nypost.com/2017/12/09/prototype-of-wall-street-bull-statue-sells-for-37k-at-auction/\" target=\"_blank\" rel=\"noopener noreferrer\">ran</a> “Bah, Humbug!” on its front page. A removal order became a citywide argument."
     },
@@ -49,8 +49,8 @@
       "title": "A permanent home at Bowling Green",
       "location": "Bowling Green Park",
       "address": "Broadway at Bowling Green",
-      "lng": -74.013421,
-      "lat": 40.705576,
+      "lng": -74.01344,
+      "lat": 40.705568,
       "image": "./images/bowling-green.jpg",
       "imageCaption": "Tourists at the bull, Bowling Green",
       "comment": "Public outcry forced a compromise. The NYC Parks Department <a href=\"https://www.nytimes.com/1989/12/20/nyregion/wall-st-s-bronze-bull-moves-2-blocks-south.html\" target=\"_blank\" rel=\"noopener noreferrer\">allowed</a> the bull to return downtown, but not to the exchange. It went slightly south, to the small paved island at Bowling Green, beside the city’s oldest public park. The permit was temporary. It <a href=\"https://www.nytimes.com/1989/12/20/nyregion/wall-st-s-bronze-bull-moves-2-blocks-south.html\" target=\"_blank\" rel=\"noopener noreferrer\">still is</a>."
@@ -61,8 +61,8 @@
       "id": "studio",
       "label": "Studio",
       "sublabel": "Di Modica's",
-      "lng": -73.998686,
-      "lat": 40.722155,
+      "lng": -73.9985,
+      "lat": 40.7222,
       "markerOnly": true,
       "visibleOnSteps": [
         0,
@@ -73,8 +73,8 @@
       "id": "foundry",
       "label": "Foundry",
       "sublabel": "Bedi-Makky",
-      "lng": -73.950749,
-      "lat": 40.732929,
+      "lng": -73.9507258,
+      "lat": 40.7327859,
       "visibleOnSteps": [
         0,
         1,
@@ -85,8 +85,8 @@
       "id": "nyse",
       "label": "NYSE",
       "sublabel": "stock exchange",
-      "lng": -74.011127,
-      "lat": 40.707217,
+      "lng": -74.011079,
+      "lat": 40.707198,
       "visibleOnSteps": [
         2,
         4
@@ -100,8 +100,8 @@
       "id": "impound",
       "label": "NYPD",
       "sublabel": "Impound lot",
-      "lng": -73.842571,
-      "lat": 40.76874,
+      "lng": -73.7949,
+      "lat": 40.7282,
       "visibleOnSteps": [
         3
       ]
@@ -110,8 +110,8 @@
       "id": "park",
       "label": "Bowling Green",
       "sublabel": "park",
-      "lng": -74.013421,
-      "lat": 40.705576,
+      "lng": -74.0134,
+      "lat": 40.7056,
       "visibleOnSteps": [
         4
       ],
@@ -162,9 +162,9 @@
     ],
     "weights": [
       2,
-      3,
-      7,
-      7
+      5,
+      5,
+      5
     ],
     "follow": [
       0,

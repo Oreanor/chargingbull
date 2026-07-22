@@ -1,7 +1,7 @@
 /* ============================================================================
    FONTS — Charging Bull longread
    ----------------------------------------------------------------------------
-   The design uses 6 typefaces. Every family is referenced in the app ONLY
+   The design used 6 typefaces; 4 remain (Druk and RR Repose were outlined away). Every family is referenced in the app ONLY
    through the CSS variables below, so the components never change.
 
    Real design font → source now
@@ -11,42 +11,29 @@
    Space Mono          (mono labels)              → Space Mono     (local)
    Space Grotesk       (eyebrow labels)           → Space Grotesk  (local)
    Ayer Poster Cursive (huge display italic)      → Ayer Poster Cursive (licensed, local)
-   RR Repose Prop      (giant numerals)           → RR Repose Prop  (licensed, local)
-   Druk Condensed      (candle-intro hero)        → Druk Condensed  (licensed, local)
 
-   All families now use licensed local files. Playfair/Archivo remain only as a
-   last-resort fallback in the variable chains below.
+   All families now use licensed local files. Playfair/Archivo are named in the
+   variable chains below purely as last-resort fallbacks — they are NOT fetched.
+   The Google Fonts @import that used to sit here was pulled: an @import is a
+   render-blocking cross-origin stylesheet (DNS + TLS + a round trip before the
+   first paint) that then pulls up to five font files, all so a fallback could be
+   ready for licensed fonts that ship with the app and don't fail. If a local
+   face ever does go missing, the chains still end in Georgia / Struve /
+   system-ui, so nothing renders unstyled — it just falls one step further.
    ============================================================================ */
 
-/* --- Fallbacks only (real files below now drive Ayer/Repose) --- */
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap');
-
-/* ------------------------------------------------------------------ Druk --- */
-@font-face {
-  font-family: 'Druk Condensed';
-  src: url('./assets/fonts/DrukCondensed-Super.otf') format('opentype');
-  font-weight: 400; font-style: normal; font-display: swap;
-}
-/* Druk XX-Condensed Super — the exact face from the candle-intro reference
-   (Figma "Druk XXCond"), used for the giant −20.5% crash figure. */
-@font-face {
-  font-family: 'Druk XXCond';
-  src: url('./assets/fonts/DrukCondensed-XXSuper-Web.woff2') format('woff2');
-  font-weight: 900; font-style: normal; font-display: swap;
-}
+/* Druk (both faces) and RR Repose Prop were removed. Druk existed for exactly two
+   labels — the crash figure in the opener and «1989» on the charts canvas — ~129 KB
+   of font for ~10 glyphs; both are now the designer's outlines, so the face is gone
+   and the labels no longer depend on a load race (the canvas one silently rendered
+   in the wrong face, since canvas2d never triggers a webfont fetch). RR Repose had
+   zero call sites in the whole app — only a @font-face and an unused utility. */
 
 /* --------------------------------------------------- Ayer Poster Cursive --- */
 @font-face {
   font-family: 'Ayer Poster Cursive';
   src: url('./assets/fonts/AyerPosterCursive-BlackItalic.woff2') format('woff2');
   font-weight: 900; font-style: italic; font-display: swap;
-}
-
-/* --------------------------------------------------------- RR Repose Prop --- */
-@font-face {
-  font-family: 'RR Repose Prop';
-  src: url('./assets/fonts/RRReposeProp-C.woff2') format('woff2');
-  font-weight: 400; font-style: normal; font-display: swap;
 }
 
 /* ---------------------------------------------------------------- Struve --- */
@@ -128,6 +115,4 @@
   --font-mono:    'Space Mono', ui-monospace, monospace;        /* mono labels    */
   --font-grotesk: 'Space Grotesk', system-ui, sans-serif;       /* eyebrow labels */
   --font-ayer:    'Ayer Poster Cursive', 'Playfair Display', Georgia, serif; /* display cursive */
-  --font-repose:  'RR Repose Prop', 'Archivo', 'Struve', sans-serif;         /* giant numerals  */
-  --font-druk:    'Druk XXCond', 'Druk Condensed', 'Archivo', system-ui, sans-serif; /* XX-condensed display (crash figure) */
 }
