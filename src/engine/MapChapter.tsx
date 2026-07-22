@@ -315,6 +315,21 @@ const CARD_MARGIN_MAX = 80;   // .mc-card margin-left (clamp(24, 5vw, 80)) cap
 const BULL_GUTTER = 260;      // extra px past the card edge — tune to slide the bull left/right
 /** Bull screen corridor — fractions of viewport width/height. */
 const BULL_CORRIDOR = { x0: 0.70, x1: 0.80, y0: 0.25, y1: 0.75 } as const;
+/**
+ * How much of the corridor correction is applied, by distance (in stop progress) from the
+ * nearest stop. The clamp used to run at full strength every frame, which is exactly what
+ * made our camera sit somewhere other than the authored one: mid-flight the bull is far
+ * off the straight line between two stops, so the rail dragged the whole map after it and
+ * the framing stopped being the framing Sasha keyframed.
+ *
+ * So it lets go of the wheel for the flight and takes it back on the approach: nothing
+ * from CORRIDOR_OFF away, full by CORRIDOR_ON, smoothstepped between — the camera CATCHES
+ * UP with the bull as it comes into the stop instead of being yanked onto it. With the
+ * dwell in place (DWELL_HOLD_FRAC) the progress sits exactly on a stop for most of a leg,
+ * so the rail is at full strength through every dwell — where the framing actually matters.
+ */
+const CORRIDOR_ON = 0.15;
+const CORRIDOR_OFF = 0.42;
 /** Desktop journey left padding: shift the map right so the bull sits in the free area. */
 function journeyPadLeft(vw: number): number {
   const cardLeft = clamp(0.05 * vw, 24, CARD_MARGIN_MAX);
@@ -1098,17 +1113,25 @@ export default function MapChapter({
         head = center;
       }
 
-      // Corridor clamp (desktop + mobile): every frame, on the LIVE trail-head
-      // (same tip as the 3D bull) — not on authored camera keyframes.
-      // Band: X 70–80%, Y 25–75% of the viewport. Dive pans to centre — don't fight it.
-      if (dv < 0.02) {
+      // Corridor clamp (desktop + mobile): on the LIVE trail-head (same tip as the 3D bull)
+      // — not on authored camera keyframes. Band: X 70–80%, Y 25–75% of the viewport.
+      // Dive pans to centre — don't fight it. Strength ramps with the approach to a stop
+      // (see CORRIDOR_ON/OFF): the flight is the authored camera, untouched.
+      const nearStop = Math.abs(locProg - Math.round(locProg));
+      const followK = 1 - smoothstep(clamp((nearStop - CORRIDOR_ON) / (CORRIDOR_OFF - CORRIDOR_ON), 0, 1));
+      if (dv < 0.02 && followK > 0.004) {
         const W = window.innerWidth;
         const H = window.innerHeight;
         const loX = W * BULL_CORRIDOR.x0;
         const hiX = W * BULL_CORRIDOR.x1;
         const loY = H * BULL_CORRIDOR.y0;
         const hiY = H * BULL_CORRIDOR.y1;
-        // Pitch makes a single screen-space nudge imperfect — iterate a couple times.
+        // Converge on the FULLY corrected centre first — pitch makes a single screen-space
+        // nudge imperfect, so it takes a couple of passes. The ramp is applied once, at the
+        // end: scaling the error inside the loop would not weaken the clamp at all, because
+        // each pass corrects what the previous one left (three passes at followK = 0.5 land
+        // 87% of the way, not half).
+        const authored = center;
         for (let pass = 0; pass < 3; pass++) {
           const bp = map.project(head);
           let errX = 0;
@@ -1121,6 +1144,12 @@ export default function MapChapter({
           const c = map.project(center);
           const n = map.unproject([c.x + errX, c.y + errY]);
           center = [n.lng, n.lat];
+          map.jumpTo({ center, zoom, pitch, bearing });
+        }
+        // …then only followK of the way there, so the map drifts onto the bull as it comes
+        // into the stop rather than being yanked onto it mid-flight.
+        if (followK < 1) {
+          center = [lerp(authored[0], center[0], followK), lerp(authored[1], center[1], followK)];
           map.jumpTo({ center, zoom, pitch, bearing });
         }
       }

@@ -225,6 +225,12 @@ export default defineConfig(({ isSsrBuild }) => ({
     include: ['three', '@sparkjsdev/spark', '@datum-sdk/engine', '@datum-sdk/plugins'],
   },
   build: {
+    // `public/` belongs to the CLIENT build only. Vite copies it into every build's
+    // outDir by default, so the SSR pass was dropping a second, byte-identical copy of
+    // brand/ + chapters/ + models/ into dist/server — 6.3 MB that nothing ever reads
+    // (prerender imports one JS module out of that folder, and the SSR bundle touches
+    // no files at runtime).
+    copyPublicDir: !isSsrBuild,
     // splat-vendor (~6 MB) and mapbox (~1.8 MB) are intentionally large but loaded
     // lazily (dynamic import per chapter), so the >500 KB warning is just noise.
     chunkSizeWarningLimit: 6500,

@@ -3,7 +3,7 @@
 // hydrates on the client. Heavy WebGL chapters are client-only, so the server HTML
 // is the text + section shells with their fixed heights. Runs after both the client
 // build (dist/) and the SSR build (dist/server/entry-server.js).
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -21,3 +21,10 @@ if (!template.includes('<!--app-html-->')) {
 }
 writeFileSync(resolve(dist, 'index.html'), template.replace('<!--app-html-->', appHtml));
 console.log(`[prerender] injected ${appHtml.length} chars of SSR HTML into dist/index.html`);
+
+// dist/server was scaffolding: this script imported one module out of it and the HTML is
+// now baked into dist/index.html. There is no server to run — the site is static — so
+// shipping the SSR bundle would only publish dead weight. Drop it, and dist/ is exactly
+// what gets deployed.
+rmSync(resolve(dist, 'server'), { recursive: true, force: true });
+console.log('[prerender] removed dist/server (build scaffolding)');
