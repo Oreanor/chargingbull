@@ -247,11 +247,15 @@ interface Step {
 }
 interface CamStop { center: [number, number]; zoom: number; pitch: number; bearing: number }
 interface SubCam { at: number; camera: CamStop }
-// The camera choreography now lives in data.json's `mapConfig` (authored in the
-// wallst-rodeo tuning tool) — cameras (stops), subCams (mid-leg flyover waypoints),
-// weights (per-leg scroll room) and bull headings/scale. We read the pieces our
-// smooth-chase engine can drive; dwellPx/follow/flightEase belong to a different
-// (dwell-based) timing model and are intentionally NOT consumed.
+// The camera choreography lives in data.json's `mapConfig` (authored in the wallst-rodeo
+// tuning tool) — cameras (stops), subCams (mid-leg flyover waypoints), weights (per-leg
+// scroll room) and bull headings/scale.
+//
+// `weights` is the one field NOT taken from the tool's export. The tool writes [2,5,5,5],
+// but the source engine's runtime never reads it: its pacing is the CSS heights of its
+// five `.step` sections (100/240/240/180/180 vh), anchored on their centres, which makes
+// the four legs 170/240/210/180. Those are the ratios here — the export is what the panel
+// happened to hold, the section heights are what Sasha actually ships.
 interface MapCfg {
   cameras: CamStop[];
   weights: number[];
@@ -269,7 +273,7 @@ const DEFAULT_CAMERAS: CamStop[] = [
   { center: [-73.9601, 40.7161], zoom: 12.65, pitch: 61, bearing: 68 },   // Queens impound
   { center: [-74.0096, 40.7066], zoom: 15.46, pitch: 36, bearing: 9 },    // Bowling Green
 ];
-const DEFAULT_WEIGHTS = [2, 5, 5, 5];
+const DEFAULT_WEIGHTS = [17, 24, 21, 18];
 const DEFAULT_HEADINGS: (number | null)[] = [118, 21, null, 15];
 const DEFAULT_BULL_SCALE = 1.3;
 const DEFAULT_CFG: MapCfg = {
@@ -319,21 +323,25 @@ function journeyPadLeft(vw: number): number {
 }
 
 // ── Journey pacing ───────────────────────────────────────────────────────────
-// Each stop's leg gets STOP_VH of scroll. The bull's race across the map read too
-// fast, so the journey scroll is stretched (BULL_SLOW) — the reader scrolls farther
-// to move the bull the same distance. The step cards keep their ORIGINAL on-screen
-// velocity because REACH is scaled in lockstep (see the cards loop):
-// fh/REACH × d(prog)/d(scroll) is invariant, so plaques still whip past at the
-// same speed — only the bull slows, with short "bull drives on alone" gaps mid-leg.
-const BASE_STOP_VH = 150;
-// Was 2 → 2.5; now 3.25 so long borough hops don't read as a race. Cards keep
-// their on-screen speed via REACH = 0.5 / BULL_SLOW.
-const BULL_SLOW = 3.25;
-const JOURNEY_STOP_VH = BASE_STOP_VH * BULL_SLOW;
-// Keep the final dive (map → 3D bull handoff) at its ORIGINAL absolute scroll — the
-// handoff shouldn't drag just because the journey slowed. This is the dive's old
-// per-stop vh share (BASE_STOP_VH at the old DIVE_FRAC 0.18).
-const DIVE_STOP_VH = (BASE_STOP_VH * 0.18) / (1 - 0.18);
+// Ported wholesale from the source engine (wallst-rodeo/map), because the feel of the
+// journey is Sasha's call: a leg is DWELL · flight · DWELL, the flight is eased at both
+// ends, and the legs are not all the same length.
+//
+// Scroll room per leg, AVERAGED — the per-leg split is the `weights` (see boundsOf).
+// 200vh is the source engine's own pacing: wallst-rodeo/map gives its five `.step`
+// sections 100 / 240 / 240 / 180 / 180 vh and anchors progress on their CENTRES, so its
+// four legs get 170 / 240 / 210 / 180 = 800vh between them. We had stretched this to
+// 487vh a leg (BASE_STOP_VH 150 × BULL_SLOW 3.25) to slow the bull down — but the bull
+// does not need slowing once the stops actually hold (DWELL_HOLD_FRAC below); all the
+// stretch bought was 2.4× the scrolling for the same journey.
+const JOURNEY_STOP_VH = 200;
+/** Scroll a card takes to cross the screen. Held at what it has always been, so the
+ *  plaques keep their on-screen speed no matter how the journey underneath is paced —
+ *  it used to be pinned to BULL_SLOW, which tied card velocity to the bull's. */
+const CARD_TRAVEL_VH = 150;
+// The dive (map → 3D bull handoff) is OURS — the source engine has no such thing — and
+// it keeps its own absolute scroll, unaffected by how the journey ahead of it is paced.
+const DIVE_STOP_VH = 33;
 
 // The final slice of the chapter's scroll is the "dive": the journey is squeezed
 // into the first (1 − DIVE_FRAC), then the camera zooms hard into the last stop
@@ -411,9 +419,23 @@ function boundsOf(weights: number[]): number[] {
   return b;
 }
 
-// journey 0..1 → continuous stop progress 0..N over WEIGHTED bands. Linear: there
-// are no stop frames any more — the smooth chase carries the flight, so this is a
-// plain weighted map (no dwell magnetism).
+/** How much of a leg the bull STANDS at a stop, each side. wallst-rodeo/map's own
+ *  number: 32% at the departing stop, 32% at the arriving one, so only the middle 36%
+ *  of the scroll is a flight. Without it the bull merely coasts through each landmark
+ *  and the whole journey reads as one continuous drift. */
+const DWELL_HOLD_FRAC = 0.32;
+
+/** Hold · fly · hold, applied to the fractional part of a stop progress. */
+function dwelled(p: number): number {
+  const i = Math.floor(p), t = p - i;
+  if (t <= DWELL_HOLD_FRAC) return i;
+  if (t >= 1 - DWELL_HOLD_FRAC) return i + 1;
+  return i + (t - DWELL_HOLD_FRAC) / (1 - 2 * DWELL_HOLD_FRAC);
+}
+
+// journey 0..1 → continuous stop progress 0..N over WEIGHTED bands. RAW — no dwell.
+// This is what the CARDS ride, and they must never stand still (see the cards loop);
+// the camera and everything pinned to the map read the dwelled version instead.
 function stopProgressWith(jv: number, bounds: number[]): number {
   const N = bounds.length - 1;
   let k = 0;
@@ -422,23 +444,33 @@ function stopProgressWith(jv: number, bounds: number[]): number {
   return k + clamp((jv - bounds[k]) / span, 0, 1);
 }
 
+/** Stop progress the CAMERA and everything pinned to the map ride: weighted bands with
+ *  the dwell in them, so the bull genuinely parks at each landmark. */
+const camProgress = (sj: number, bounds: number[]) =>
+  dwelled(stopProgressWith(journeyOf(sj), bounds));
+/** …shifted to LOCATION space (0…N−1): stop 0 is the title dwell and has no camera. */
+const camLocation = (sj: number, bounds: number[]) => Math.max(0, camProgress(sj, bounds) - 1);
+
 // ── Building x-ray (ported from wallst-rodeo/map) ─────────────────────────────
 // Foreground structures around the NYSE close-up are moved to a translucent
 // sister layer so the bronze-highlighted exchange behind them shows through.
 
 // Precise NYSE building footprint (11 Wall Street). Buildings whose centroid
 // falls inside get feature-state `nyse:true` → bright bronze highlight.
-// Building palette, from the source engine (wallst-rodeo/map/index.html): warm bronze-lit
-// stone that ramps with height, not the cool grey→white we had drifted to. The NYSE
-// footprint sits on top of it in bright bronze, which is what makes the exchange read as
-// *lit* rather than merely a lighter shade of the same grey.
+// Building palette: cool grey→white stone that lightens with height, on the navy map.
+// OURS, and deliberately not the source engine's. wallst-rodeo/map authors a warm
+// bronze-lit ramp (#2c2632…#a07a4a) in its live STYLE config, and porting it over was a
+// mistake: the grey is the look this longread is built on, and the whole point of the
+// gold NYSE highlight is that it is the ONE warm thing in the frame — on a bronze city
+// it stops reading as lit and becomes a slightly brighter shade of everything else.
+// Take geometry, leg weights and mapConfig from Sasha; the palette is not his to set.
 const BUILDING_RAMP: ExpressionSpecification = [
   'interpolate', ['linear'], ['get', 'height'],
-  0, '#2c2632', 60, '#4a3e3a', 160, '#705541', 400, '#a07a4a',
+  0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3',
 ];
 const BUILDING_NYSE = '#d4a52a';
 /** Foreground structures moved to the see-through sister layer around the NYSE close-up. */
-const BUILDING_FADE = '#6c5a48';
+const BUILDING_FADE = '#5f6878';
 
 const NYSE_FOOTPRINT: LngLat[] = [
   [-74.011251, 40.7074775], [-74.0115968, 40.7069027], [-74.0110914, 40.7067031],
@@ -519,10 +551,20 @@ function pointInPolygon(pt: LngLat, poly: LngLat[]): boolean {
   return inside;
 }
 
-// Fade is only active around the NYSE step. In location-progress space (the value
-// the overlay/cards use, where Studio=0, Foundry=1, NYSE=2, Queens=3, Bowling=4)
-// it switches on as we zoom toward the exchange and off as we head to Queens.
-const isFadeActiveForProgress = (p: number) => p >= 1.5 && p < 2.6;
+/** Which stop the x-ray belongs to, read off the data rather than counted by hand.
+ *  Camera-stop space skips landmark 0 (the studio title dwell has no camera), which is
+ *  the `- 1` every progress read in this file carries — so the exchange sits at 1, not 2. */
+const NYSE_STOP = Math.max(0, (bullMapData.landmarks ?? []).findIndex((l) => l.id === 'nyse') - 1);
+
+/** Fade is only active around the NYSE stop: it switches on as we zoom in toward the
+ *  exchange at the end of the previous leg and stays on through its dwell, then turns off
+ *  as we set out for the impound.
+ *
+ *  This used to be a literal `p >= 1.5 && p < 2.6`, ported from the standalone map where
+ *  progress counts landmarks (NYSE = 2). Here it is fed CAMERA-stop progress, which is one
+ *  less — so the whole window sat a stop late: the exchange close-up rendered solid and the
+ *  buildings went see-through on the way to the impound, where nothing needs revealing. */
+const isFadeActiveForProgress = (p: number) => p >= NYSE_STOP - 0.5 && p < NYSE_STOP + 0.6;
 
 export default function MapChapter({
   introTitle,
@@ -632,7 +674,7 @@ export default function MapChapter({
           { id: 'directional', type: 'directional', properties: { color: '#eef2f8', intensity: 0.9, direction: [220, 35] } },
         ]);
       } catch { /* style may not accept lights */ }
-      // 3D building extrusions on the warm bronze-lit palette (see BUILDING_RAMP)
+      // 3D building extrusions on the cool grey→white palette (see BUILDING_RAMP)
       try {
         if (!map.getLayer('building-3d')) {
           const labelLayer = map.getStyle()?.layers?.find((l) => l.type === 'symbol' && /label|place/.test(l.id))?.id;
@@ -724,7 +766,7 @@ export default function MapChapter({
       let lastProg = -1;
       const loop = () => {
         if (visible) {
-          const prog = Math.max(0, stopProgressWith(journeyOf(playhead.get()), bounds) - 1);
+          const prog = camLocation(playhead.get(), bounds);
           // Only rebuild deck.gl layers when the playhead actually moved — a reader parked
           // on the map otherwise reconstructs every Scatterplot/Path/Scenegraph each frame.
           if (prog !== lastProg) { lastProg = prog; overlay!.setProps({ layers: buildMarkerLayers(DL, prog, steps, routes, cfg.headings, cfg.bullScale) }); }
@@ -790,7 +832,7 @@ export default function MapChapter({
     // so labels never stick to / collide at the edge during wide pans or the dive.
     const EDGE_M = 64;
     const update = () => {
-      const sp = stopProgressWith(journeyOf(playhead.get()), bounds);
+      const sp = camProgress(playhead.get(), bounds);
       // POIs belong to the wide journey — fade them ALL out on the dive so none linger or
       // slide to the edge while the camera zooms into the bull (progress freezes at the
       // last stop during the dive, which otherwise pins them at full opacity).
@@ -869,7 +911,7 @@ export default function MapChapter({
     const nyseIds = new Set<string | number>();
     const fadedIds = new Set<string | number>();
     // location-progress (Foundry=0…Bowling=3): stop 0 is the title dwell, so subtract 1.
-    let cachedProgress = Math.max(0, stopProgressWith(journeyOf(playhead.get()), bounds) - 1);
+    let cachedProgress = camLocation(playhead.get(), bounds);
 
     // Only re-apply the layer filters when the fade state or the tagged-id set actually
     // changes — NOT every scroll frame. Calling setFilter each frame forces Mapbox to
@@ -952,7 +994,7 @@ export default function MapChapter({
     map.on('sourcedata', onSourceData);
 
     const onPlayhead = () => {
-      cachedProgress = Math.max(0, stopProgressWith(journeyOf(playhead.get()), bounds) - 1);
+      cachedProgress = camLocation(playhead.get(), bounds);
       updateFilters();
     };
     onPlayhead();
@@ -991,13 +1033,13 @@ export default function MapChapter({
       // completes (no slide-up), and docks the reveal home when you pause.
       const sj = playhead.get();
       // stop 0 is the title; locations are stops 1..N → location progress = stop − 1.
-      const cam = cameraAt(Math.max(0, stopProgressWith(journeyOf(sj), bounds) - 1), cfg.cameras, cfg.subCams);
+      const cam = cameraAt(camLocation(sj, bounds), cfg.cameras, cfg.subCams);
       // dive: zoom into the last stop (where the bull stands), rotate CCW and tilt
       // up toward the horizon so the framing lands on the bull-scene viewpoint.
       const dive = easeInOutCubic(diveOf(sj));
 
       // Fire the intro punch once, when the title starts dissolving into the map.
-      const revealProg = stopProgressWith(journeyOf(sj), bounds);
+      const revealProg = camProgress(sj, bounds);
       if (!punchFired && diveOf(sj) === 0 && revealProg > 0.45) {
         punchFired = true;
         punchT0 = performance.now();
@@ -1036,7 +1078,7 @@ export default function MapChapter({
 
       // Journey bull head (same trail tip the 3D marker uses) — for corridor clamp + debug.
       const dv = diveOf(sj);
-      const locProg = Math.max(0, stopProgressWith(journeyOf(sj), bounds) - 1);
+      const locProg = camLocation(sj, bounds);
       const routes = routesRef.current;
       const trail = routes.length ? computeTrailCoords(locProg, steps, routes) : [];
       let head: [number, number];
@@ -1143,11 +1185,14 @@ export default function MapChapter({
     const bounds = boundsOf(cfg.weights);
     const apply = () => {
       const sj = playhead.get(); // everything on the playhead so cards/fades dock too
+      // RAW progress, deliberately: the camera dwells at every stop, the cards must not.
+      // In the source engine the cards are ordinary sections scrolling in flow at 1:1 —
+      // the dwell lives only in the camera — and this is how we get the same split.
       const prog = stopProgressWith(journeyOf(sj), bounds);
       // title card is a STOP: the black HOLDS solid through stop 0 (title types on
       // a clean black screen) and only dissolves over stop 0→1, revealing the map.
       if (introRef.current) {
-        const d = clamp((prog - 0.45) / 0.55, 0, 1); // dissolve after the title dwell
+        const d = clamp((camProgress(sj, bounds) - 0.45) / 0.55, 0, 1); // after the title dwell
         introRef.current.style.opacity = (1 - d * d * (3 - 2 * d)).toFixed(3);
       }
       // Outro veil (standalone preview only): fades the map to black across the dive's
@@ -1159,10 +1204,13 @@ export default function MapChapter({
       // Cards ride bottom→top at CONSTANT velocity through their stop, pinned to the
       // bottom corner — like the opener StageOverlay plaques (no fade-from-transparent,
       // no scale; opacity is full and only fades right at the off-screen edges). Card
-      // i = stop i+1; the damped playhead dwells on stops, so the card sits at rest
-      // (ty=0) while the bull is parked and sweeps up/off as the journey moves on.
+      // i = stop i+1, and `tt` is straight-line in the stop progress: the card never
+      // parks — dead centre is a moment it passes through, not a place it sits.
       const fh = window.innerHeight;
-      const REACH = 0.5 / BULL_SLOW;   // half-window the card travels; scaled with BULL_SLOW so plaques keep their on-screen speed while the bull slows
+      // Half-window the card travels, in stop-progress. Derived from CARD_TRAVEL_VH so the
+      // plaques cross the screen in the same amount of SCROLL whatever the journey pacing
+      // underneath does — repacing the bull must not change how fast the text reads.
+      const REACH = CARD_TRAVEL_VH / (2 * JOURNEY_STOP_VH);
       const FADE = 0.15;   // fade only over the outer (off-screen) edges
       const lastCardIdx = steps.length - 1; // card i ↔ stop i+1, so the last card is i = N−1
       const dive = diveOf(sj);

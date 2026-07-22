@@ -142,32 +142,32 @@
       {
         "view": "bm",
         "date": "August — October 1987",
-        "title": "From points to percent",
-        "comment": "Up to here it's the S&P 500 in absolute index points. To compare this crash with every other one, we'll rebase it — peak = 100% — and let the line show how far the market fell."
+        "title": "How far did the market fall?",
+        "comment": "This chart shows the S&P 500 in index points. Next, we will set the peak before each crash to 100%, so we can compare both how far the market fell and how long each crisis lasted."
       },
       {
         "view": "0a",
         "date": "October 19, 1987",
         "title": "Black Monday",
-        "comment": "In a single day S&P 500 plunged <b>−20%</b> — still the largest one-day crash in Wall Street history. About $500 billion of market cap evaporated in hours. Margin calls hit brokers in waves, NYSE trading barely crawled, the Hong Kong exchange shut for the rest of that week. By early December the peak-to-trough drawdown reached <b>−33%</b>."
+        "comment": "In a single day, the S&P 500 fell 20%. Around $500 billion in market value disappeared within hours. Margin calls overwhelmed brokers, trading on the New York Stock Exchange slowed to a crawl, and Hong Kong shut its exchange for the rest of the week. By early December, the market was down 33% from its peak."
       },
       {
         "view": "0b",
         "date": "February — March 2020",
-        "title": "COVID",
-        "comment": "The fastest plunge in history: <b>−19% real in a month</b> (nominal −34% from peak to March 23). The fall was so abrupt that US exchanges automatically halted trading four times in two weeks — unseen since 1987. Trigger: the global lockdown, an instantaneous freeze of everything from aviation to restaurants."
+        "title": "COVID-19 crash",
+        "comment": "The market fell faster than ever before. In one month, the S&P 500 lost 34% in nominal terms, or 19% after inflation. The drop was so sudden that US exchanges automatically halted trading four times in two weeks, something not seen since 1987. The trigger was the global lockdown, which brought much of the economy to an abrupt stop."
       },
       {
         "view": "0c",
         "date": "Oct 2007 — Mar 2009",
-        "title": "Global Financial Crisis",
-        "comment": "Unlike a single-day shock — slow torture lasting <b>17 months and −53% in real $</b>. The subprime mortgage bubble burst: banks fell one after another, Lehman Brothers (158 years on the market) collapsed over a single weekend on September 15, 2008. Millions of Americans saw their 401(k) retirement accounts turn into \"201(k)s\" — the running joke of the era."
+        "title": "Global financial crisis",
+        "comment": "The market fell for 17 months, losing 53% in real terms. The housing bubble burst, banks failed, and Lehman Brothers collapsed in September 2008 after 158 years in business. Millions lost homes, jobs and retirement savings."
       },
       {
         "view": "0d",
         "date": "1973 — 1974",
-        "title": "Oil & Stagflation",
-        "comment": "<b>21 months of relentless grinding, −52% in real $.</b> OPEC quadrupled the price of oil; gas station lines stretched for hours. At the same time US inflation accelerated to 12% with unemployment at 8% — a combination economists hadn't seen and considered impossible."
+        "title": "Oil shock and stagflation",
+        "comment": "The market fell for 21 months, losing about 57% after inflation. The 1973 oil embargo nearly quadrupled oil prices and caused fuel shortages. Inflation reached 12% as the economy entered recession and unemployment rose, a combination known as stagflation."
       },
       {
         "view": "0e",

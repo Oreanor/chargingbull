@@ -105,26 +105,42 @@ function drawPctGrid(
   x0: number, x1: number,
   sy: (pct: number) => number,
   pFrom: number, pTo: number, step: number,
+  /** Numbers only — the lines always paint at full alpha. Lets a grid arrive mute and ink
+   *  its ticks up once it has stopped moving (the bm→0a handoff). */
+  labelAlpha = 1,
+  /** The solid white zero rule on the 0% line. Held back while the grid is still folded onto
+   *  the candle chart, where the white rule of the frame is still the floor (see drawNow). */
+  whiteAlpha = 1,
+  /** Plot floor. Rows pushed under it as the grid stretches out are simply dropped. */
+  yBottom = Infinity,
 ) {
   const a0 = ctx.globalAlpha;
   ctx.font = FONT;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
-  const rows = Math.floor((pTo - pFrom) / step) + 1;
-  let row = 0;
+  const seats: { p: number; y: number }[] = [];
   for (let p = pTo; p >= pFrom - 0.1; p -= step) {
     const y = sy(p);
-    const isBase = p === 100;
-    ctx.strokeStyle = isBase ? LINE : GRID;
-    ctx.lineWidth = isBase ? BASE_LINE_W : 1;
-    ctx.setLineDash(isBase ? [] : GRID_DASH);
-    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-    ctx.globalAlpha = a0 * tickAlphaPct(row, rows);
-    ctx.fillStyle = AXIS;
-    ctx.fillText(fmtPct(p), x1, y + TICK_BELOW);
-    ctx.globalAlpha = a0;
-    row++;
+    if (y <= yBottom + 0.5) seats.push({ p, y });
   }
+  const rows = seats.length;
+  seats.forEach(({ p, y }, row) => {
+    const w = p === 100 ? whiteAlpha : 0;
+    if (w < 1) {
+      ctx.globalAlpha = a0;
+      ctx.strokeStyle = GRID; ctx.lineWidth = 1; ctx.setLineDash(GRID_DASH);
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    }
+    if (w > 0) {
+      ctx.globalAlpha = a0 * w;
+      ctx.strokeStyle = LINE; ctx.lineWidth = BASE_LINE_W; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    }
+    ctx.globalAlpha = a0 * tickAlphaPct(row, rows) * labelAlpha;
+    ctx.fillStyle = AXIS;
+    if (labelAlpha > 0.004) ctx.fillText(fmtPct(p), x1, y + TICK_BELOW);
+    ctx.globalAlpha = a0;
+  });
   ctx.setLineDash([]);
   ctx.lineWidth = 1;
 }
@@ -352,6 +368,15 @@ const BM_SPAN_M = drawdownM(CRISES[1]);
  * with an empty right one; that half existed for the «−20.5%» plate, and the plate now
  * hangs off the crash column instead, so nothing needs it. The compression comes later and
  * gradually, as longer crises join (see slideXMax).
+ *
+ * NOTE, so this isn't "fixed" later: this axis is PEAK→TROUGH, not a calendar. The candles
+ * it shares the frame with run Aug 3 → Nov 30 — 3.97 calendar months against a 3-month
+ * domain — so AUG/SEP/OCT/NOV land at 0 / 0.76 / 1.52 / 2.31 rather than on the numbered
+ * ticks. That is deliberate and was reviewed: inside the candle frame every month dot sits
+ * under the first trading day of its month (spacing is per trading DAY, exactly as the
+ * designer's export: 8.015 wide on a 10.02 step), and inside the slide the numbers mean
+ * months-since-the-peak. Only the two readings of the axis disagree, and stretching the
+ * domain to 4 would leave the drawdown line ending a quarter short of the plot.
  */
 const tightXMax = () => BM_SPAN_M;
 
@@ -492,8 +517,39 @@ const smoothstep = (x: number) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x 
 // same three months as 0a, and the scale first steps out on 0c, when a longer crisis joins.
 const A0_HANDOFF = 0.08;      // morph fraction at which 0a's static drawdown yields to the slide
 const COMPRESS_REVEAL = 0.28;  // sub-progress by which the COVID line has FULLY drawn
-/** bm morph handoff: candles → numbered-month slide (shared by drawNow guard + stage). */
-const BM_TO_SLIDE = 0.82;
+/**
+ * bm → 0a. ONE continuous move, no crossfade between two stacked charts.
+ *
+ * The trick the frame plays: the LINE reads as standing still and only changing shape,
+ * while the GRID under it does the travelling. That is a lie between two truths — the
+ * candle frame's price axis and the slide's drawdown axis are different scales of
+ * different things — but it is the lie that makes the cut disappear.
+ *
+ * How it is told:
+ *   … BM_NUMS_OUT   the candles have burnt down onto their closes and the daily line is
+ *                   standing; its numbers (325…225, AUG…NOV, S&P 500 INDEX) dissolve fast.
+ *   BM_GRID_SWAP    the drawdown grid REPLACES the price grid outright — invisibly, because
+ *                   it is drawn distorted so that it lands line-for-line on the one it
+ *                   replaces: five Y lines (0…−40% at 10%, not four to −30%) squeezed into
+ *                   the band between the 325 line and the baseline, four X seats sitting on
+ *                   AUG/SEP/OCT/NOV. No numbers on it yet, so nothing contradicts the units
+ *                   that just left. From here the candle stage is done — one painter.
+ *   … BM_GRID_LAND  that same grid stretches out to its true self (−40% slides under the
+ *                   floor, the month seats spread to even thirds) — AT THE SAME TIME as the
+ *                   line straightens from the jagged daily close curve into the monthly
+ *                   drawdown polyline. Grid moving, line morphing, one gesture.
+ *   … 1             the landed grid inks its own numbers: 0/−10/−20/−30% and PEAK·1·2·3.
+ */
+const BM_NUMS_OUT_0 = 0.16;
+const BM_NUMS_OUT_1 = 0.30;
+const BM_GRID_SWAP = 0.32;
+const BM_GRID_LAND = 0.88;
+
+/** Top of the candle grid as a fraction of the plot box — its bottom line IS the plot floor,
+ *  so this one number is the whole squeeze: the drawdown grid is folded into that band. */
+const BM_GRID_TOP_F = (BM_GEOM.ticks[0].y - BM_GEOM.box.y) / BM_GEOM.box.h;
+/** …and it holds one line per candle tick, which is what makes the swap land exactly. */
+const BM_WARP_PCT_MIN = 100 - (BM_GEOM.ticks.length - 1) * PCT_STEP_TIGHT;
 
 export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   // Bundled monthly series (1970-01…) — no CSV fetch at runtime.
@@ -510,8 +566,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   // Gates invest-overlay copy only. Crisis trough/drop labels ride with their lines
   // (appear when the bold series appears, never blink out during morphs).
   let labelReveal = 1;
-  let paintAlpha = 1; // 0..1 — multiplies slide paint (bm→0a crossfade)
-  let skipBgClear = false; // when true, setupCtx keeps the previous layer (crossfade overlay)
+  // Grid handoff out of the candle stage (see BM_GRID_*): 1 = the slide's true grid,
+  // 0 = that same grid folded onto the candle grid's lines and month seats.
+  let gridWarp = 1;
+  let gridNumAlpha = 1; // 0..1 — the slide grid's OWN numbers, held back until it has landed
+  // Non-null only across the bm step: how far the 1987 line has straightened out of the
+  // daily closes. The SLIDE draws it (there is no second layer), so the hatch, the end dot
+  // and the trough marker all come from the frame that is arriving, never from a stand-in.
+  let bmStraighten: number | null = null;
   let bullPath: Path2D | null = null; // cached Charging Bull figurine
   let numPath: Path2D | null = null;   // cached «1989» outline
   let platePaths: Path2D[] | null = null;
@@ -669,9 +731,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     }
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (!skipBgClear) {
-      ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
-    }
+    ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
     // Generous insets to match the mockup's big margins (≈10% sides, ~18% top/bottom
     // — the header & footer/legend live in those bands).
     const padL = Math.round(W * 0.1), padR = Math.round(W * 0.1);
@@ -693,8 +753,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     if (!xs.length) return;
     // viewConfig aliases 'bm'→0a, so a bare drawNow during the candle hold paints the
     // line chart on top of (or instead of) candles and leaves the HTML −20% plate up.
-    // Only the intentional crossfade (animT past BM_TO_SLIDE) may use this path for bm.
-    if (fromKey === 'bm' && animT <= BM_TO_SLIDE) {
+    // Only the deliberate handoff (animT past BM_GRID_SWAP) may use this path for bm.
+    if (fromKey === 'bm' && animT < BM_GRID_SWAP) {
       drawCandleStage(animT);
       return;
     }
@@ -741,18 +801,43 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const { ctx, x0, y0, x1, y1, xData1 } = setupCtx();
     const sx = makeSx(xMin, xMax, x0, xData1);
     const sy = (pct: number) => y1 - (pct - yMin) / (yMax - yMin) * (y1 - y0);
-    const pa = paintAlpha;
-
-    ctx.globalAlpha = pa;
+    ctx.globalAlpha = 1;
     const labelCfg = t < 0.5 ? cfgA : cfgB;
     // Every grid line carries its own number (41 / 40 / 38 all do). What changes between
     // views is the STEP: the 0…−100% overview breathes at 25%, the drawdown slides at 10%.
     const pctStep = labelCfg.kind === 'state1' ? PCT_STEP_WIDE : PCT_STEP_TIGHT;
+    // Coming out of the candle stage this grid is still folded onto the one it replaced
+    // (gridWarp < 1, see BM_GRID_SWAP): the scale runs down to −40% instead of −30%, so it
+    // has one line per candle tick, and the whole thing is squeezed into the band between
+    // the candle chart's top tick and its baseline (which is the plot floor). Five lines on
+    // five. It then stretches out to its true self while the series straightens — the −40%
+    // row slides under the floor and is dropped.
+    const gYMin = lerp(BM_WARP_PCT_MIN, yMin, gridWarp);
+    const gTop = lerp(y0 + BM_GRID_TOP_F * (y1 - y0), y0, gridWarp);
+    const syGrid = gridWarp >= 1 ? sy
+      : (pct: number) => y1 - (pct - gYMin) / (yMax - gYMin) * (y1 - gTop);
     drawPctGrid(
-      ctx, x0, x1, sy,
-      Math.ceil(yMin / pctStep) * pctStep, Math.min(100, Math.floor(yMax / pctStep) * pctStep),
-      pctStep,
+      ctx, x0, x1, syGrid,
+      Math.ceil((gridWarp >= 1 ? yMin : BM_WARP_PCT_MIN) / pctStep) * pctStep,
+      Math.min(100, Math.floor(yMax / pctStep) * pctStep),
+      pctStep, gridNumAlpha,
+      // The 0% rule lights up with the numbers — this scale only earns its white line once
+      // it is telling the truth again.
+      gridNumAlpha,
+      y1,
     );
+    // …and until then the frame's white rule is still the one the candle chart stood on: the
+    // plot floor. It does not travel up to the 0% line, it just goes out where it is, while
+    // the folded grid's bottom row (which starts underneath it) slides away below.
+    if (gridWarp < 1) {
+      const floorA = 1 - smoothstep(gridWarp / 0.3);
+      if (floorA > 0.004) {
+        ctx.globalAlpha = floorA;
+        ctx.strokeStyle = LINE; ctx.lineWidth = BASE_LINE_W; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
 
     // Dots under x labels, no vertical grid lines (mockup).
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = AXIS;
@@ -765,14 +850,31 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // is actually drawn last — mid-morph xMax is fractional and flooring it alone put
       // «MONTHS» one tick short of the end.
       const lastTick = Math.min(SLIDE_XMAX, Math.floor((xMax + 0.5) / mStep) * mStep);
+      // Same handoff as the Y grid: while gridWarp < 1 the month ticks sit in the CANDLE
+      // stage's month seats (AUG…NOV, which are trading-day positions, not even thirds) and
+      // walk out to their own even spacing. Sampled by normalised index, so it degrades to a
+      // plain stretch if the two ever stop having the same number of seats.
+      const seats = bmDrawdownMonthMarks();
+      const sxTick = (gridWarp >= 1 || lastTick <= 0 || seats.length < 2) ? sx
+        : (m: number) => {
+          const u = Math.max(0, Math.min(1, m / lastTick)) * (seats.length - 1);
+          const j = Math.min(seats.length - 2, Math.floor(u));
+          const seatM = lerp(seats[j].t, seats[j + 1].t, u - j) * xMax;
+          return sx(lerp(seatM, m, gridWarp));
+        };
       for (let m = 0; m <= SLIDE_XMAX; m += mStep) {
         if (m < xMin - 0.5 || m > xMax + 0.5) continue;
-        const x = sx(m);
+        const x = sxTick(m);
         ctx.beginPath(); ctx.arc(x, y1 + 14, 3, 0, 2 * Math.PI); ctx.fill();
         const label = m === 0 ? LBL.peak
           : m === lastTick ? `${m} ${LBL.months}`
           : String(m);
-        ctx.fillText(label, x, y1 + 28);
+        if (gridNumAlpha > 0.004) {
+          const a = ctx.globalAlpha;
+          ctx.globalAlpha = a * gridNumAlpha;
+          ctx.fillText(label, x, y1 + 28);
+          ctx.globalAlpha = a;
+        }
       }
     } else {
       drawYearAxis(ctx, sx, y1, xMin, xMax);
@@ -828,15 +930,23 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // on its OWN early beat, at the tight scale, before the compression starts.
       if (revealK !== null && inA !== inB) alpha = revealK;
       if (alpha <= 0) continue;
-      ctx.globalAlpha = alpha * pa * dim;
+      ctx.globalAlpha = alpha * dim;
 
+      // Across the bm step the 1987 line is not the monthly polyline yet — it is the daily
+      // one on its way there (bmPolyline). Same painter, same hatch, same end dot: the
+      // frame that is arriving draws the morph itself, so there is no stand-in to cross-fade.
+      const morphing = bmStraighten !== null && c.peak[0] === 1987;
       const pts: [number, number][] = [];
-      for (let m = 0; m <= lastM; m++) {
-        const i = iP + m;
-        if (!isFinite(Y[i])) continue;
-        const yPct = (Y[i] / peakPrice) * 100;
-        const xVal = lerp(xValueIn(c, m, cfgA), xValueIn(c, m, cfgB), t);
-        pts.push([sx(xVal), sy(yPct)]);
+      if (morphing) {
+        pts.push(...bmPolyline(bmStraighten as number, x0, y0, x1, y1).pts);
+      } else {
+        for (let m = 0; m <= lastM; m++) {
+          const i = iP + m;
+          if (!isFinite(Y[i])) continue;
+          const yPct = (Y[i] / peakPrice) * 100;
+          const xVal = lerp(xValueIn(c, m, cfgA), xValueIn(c, m, cfgB), t);
+          pts.push([sx(xVal), sy(yPct)]);
+        }
       }
       if (!pts.length) continue;
 
@@ -846,19 +956,25 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // to the overview (frame 07). Each fades in with its own line via ctx.globalAlpha=alpha.
       // Stripes ride the FOCUS, so the new crisis picks the hatch up exactly as the
       // previous one hands it over.
-      if (isSlide) fillDrawdownArea(ctx, pts, sy(100), FILL_BEAR, fillK, focusK);
+      // Hatch hangs off the 0% line AS DRAWN — so while the grid is folded it fills to the
+      // fold, not to where the honest 0% would be, and the two travel together.
+      const morphK = morphing ? smoothstep((bmStraighten as number) / 0.55) : 1;
+      if (isSlide) fillDrawdownArea(ctx, pts, syGrid(100), FILL_BEAR, fillK * morphK, focusK);
 
-      ctx.strokeStyle = LINE; ctx.lineWidth = width;
+      ctx.strokeStyle = LINE;
+      // The line thickens as it settles: the daily curve is a thin trace, the drawdown it
+      // becomes is the frame's headline stroke.
+      ctx.lineWidth = morphing ? lerp(LINE_W_THIN, width, morphK) : width;
       ctx.beginPath();
       pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
       ctx.stroke();
       const [lastSx, lastSy] = pts[pts.length - 1];
       ctx.fillStyle = LINE;
       ctx.beginPath();
-      ctx.arc(lastSx, lastSy, lerp(END_DOT_R, END_DOT_R_FOCUS, focusK), 0, 2 * Math.PI);
+      ctx.arc(lastSx, lastSy, lerp(END_DOT_R, END_DOT_R_FOCUS, focusK) * morphK, 0, 2 * Math.PI);
       ctx.fill();
     }
-    ctx.globalAlpha = pa;
+    ctx.globalAlpha = 1;
     ctx.restore();
 
     for (const c of visible) {
@@ -873,7 +989,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       const xValA = xValueIn(c, lastM, cfgA);
       const xValB = xValueIn(c, lastM, cfgB);
       const xVal = lerp(xValA, xValB, t);
-      const px = sx(xVal), py = sy(yPct);
+      // While the 1987 line is still straightening its trough is wherever the morphing
+      // polyline currently ends, and the date only inks up once that end has settled.
+      const morphing = bmStraighten !== null && c.peak[0] === 1987;
+      const morphEnd = morphing
+        ? bmPolyline(bmStraighten as number, x0, y0, x1, y1).pts.slice(-1)[0]
+        : null;
+      const px = morphEnd ? morphEnd[0] : sx(xVal);
+      const py = morphEnd ? morphEnd[1] : sy(yPct);
 
       const inA = (cfgA.visibleYears as number[]).includes(c.peak[0]);
       const inB = (cfgB.visibleYears as number[]).includes(c.peak[0]);
@@ -885,8 +1008,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // Label rides with the line: appears as soon as the (bold) series is drawn, never
       // fades out during morphs, and recedes down the SAME ink ladder as its line — so an
       // old crisis's date doesn't shout over the one the slide is actually about.
-      ctx.globalAlpha = alpha * pa * lerp(dimIn(c, cfgA), dimIn(c, cfgB), t);
-      if (px >= x0 + 30 && px <= x1 + 4 && py >= y0 && py <= y1) {
+      const markK = morphing ? smoothstep(((bmStraighten as number) - 0.5) / 0.5) : 1;
+      ctx.globalAlpha = alpha * markK * lerp(dimIn(c, cfgA), dimIn(c, cfgB), t);
+      if (markK > 0.004 && px >= x0 + 30 && px <= x1 + 4 && py >= y0 && py <= y1) {
         drawMarkerTwoLine(ctx, c.troughMonth, c.troughYear, px, py, FONT, FONT_MARK, xData1);
       }
     }
@@ -1239,55 +1363,36 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     }
   }
 
-  // Black Monday candle stage. p in [0,1] until handoff to the numbered-month slide. The
-  // candles do NOT jump onto the monthly curve — they become the DAILY line first:
-  //  0 → BURN_END        each candle burns down onto its own close and dissolves, while a
-  //                      polyline through those closes fades in — the chart "of itself",
-  //                      Aug→Nov, Black Monday still a deep V
-  //  hold               that daily line stands on its own for a beat
-  //  STRAIGHTEN_0 → _1  every vertex slides from its daily close to the monthly drawdown
-  //                      curve at the same date, so the jagged line straightens into the
-  //                      smooth one the 0a slide paints
-  //  ≥ BM_TO_SLIDE      crossfade into that slide, by which point the shapes match
-  const BURN_END = 0.18;
-  const STRAIGHTEN_0 = 0.34;
-  const STRAIGHTEN_1 = 0.80;   // straight before the crossfade starts, never during it
-  function drawCandleStage(p: number) {
-    const { ctx, x0, y0, x1, y1 } = setupCtx();
+  /**
+   * The line the candles turn into: a vertex per trading day, each sliding from that day's
+   * CLOSE — read on the candle chart's price scale — to the monthly drawdown curve for the
+   * same date on the slide's percent scale, as `straighten` runs 0→1. So the one move both
+   * re-shapes the line (jagged daily → monthly polyline) and re-scales it (points → percent).
+   *
+   * One function because BOTH frames draw it: the candle stage while its own grid is still
+   * up, then the slide itself once the grid has been handed over. Identical points either
+   * side, so that handoff is a cut with nothing to see.
+   *
+   * X is laid out ON the slide it becomes — t=0 on the slide's PEAK tick, t=1 on its trough
+   * — so the straightened line and the slide's own line are the same segment and nothing
+   * slides sideways. (Hand-measured fractions of the plot box used to do this; extending the
+   * series to November left the end overshooting the trough by ~70px. Derived, so they
+   * cannot drift apart again.)
+   */
+  function bmPolyline(straighten: number, x0: number, y0: number, x1: number, y1: number) {
     const B = BM_GEOM.box;
-    const mapX = (sx: number) => x0 + (sx - B.x) / B.w * (x1 - x0);
-    const mapY = (sy: number) => y0 + (sy - B.y) / B.h * (y1 - y0);
-    const gx0 = mapX(B.x), gx1 = mapX(B.x + B.w);
-    const gy0 = mapY(B.y), gy1 = mapY(B.y + B.h);
-    const leftSpan = (gx1 - gx0) * 0.5;
-    // Candles burn down onto their closes and dissolve; the daily line takes over.
-    const burn = smoothstep(p / BURN_END);
-    // …then that line straightens into the monthly curve.
-    const straighten = smoothstep((p - STRAIGHTEN_0) / (STRAIGHTEN_1 - STRAIGHTEN_0));
-    const fadeOut = p <= BM_TO_SLIDE ? 0 : smoothstep((p - BM_TO_SLIDE) / (1 - BM_TO_SLIDE));
-    const cAlpha = 1 - fadeOut;
-    const N = BM_OHLC.length;
-    const nDD = N - BM_AUG_I;
-
-    // Target = 0a monthly drawdown curve (real), same sy as drawNow — NOT daily closes
-    // (those stay high until Oct 19 and make stubs look stuck above the line).
-    const crisis87 = CRISES[1];
+    const mapY = (svgY: number) => y0 + (svgY - B.y) / B.h * (y1 - y0);
     const Yslide = yReal;
-    const iPeak = ymToIdx(xs, crisis87.peak);
-    const iTrough = ymToIdx(xs, crisis87.trough);
+    const iPeak = ymToIdx(xs, CRISES[1].peak);
+    const iTrough = ymToIdx(xs, CRISES[1].trough);
     const peakPx = (iPeak >= 0 && isFinite(Yslide[iPeak])) ? Yslide[iPeak] : BM_OHLC[BM_AUG_I][4];
     const lastM = Math.max(1, iTrough - iPeak);
-    // X: the candle window is laid out ON the slide it becomes — t=0 sits on the slide's
-    // PEAK tick, t=1 on its trough — so the straightened line and the slide's line are the
-    // same segment and nothing slides sideways at the crossfade. This used to be a pair of
-    // hand-measured fractions of the plot box (0.0175 … 0.539) calibrated when the series
-    // stopped at Black Monday; extending it to November left the end overshooting the
-    // trough by ~70px. Derived, so the two can't drift apart again.
     const sxSlide = makeSx(0, tightXMax(), x0, x1 - PLOT_RIGHT_INSET);
-    const candleXAtT = (t01: number) => lerp(sxSlide(0), sxSlide(lastM), t01);
-    const candleX = (i: number) => candleXAtT(bmDrawdownT(i));
-    const yMinS = SLIDE_DATA['0a'].yMin, yMaxS = 100;
-    const sySlide = (pct: number) => y1 - (pct - yMinS) / (yMaxS - yMinS) * (y1 - y0);
+    const atT = (t01: number) => lerp(sxSlide(0), sxSlide(lastM), t01);
+    const yMinS = SLIDE_DATA['0a'].yMin;
+    const sySlide = (pct: number) => y1 - (pct - yMinS) / (100 - yMinS) * (y1 - y0);
+    // Target = the 0a monthly drawdown curve, NOT the daily closes (those stay high until
+    // Oct 19, which left the stubs looking stuck above the line).
     const slideYAtT = (t01: number) => {
       const t = t01 <= 0 ? 0 : t01 >= 1 ? 1 : t01;
       const m = t * lastM;
@@ -1299,9 +1404,41 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       const v1 = (i1 >= 0 && isFinite(Yslide[i1])) ? Yslide[i1] : v0;
       return sySlide(((v0 + (v1 - v0) * u) / peakPx) * 100);
     };
+    const pts: [number, number][] = [];
+    for (let i = BM_AUG_I; i < BM_OHLC.length; i++) {
+      const t = bmDrawdownT(i);
+      const yDaily = mapY(bmPriceSvgY(BM_OHLC[i][4]));
+      pts.push([atT(t), lerp(yDaily, slideYAtT(t), straighten)]);
+    }
+    return { pts, atT, mapY };
+  }
+
+  // Black Monday candle stage — the frame BEFORE the grid changes hands, and nothing after.
+  // The candles do not jump onto the monthly curve; they become the DAILY line first:
+  //  0 → BURN_END       each candle burns down onto its own close and dissolves, while the
+  //                     polyline through those closes fades in — the chart "of itself",
+  //                     Aug→Nov, Black Monday still a deep V
+  //  BM_NUMS_OUT_0→_1   its numbers dissolve off that standing line
+  //  BM_GRID_SWAP       the slide takes over (see the phase note by BM_GRID_SWAP); this
+  //                     painter is not called again, so the straightening happens over there
+  const BURN_END = 0.18;
+  function drawCandleStage(p: number) {
+    const { ctx, x0, y0, x1, y1 } = setupCtx();
+    const B = BM_GEOM.box;
+    const mapX = (sx: number) => x0 + (sx - B.x) / B.w * (x1 - x0);
+    const { pts, atT: candleXAtT, mapY } = bmPolyline(0, x0, y0, x1, y1);
+    const gx0 = mapX(B.x), gx1 = mapX(B.x + B.w);
+    const gy0 = mapY(B.y), gy1 = mapY(B.y + B.h);
+    // Candles burn down onto their closes and dissolve; the daily line takes over.
+    const burn = smoothstep(p / BURN_END);
+    const cAlpha = 1;
+    const numAlpha = 1 - smoothstep((p - BM_NUMS_OUT_0) / (BM_NUMS_OUT_1 - BM_NUMS_OUT_0));
+    const N = BM_OHLC.length;
+    const nDD = N - BM_AUG_I;
+    const candleX = (i: number) => candleXAtT(bmDrawdownT(i));
 
     // ---- price grid + AUG/SEP/OCT (candle chrome only; no %-drawdown interim) ----
-    if (cAlpha > 0.01) {
+    {
       ctx.globalAlpha = cAlpha * entryFade;
       ctx.font = FONT; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
       // Y grid + numbers. Same price scale as Desktop-43: the numbers ink up as they climb
@@ -1317,11 +1454,16 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
           ctx.setLineDash([]);
         }
         // ticks run top→bottom here, so the distance from the baseline is n-1-i
-        ctx.globalAlpha = cAlpha * entryFade * tickAlphaAbs(nTicks - 1 - i);
-        ctx.fillStyle = AXIS; ctx.fillText(String(tk.v), gx1, y - 12);
+        ctx.globalAlpha = cAlpha * entryFade * tickAlphaAbs(nTicks - 1 - i) * numAlpha;
+        ctx.fillStyle = AXIS;
+        if (numAlpha > 0.004) ctx.fillText(String(tk.v), gx1, y - 12);
         ctx.globalAlpha = cAlpha * entryFade;
       });
-      drawIndexCaption(ctx, gx1, gy0);
+      if (numAlpha > 0.004) {
+        ctx.globalAlpha = cAlpha * entryFade * numAlpha;
+        drawIndexCaption(ctx, gx1, gy0);
+        ctx.globalAlpha = cAlpha * entryFade;
+      }
       // Month dots + AUG/SEP/OCT — label baseline pulled up close to the dot (mockup baseline
       // ≈689, ~9px under the dot) while staying UNDER the white line.
       ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = AXIS;
@@ -1330,19 +1472,39 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       for (const mo of bmDrawdownMonthMarks()) {
         const mx = candleXAtT(mo.t);
         ctx.beginPath(); ctx.arc(mx, mapY(BM_GEOM.dotY), 3, 0, 2 * Math.PI); ctx.fill();
-        ctx.fillText(mo.l, mx, mapY(BM_GEOM.monthY));
+        if (numAlpha > 0.004) {
+          ctx.globalAlpha = cAlpha * entryFade * numAlpha;
+          ctx.fillText(mo.l, mx, mapY(BM_GEOM.monthY));
+          ctx.globalAlpha = cAlpha * entryFade;
+        }
       }
       ctx.globalAlpha = 1;
     }
 
-    const colW0 = Math.max(2, leftSpan / Math.max(nDD - 1, 1) * 0.62);
+    // Candle width = the designer's 80% of the PITCH — his export is 8.015 wide on a 10.02
+    // step (Desktop-36), i.e. columns that nearly touch. It used to be measured off
+    // `leftSpan` (HALF the plot) while the candles were laid out across the WHOLE of it, so
+    // every column came out at about a third of its slot with a gap wider than itself.
+    // Read off the real seats, so it cannot drift from the layout again.
+    const pitch = nDD > 1 ? (candleX(N - 1) - candleX(BM_AUG_I)) / (nDD - 1) : 8;
+    const colW0 = Math.max(2, pitch * 0.8);
 
     // ---- candles burn down → daily line → straighten ----
     if (cAlpha > 0.02) {
       ctx.save();
       ctx.beginPath();
-      // Clip to the plot box (down to the baseline) so nothing spills BELOW the white line.
-      ctx.rect(gx0, Math.min(gy0, gy1), gx1 - gx0, Math.abs(gy1 - gy0));
+      // The clip is sized to the DATA, not to the designer's grid box — a wick that is cut
+      // off is a wrong price. The window overflows his 325…225 frame at BOTH ends: Aug 25
+      // traded up to 337.89 (above the top grid line) and Oct 20 down to 216.46 (well below
+      // the baseline). His export stops at Black Monday and never had to hold either. A
+      // candle chart's grid is a scale, not a cage; the white rule at 225 still paints over
+      // the wick that crosses it, so the frame reads as designed.
+      let clipTop = Math.min(gy0, gy1), clipBot = Math.max(gy0, gy1);
+      for (let i = BM_AUG_I; i < N; i++) {
+        clipTop = Math.min(clipTop, mapY(bmPriceSvgY(BM_OHLC[i][2])));
+        clipBot = Math.max(clipBot, mapY(bmPriceSvgY(BM_OHLC[i][3])));
+      }
+      ctx.rect(gx0, clipTop - 1, gx1 - gx0, clipBot - clipTop + 2);
       ctx.clip();
 
       // 1) The candles. Each one collapses DOWNWARD onto its own close — the value the line
@@ -1370,32 +1532,18 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         }
       }
 
-      // 2) The line the candles turn into: a vertex per trading day, at that day's close —
-      //    then each vertex slides to the monthly curve for the same date, which is what
-      //    straightens the Black Monday V out of it.
+      // 2) The line the candles turn into: a vertex per trading day, at that day's close.
+      //    Still dead straight-less here — the straightening belongs to the slide, which
+      //    picks this same polyline up at BM_GRID_SWAP.
       const lineA = entryFade * cAlpha * smoothstep(burn * 1.4);
       if (lineA > 0.02) {
         ctx.globalAlpha = lineA;
         ctx.strokeStyle = LINE;
-        ctx.lineWidth = lerp(LINE_W_THIN, LINE_W_THICK, straighten);
+        ctx.lineWidth = LINE_W_THIN;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
         ctx.beginPath();
-        let lastX = 0, lastY = 0;
-        for (let i = BM_AUG_I; i < N; i++) {
-          const t = bmDrawdownT(i);
-          const x = candleX(i);
-          const yDaily = mapY(bmPriceSvgY(BM_OHLC[i][4]));
-          const y = lerp(yDaily, slideYAtT(t), straighten);
-          if (i === BM_AUG_I) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-          lastX = x; lastY = y;
-        }
+        pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
         ctx.stroke();
-        // End dot arrives with the straightening, so the handoff to 0a is dot-to-dot.
-        if (straighten > 0.01) {
-          ctx.globalAlpha = lineA * straighten;
-          ctx.fillStyle = LINE;
-          ctx.beginPath(); ctx.arc(lastX, lastY, END_DOT_R, 0, 2 * Math.PI); ctx.fill();
-        }
       }
       ctx.restore();
     }
@@ -1496,27 +1644,27 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     animT = p;
     const dominantKey = p < 0.5 ? fromKey : toKey;
     applyAutoMode(dominantKey);
-    // bm → numbered-month slide (0a): squash candles, then crossfade into the data
-    // slide (peak / N months) — skip the AUG–OCT designer interim.
+    // Grid handoff — only the candle step has one; every other frame draws its own grid at
+    // its own scale, fully inked. The stretch shares its window with the straightening (see
+    // BM_GRID_SWAP): grid travelling, line morphing, one gesture. The numbers come after.
+    gridWarp = fromKey === 'bm' ? smoothstep((p - BM_GRID_SWAP) / (BM_GRID_LAND - BM_GRID_SWAP)) : 1;
+    gridNumAlpha = fromKey === 'bm' ? smoothstep((p - BM_GRID_LAND) / (1 - BM_GRID_LAND)) : 1;
+    // bm → numbered-month slide (0a). ONE painter at a time, never two stacked: the candle
+    // frame draws up to the swap, the slide draws from it. What used to be a cross-fade of
+    // two whole charts is now a straight cut, invisible because the arriving grid is folded
+    // onto the leaving one (BM_GRID_SWAP) and the arriving line IS the leaving one.
     if (fromKey === 'bm') {
       applyTheme(0); lastBull = 0;
-      const xf = animT <= BM_TO_SLIDE ? 0
-        : smoothstep((animT - BM_TO_SLIDE) / (1 - BM_TO_SLIDE));
-      if (xf <= 0) {
+      if (animT < BM_GRID_SWAP) {
         drawCandleStage(animT);
       } else {
-        // Slide fades in under the candles; candles keep fading via drawCandleStage.fadeOut.
+        const straighten = smoothstep((animT - BM_GRID_SWAP) / (BM_GRID_LAND - BM_GRID_SWAP));
         const sf = fromKey, st = toKey, sa = animT;
         fromKey = '0a'; toKey = '0a'; animT = 1;
-        paintAlpha = xf;
+        bmStraighten = straighten < 1 ? straighten : null;
         drawNow();
-        paintAlpha = 1;
+        bmStraighten = null;
         fromKey = sf; toKey = st; animT = sa;
-        if (xf < 0.98) {
-          skipBgClear = true;
-          drawCandleStage(animT);
-          skipBgClear = false;
-        }
       }
       return CAPTION[animT < 0.5 ? 'bm' : '0a'] || '';
     }

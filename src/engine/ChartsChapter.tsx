@@ -31,11 +31,12 @@ const EXIT_VH = 140;
  *  no left. So it simply materialised with the stage's own crossfade instead of arriving. */
 const ENTRY_VH = 90;
 
-/** Fraction of the lead-in by which the opening card must be fully parked. */
-const ENTRY_CLEAR = 0.72;
-
 /** Fraction of the tail by which the final card must be COMPLETELY off the top.
- *  The rest of the tail is the clean-chart beat before AnatomyCrisis rises. */
+ *  The rest of the tail is the clean-chart beat before AnatomyCrisis rises — the card is
+ *  already off-screen through it, so it costs nothing to watch. (Its opening counterpart,
+ *  ENTRY_CLEAR, was the opposite: it landed the first card at dead centre 72% into the
+ *  lead-in and left it PINNED there, in full view, for the remaining ~25vh of scrolling.
+ *  The card now arrives exactly as the chart starts to move, so it never stands.) */
 const EXIT_CLEAR = 0.72;
 
 /** Minimum breathing room between the X labels and the credits block below them. */
@@ -232,19 +233,24 @@ export default function ChartsChapter() {
       // The ride is SEQUENCED against the chart, not overlaid on it. Card i is centred on
       // idx === i, which is exactly where its frame has landed, and the whole ride lives
       // inside the window where the chart is STILL — the engine's dwell either side of
-      // that index. So a step reads: morph · bare chart · plate in, hold, out · morph.
+      // that index. So a step reads: morph · bare chart · the plate sweeps through · morph.
       // It used to park a third of a step LATE and exit across the next morph, so the
       // plate was sliding while the chart was still redrawing underneath it.
       //
       // One set of numbers for every card — same speed, same moment, same everything.
+      //
+      // The ride is ONE unbroken sweep: the card never parks. It used to hold dead still
+      // for a tenth of a step in the middle of its window — a quarter-screen of scrolling
+      // where the plate was pinned and nothing on the page moved, which reads as the scroll
+      // catching on something. Now `tt` is straight-line in `d`: full screen up over the
+      // window, constant velocity, and dead centre is a moment it passes through rather
+      // than a place it sits.
       const fh = vh;
       const vhPx = fh / 100;
-      const CARD_HOLD = 0.10;   // parked, dead still
       const MARGIN = 0.02;      // never touch the morph on either side
-      const CARD_RIDE = DWELL_HOLD_FRAC - CARD_HOLD - MARGIN; // travel, each side
+      /** Dead centre → fully off the top. Also what the outer cards' lead-in / tail cover. */
+      const CARD_RIDE = DWELL_HOLD_FRAC - MARGIN;
       const FADE = 0.15;        // fade only over the outer (off-screen) edges
-      /** Rest → fully off the top: what the final card's tail exit has to cover. */
-      const rideSpan = CARD_HOLD + CARD_RIDE;
       const firstCardIdx = CARD_STEPS[0].i;
       for (const { i, s } of CARD_STEPS) {
         const el = cardRefs.current[i];
@@ -253,10 +259,9 @@ export default function ChartsChapter() {
         // the first rides UP into place across the lead-in, the last rides UP and OFF across
         // the tail. Same span and same speed as every card's own ride.
         let d = idx - i;
-        if (i === firstCardIdx) d -= (1 - clamp01(entryProg / ENTRY_CLEAR)) * rideSpan;
-        if (i === lastCardIdx) d += clamp01(exitProg / EXIT_CLEAR) * rideSpan;
-        const off = Math.abs(d) - CARD_HOLD;
-        const tt = off <= 0 ? 0 : Math.sign(d) * (off / CARD_RIDE);
+        if (i === firstCardIdx) d -= (1 - entryProg) * CARD_RIDE;
+        if (i === lastCardIdx) d += clamp01(exitProg / EXIT_CLEAR) * CARD_RIDE;
+        const tt = d / CARD_RIDE;
         const a = Math.abs(tt);
         const op = a < 1 ? (a > 1 - FADE ? (1 - a) / FADE : 1) : 0;
         const [ox, oy] = tuneStore.get(`charts.card.${s.view}`);
