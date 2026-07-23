@@ -4,8 +4,9 @@
  * so ModelChapter + the keyframe editor drive it identically. Use this for mesh
  * assets (e.g. the bull GLB); use DatumScene for Datum splats (.sog/.ply).
  *
- * Lighting/loader rig is borrowed from components/BullViewer.tsx so the bronze
- * reads the same. Camera convention: azimuth around +Y, polar from +Y, matching
+ * The lighting/loader rig came from the old components/BullViewer.tsx (deleted —
+ * this file is now the only place it lives), so the bronze reads the same as it
+ * did there. Camera convention: azimuth around +Y, polar from +Y, matching
  * the editor's spherical track (internally consistent → WYSIWYG).
  */
 import * as THREE from 'three';
@@ -14,6 +15,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CameraSpherical } from './DatumScene';
+import { releaseRenderer } from './deviceBudget';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -189,7 +191,7 @@ export class GlbScene {
     const camera = new THREE.PerspectiveCamera(60, w / h, 0.01, 5000);
     this.camera = camera;
 
-    // 3-light rig (matches BullViewer): soft ambient + warm key + cool fill + rim.
+    // 3-light rig: soft ambient + warm key + cool fill + rim.
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const key = new THREE.DirectionalLight(0xffffff, 2.4);
     key.position.set(5, 8, 6);
@@ -790,10 +792,9 @@ export class GlbScene {
     this.extraEnvTex?.dispose();
     this.extraEnvTex = null;
     this.draco?.dispose();
-    if (this.renderer) {
-      this.renderer.dispose();
-      this.renderer.domElement.remove();
-    }
+    // dispose() alone leaves the GL context alive until GC — on iOS that keeps a
+    // context slot occupied while the map/splat spin up. releaseRenderer forces it out.
+    if (this.renderer) releaseRenderer(this.renderer);
     this.renderer = null;
     this.scene = null;
     this.camera = null;

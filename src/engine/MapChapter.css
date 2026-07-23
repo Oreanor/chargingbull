@@ -35,18 +35,6 @@
 .mc-comment { font: inherit; color: #fff; }
 .mc-comment a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
-/* photo — sits between title and body, edge-to-edge of the card's text column */
-.mc-figure { margin: 0 0 20px; }
-.mc-photo {
-  display: block; width: 100%; height: auto; border-radius: 14px;
-  aspect-ratio: 3 / 2; object-fit: cover; background: rgba(0, 0, 0, 0.3);
-}
-.mc-caption {
-  margin-top: 8px;
-  font: 400 clamp(13px, 1.4vw, 18px)/1.3 var(--font-struve);
-  letter-spacing: 0; color: #767676;
-}
-
 @media (max-width: 1023px) {
   .mc-card {
     margin: 0 0 0 var(--mc-plaque-gap);
@@ -59,8 +47,6 @@
   .mc-date { font-size: 19px; }
   .mc-loc { font-size: 14px; }
   .mc-title { font-size: 28px; }
-  .mc-figure { margin-bottom: 16px; }
-  .mc-photo { border-radius: 10px; }
 }
 
 /* ---------------------------------------------------------------- POI markers --- */

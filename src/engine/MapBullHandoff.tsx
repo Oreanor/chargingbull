@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, type ComponentProps } from 'react';
 import MapChapter from './MapChapter';
 import DatumSplat, { type DatumSplatHandle } from '../components/DatumSplat';
 import { useInViewMount } from './useInViewMount';
-import { isMobileViewport } from './deviceBudget';
+import { glWindow } from './deviceBudget';
 import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotate» hint (text is HTML)
 
 /**
@@ -14,13 +14,15 @@ import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotat
  *   • the bull is an overlay ON TOP (sticky, z-20); during the journey it is
  *     fully transparent with a tiny circular clip, so the map shows through;
  *   • across the back of the dive the bull unfolds: a circle iris grows from a
- *     small disc and opens past the corners, the scene scales up sharply from
- *     ~15%, and it fades from transparent to 100% — revealed over the map;
- *   • from there a SINGLE scroll exits (the map's stop-frame handoff animates the
- *     page to the next <section>): the sticky bull slides up and away while the
- *     next chapter divider (<BreakReveal>) scrolls in and plays its reveal.
+ *     small disc and opens past the corners, the camera dollies in from
+ *     DIST_START_MUL× out, and it fades from transparent to 100% — over the map;
+ *   • from there the reader just keeps scrolling (plain 1:1, no snapping): the
+ *     sticky bull slides up and away while the next chapter divider
+ *     (<BreakReveal>) scrolls in and plays its reveal.
  *
- * The bull mounts once. Wheel scrolls the page; drag orbits the revealed bull.
+ * Wheel scrolls the page; drag orbits the revealed bull. On desktop the bull
+ * mounts once and stays; on mobile it is released once the block is behind the
+ * reader and re-streamed if they scroll back (see deviceBudget).
  */
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3); // decelerate (for the bull)
 const easeInCubic = (t: number) => t * t * t;                // accelerate (for the iris)
@@ -98,18 +100,18 @@ export default function MapBullHandoff({
     el.style.opacity = revealedRef.current && !rotatedRef.current && !leaving ? '1' : '0';
   }, []);
 
-  // Mount the 54 MB bull splat only as this section approaches — NOT during the
-  // opener. Otherwise its WebGL engine renders 60fps behind the opener (off-screen)
+  // Mount the bull splat only as this section approaches — NOT during the opener.
+  // (Payload: Bull_Datum_pipeline_600K.sog, 9.8 MB with JPEG-packed textures. The
+  // "54 MB" these comments used to quote predates that recompression.)
+  // Otherwise its WebGL engine renders 60fps behind the opener (off-screen)
   // and steals frames from the opener's 3D scene. mountMargin gives the (long) map
-  // journey to stream it in before the dive reveals it; it never unmounts after.
-  // On a phone 1.5 viewports of lead lands the splat INSIDE the opener — three
-  // WebGL contexts at once and iOS kills the tab (see deviceBudget). The gate is
-  // the whole map block, so even 0.4 arms it at the map's intro card, leaving the
-  // entire five-stop journey to stream the splat in before the dive reveals it.
-  const { ref: gateRef, mounted: armed } = useInViewMount<HTMLDivElement>({
-    mountMargin: isMobileViewport() ? 0.4 : 1.5,
-    unmountMargin: Infinity,
-  });
+  // journey to stream it in before the dive reveals it.
+  // On a phone 1.5 viewports of lead lands the splat INSIDE the opener — too many
+  // WebGL contexts at once and iOS kills the tab. Its window (see deviceBudget) is
+  // both narrower AND finite there: 0.4 arms it at the map's intro card, and the
+  // splat is released 1.5 viewports past the block so the charts half of the
+  // article doesn't run with it still resident. Desktop keeps it loaded for good.
+  const { ref: gateRef, mounted: armed } = useInViewMount<HTMLDivElement>(glWindow('splat'));
 
   // Unfold the bull over the map. Iris mask + opacity on the outer (un-transformed)
   // layer, scale on the inner layer — kept separate so the mask isn't shrunk by scale.

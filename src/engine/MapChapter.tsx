@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } from 'mapbox-gl';
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
-import { isMobileViewport } from './deviceBudget';
+import { glWindow } from './deviceBudget';
 import bullMapData from '../data/bullMapData.json';
 import './MapChapter.css';
 // Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
@@ -57,8 +57,6 @@ type DeckLayers = {
 
 type LngLat = [number, number];
 const BULL_3D_MODEL_URL = '/chapters/bull/images/bull.glb';
-/** Public dir for step photos (paths in bullMapData are relative to this). */
-const BULL_ASSETS = '/chapters/bull/';
 // Mapbox is dynamically imported in createMap (it's ~1MB+ and the map appears
 // chapters in); the access token is stashed here for the Directions fetch.
 let mapboxToken = '';
@@ -93,7 +91,15 @@ interface RouteStop {
  *  Greenpoint, which is not the bridge the truck actually took. This port used to ignore
  *  `approachVia` / `routeProfile` entirely — the fields sat unread in data.json — so our
  *  trail diverged from the source engine's even on identical data. */
-async function fetchAllRoutes(steps: RouteStop[]): Promise<LngLat[][]> {
+let routesOnce: Promise<LngLat[][]> | null = null;
+/** The stops are static, so the Directions round-trip is done once per page — the map
+ *  itself is created and released more than once on mobile (see deviceBudget). */
+function fetchAllRoutes(steps: RouteStop[]): Promise<LngLat[][]> {
+  routesOnce ??= fetchRoutes(steps);
+  return routesOnce;
+}
+
+async function fetchRoutes(steps: RouteStop[]): Promise<LngLat[][]> {
   const segments: LngLat[][] = [];
   for (let i = 0; i < steps.length - 1; i++) {
     const from = steps[i], to = steps[i + 1];
@@ -241,7 +247,7 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: numbe
 
 interface Step {
   id: number; date: string; title: string; location: string; address?: string;
-  lng: number; lat: number; image?: string; imageCaption?: string; comment: string;
+  lng: number; lat: number; comment: string;
   /** Routing hints for the leg ARRIVING here — see RouteStop / fetchAllRoutes. */
   approachVia?: LngLat[]; routeProfile?: string;
 }
@@ -635,17 +641,17 @@ export default function MapChapter({
     const section = sectionRef.current;
     const host = mapHostRef.current;
     if (!section || !host) return;
-    let created = false;
-    let alive = true;
+    let wanted = false; // the map is (still) wanted at this scroll position
+    let alive = true;   // the component is mounted
     let teardown = () => {};
 
     const createMap = async () => {
-      if (created) return;
-      created = true;
+      if (wanted) return;
+      wanted = true;
     // Lazy-load mapbox-gl (and its CSS) only now — keeps ~1MB out of the initial bundle.
     const mapboxgl = (await import('mapbox-gl')).default;
     await import('mapbox-gl/dist/mapbox-gl.css');
-    if (!alive) return; // unmounted while the chunk was loading
+    if (!alive || !wanted) return; // unmounted / scrolled away while the chunk loaded
     const token = (window as unknown as { MAPBOX_TOKEN?: string }).MAPBOX_TOKEN;
     if (!token) { setErr('MAPBOX_TOKEN missing (public/chapters/bull/config.js)'); return; }
     mapboxToken = token;
@@ -724,18 +730,38 @@ export default function MapChapter({
       teardown = () => { ro?.disconnect(); io?.disconnect(); map.remove(); mapRef.current = null; setMapReady(false); };
     };
 
-    // create well ahead (~5 viewports) so the map is loaded by the time the title
-    // card is reached — then no load-lock blocks the first stop-frame step.
-    // The section is many viewports tall, so 500% means "from the top of the page":
-    // on a phone that keeps a Mapbox GL context alive alongside the opener's GLB for
-    // the whole opener, and the tab dies at the seam (see deviceBudget). One viewport
-    // of lead is still the whole intro card + first leg of the journey to load in.
-    const trigger = new IntersectionObserver(
-      (ents) => { if (ents.some((x) => x.isIntersecting)) { void createMap(); trigger.disconnect(); } },
-      { rootMargin: isMobileViewport() ? '100% 0px' : '500% 0px' },
-    );
-    trigger.observe(section);
-    return () => { alive = false; trigger.disconnect(); teardown(); };
+    /** Give the Mapbox context (and deck.gl's canvas on top of it) back. */
+    const release = () => {
+      if (!wanted) return;
+      wanted = false;
+      teardown();
+      teardown = () => {};
+    };
+
+    // Desktop creates well ahead (~5 viewports) so the map is loaded by the time the
+    // title card is reached, and keeps it for good. The section is many viewports
+    // tall, so 500% means "from the top of the page": on a phone that would hold a
+    // Mapbox context alongside the opener's canvases for the whole opener. So mobile
+    // gets one viewport of lead (still the whole intro card + first leg to load in)
+    // AND a release once the chapter is 1.5 viewports behind — otherwise the map,
+    // deck.gl and the splat are all still resident when the charts mount, which is
+    // where the tab was dying halfway down the page (see deviceBudget).
+    const { mountMargin, unmountMargin } = glWindow('map');
+    const vh = (n: number) => `${n * 100}% 0px`;
+    const observers = [
+      new IntersectionObserver(
+        (ents) => { if (ents.some((x) => x.isIntersecting)) void createMap(); },
+        { rootMargin: vh(mountMargin) },
+      ),
+    ];
+    if (unmountMargin !== Infinity) {
+      observers.push(new IntersectionObserver(
+        (ents) => { if (!ents.some((x) => x.isIntersecting)) release(); },
+        { rootMargin: vh(unmountMargin) },
+      ));
+    }
+    observers.forEach((o) => o.observe(section));
+    return () => { alive = false; observers.forEach((o) => o.disconnect()); teardown(); };
   }, []);
 
   // deck.gl overlay: trail + stops + 3D bull moving along the fetched route.
@@ -1206,7 +1232,10 @@ export default function MapChapter({
     // frame-throttled — no coalescing needed, and one jumpTo per frame.
     const unsub = playhead.on('change', apply);
     return () => { unsub(); cancelAnimationFrame(punchRaf); };
-  }, [playhead, steps, onDive, cfg]);
+    // mapReady is a dep so a map re-created on the way back up (mobile releases it
+    // once the chapter is behind — see deviceBudget) gets its camera applied at once
+    // instead of sitting on the stop-0 default until the next scroll event.
+  }, [playhead, steps, onDive, cfg, mapReady]);
 
   // step cards: only the active stop's card is shown; it fades in from the left
   // (~45px) and out the same way as the stop changes (no scroll-from-below).
@@ -1323,20 +1352,6 @@ export default function MapChapter({
                 <div className="mc-date">{s.date}</div>
                 <div className="mc-loc">{s.location}{s.address ? ` · ${s.address}` : ''}</div>
                 <h2 className="mc-title">{s.title}</h2>
-                {/* optional photo (image path is relative to data.json's dir). onError
-                    hides the figure so cards whose image file doesn't exist yet stay clean. */}
-                {s.image ? (
-                  <figure className="mc-figure">
-                    <img
-                      className="mc-photo"
-                      src={BULL_ASSETS + s.image.replace(/^\.\//, '')}
-                      alt={s.imageCaption ?? s.title}
-                      loading="lazy"
-                      onError={(e) => { const f = e.currentTarget.closest('figure'); if (f) (f as HTMLElement).style.display = 'none'; }}
-                    />
-                    {s.imageCaption ? <figcaption className="mc-caption">{s.imageCaption}</figcaption> : null}
-                  </figure>
-                ) : null}
                 {/* comment carries inline HTML (<a>…</a>, <b>…</b>) from data.json */}
                 <p className="mc-comment" dangerouslySetInnerHTML={{ __html: s.comment }} />
               </div>

@@ -1,6 +1,6 @@
 /**
  * chartsEngine — the S&P 500 "Bear Markets" chart, ported 1:1 from the standalone
- * chapter (public/chapters/charts/index.html) into a framework-agnostic module so
+ * chapter (../wallst-rodeo/charts/index.html) into a framework-agnostic module so
  * it can live natively in the longread (no iframe). The drawing math is unchanged;
  * only the shell moved: the module-level globals became closure state, the canvas
  * is passed in, and the scroll bridge / DOM card rendering were dropped (the React

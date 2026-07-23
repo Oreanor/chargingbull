@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type MutableRefObject } from 'react';
 import { type MotionValue } from 'motion/react';
 import * as THREE from 'three';
 import './CandleIntro.css';
 import { useChapterProgress } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
+import { useInViewMount } from './useInViewMount';
+import { glWindow, MOBILE_MAX, releaseRenderer } from './deviceBudget';
 import copy from '../content/copy.json';
 import { tuneStore } from './tuneEditor';
 // Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
@@ -21,7 +23,7 @@ import { BM_OHLC_OPENER as OHLC } from './charts/blackMondayOHLC';
 
 /**
  * CandleIntro — native, self-contained "Black Monday 1987" candle intro, ported
- * from the wallst-rodeo `candlesticks-v4.html` prototype. Its OWN transparent
+ * from the `../wallst-rodeo/candlesticks/candlesticks-v4.html` prototype. Its OWN transparent
  * WebGL canvas (composites over whatever is behind — e.g. a separate bull canvas)
  * plus a DOM overlay (gridlines, pre-crash facts, the "Black Monday 1987" label,
  * the hero). Purely scroll-driven; nothing here is wired to the keyframe editor.
@@ -114,10 +116,20 @@ function niceTicks(min: number, max: number): number[] {
 // The breakpoint is the project's 800px.
 const LAND_FRAME = { w: 1440, h: 800 } as const;
 const PORT_FRAME = { w: 393, h: 852 } as const;
-const PORT_BREAK = 800; // viewport width ≤ this → portrait frame
+// Portrait frame below the project-wide phone breakpoint (deviceBudget.MOBILE_MAX).
 
 function CandleScene({ progress, span }: { progress: MotionValue<number>; span: [number, number] }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
+  // The candle canvas is a WebGL context of its own — the fourth one on this page.
+  // It used to be created on page load and held for the WHOLE article (it lives in
+  // ModelChapter's always-rendered children layer), so the map + splat chapters ran
+  // on top of it. Gate it on proximity like every other heavy block (see deviceBudget).
+  const { ref: gateRef, mounted: glLive } = useInViewMount<HTMLDivElement>(glWindow('candles'));
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  // One element, two observers: the fit ResizeObserver and the mount gate.
+  const setWrap = (el: HTMLDivElement | null) => {
+    wrapRef.current = el;
+    (gateRef as MutableRefObject<HTMLDivElement | null>).current = el;
+  };
   const stageRef = useRef<HTMLDivElement>(null);
   const heroStageRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -144,7 +156,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const fit = () => {
       const vw = wrap.clientWidth, vh = wrap.clientHeight;
       if (vw <= 0 || vh <= 0) return;
-      const portrait = vw <= PORT_BREAK;
+      const portrait = vw <= MOBILE_MAX;
       stage.classList.toggle('ci-stage--portrait', portrait);
 
       if (portrait) {
@@ -228,6 +240,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
   }, []);
 
   useEffect(() => {
+    // Off the gate → no renderer at all. The scene is stateless per frame (every
+    // position derives from the scroll), so rebuilding on the way back is exact.
+    if (!glLive) return;
     const host = hostRef.current;
     const overlay = overlayRef.current;
     const gridEl = gridRef.current;
@@ -241,7 +256,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     // "S&P 500 INDEX" caption — is untouched: those read only projX's y (or fixed CSS).
     // Portrait: ~1 mono glyph inset so AUG isn't flush to the left edge
     // (.ci-gd is 14px Space Mono — one character ≈ that).
-    const isPort = () => (typeof window !== 'undefined' && window.innerWidth <= PORT_BREAK)
+    const isPort = () => (typeof window !== 'undefined' && window.innerWidth <= MOBILE_MAX)
       || (stageRef.current?.classList.contains('ci-stage--portrait') ?? false);
     const X_SHIFT_PX = isPort() ? 14 : 20;
 
@@ -625,18 +640,19 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         if (m.geometry) m.geometry.dispose();
         if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
       });
-      renderer.dispose();
-      renderer.domElement.remove();
+      // dispose() alone leaves the context alive until GC — hand it back now, this
+      // canvas is one of only a handful the phone will grant (see deviceBudget).
+      releaseRenderer(renderer);
       overlay.innerHTML = '';
       gridEl.innerHTML = '';
     };
-  }, [progress]);
+  }, [progress, glLive]);
 
   return (
     // wrap fills the ModelChapter container; the stage is a fixed-size design frame
     // width-fit + bottom-aligned inside it (see the fit effect above). Everything
     // below is authored in fixed px against the active frame — no vw/vh/clamp.
-    <div ref={wrapRef} className="ci-stagewrap absolute inset-0 overflow-hidden pointer-events-none">
+    <div ref={setWrap} className="ci-stagewrap absolute inset-0 overflow-hidden pointer-events-none">
       <div ref={stageRef} className="ci-stage" style={{ width: `${LAND_FRAME.w}px`, height: `${LAND_FRAME.h}px` }}>
         {/* grid layer — dashed verticals / price lines / axis labels, BEHIND the
             candles so the opaque candle bodies paint over it (candles on top of grid).

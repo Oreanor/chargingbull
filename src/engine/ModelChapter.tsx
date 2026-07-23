@@ -3,7 +3,7 @@ import { type MotionValue } from 'motion/react';
 import { DatumScene, type CameraSpherical } from './DatumScene';
 import { GlbScene, type ExtraModelSpec } from './GlbScene';
 import { useInViewMount } from './useInViewMount';
-import { isMobileViewport } from './deviceBudget';
+import { glWindow, isMobileViewport } from './deviceBudget';
 import { ChapterScrollContext } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
 import './ModelChapter.css';
@@ -83,17 +83,18 @@ const isMeshModel = (src: string) => /\.(glb|gltf)$/i.test(src);
  *  once (no typed reveal), so the bull lifts as soon as it has loaded — no wait. */
 const LOADER_INTRO_MS = 0;
 
-/** Mobile (≤800) opener framing: raise the close-up bull so the muzzle clears the
- *  wordmark, then ease back to dead-center once the camera has pulled away. */
-const MOBILE_MAX = 800;
+/** Mobile (≤800, see deviceBudget) opener framing: raise the close-up bull so the
+ *  muzzle clears the wordmark, then ease back to dead-center once the camera has
+ *  pulled away. */
 const MOBILE_HERO_RELEASE_T = 0.05; // matches OPENER_TRACK pull-back key
 const MOBILE_HERO_RAISE = 0.2; // fraction of frame height (+ = subject up) — muzzle clears wordmark
 
 /**
- * ModelChapter — native (no-iframe) scrollytelling chapter for a Datum SDK
- * splat model. The model lives in a sticky viewport over `frames` screens of
- * scroll; a camera `track` (keyframes pinned to scroll positions) drives the
- * camera as the reader scrolls. Replaces <IframeChapter> for 3D models.
+ * ModelChapter — native (no-iframe) scrollytelling chapter for a 3D model:
+ * a .glb/.gltf mesh (GlbScene, e.g. the opener bull) or a Datum splat
+ * (DatumScene), picked from the file extension. The model lives in a sticky
+ * viewport over `frames` screens of scroll; a camera `track` (keyframes pinned
+ * to scroll positions) drives the camera as the reader scrolls.
  *
  * Append `?edit` to the URL (or pass `edit`) to overlay the visual keyframe
  * editor: orbit/zoom freely, scrub the timeline, snap keyframes, export the
@@ -163,13 +164,10 @@ export default function ModelChapter({
     (import.meta.env.DEV && (edit || bullEdit));
 
   // On a phone the opener's GLB context must be gone before the map + splat spin
-  // up, or the three of them overlap at the «Bulls Route» seam and iOS kills the
-  // tab (see deviceBudget). Margins stay ordered (mount < unmount) so the
-  // hysteresis band survives — it's just much narrower.
-  const tightGl = isMobileViewport();
-  const { ref, mounted } = useInViewMount<HTMLElement>(
-    tightGl ? { mountMargin: 0.25, unmountMargin: 0.5 } : { mountMargin: 1, unmountMargin: 1.5 },
-  );
+  // up, or they overlap at the «Bulls Route» seam and iOS kills the tab. The
+  // window (narrow on mobile, generous on desktop) comes from deviceBudget, which
+  // owns the budget for all four heavy GL blocks.
+  const { ref, mounted } = useInViewMount<HTMLElement>(glWindow('model'));
   // Jump the page scroll to a chapter progress (0..1) — lets the editor's scrub
   // handle drag the real scrollbar (so overlays/plaques, which ride the scroll,
   // follow the green line on release).
@@ -409,8 +407,7 @@ function TrackDriver({
     /** Mobile-only: lift the hero close-up, then center once the bull pulls back. */
     const applyMobileFrame = (t: number) => {
       if (!scene.setFrameNudge) return;
-      const mobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_MAX;
-      if (!mobile) {
+      if (!isMobileViewport()) {
         scene.setFrameNudge(0, 0);
         return;
       }

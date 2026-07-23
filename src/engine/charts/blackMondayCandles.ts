@@ -1,4 +1,4 @@
-// Auto-extracted from docs/graph/Desktop-36 — the designer's exact Black Monday
+// Auto-extracted from docs/graph/"Desktop - 36.svg" — the designer's exact Black Monday
 // candles (Jun–Oct 1987) as SVG rect paths, drawn 1:1 on the canvas. Geometry lets the
 // axis/labels line up with them (all in the SVG 1440x800 space).
 export interface BMCandle { d: string; up: boolean }

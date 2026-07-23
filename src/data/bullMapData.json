@@ -27,8 +27,6 @@
         ]
       ],
       "routeProfile": "driving",
-      "image": "./images/install.jpg",
-      "imageCaption": "Broad Street at dawn, 15 December 1989",
       "comment": "At about 1.30 am, Di Modica and a few friends <a href=\"https://italiantribune.com/the-true-story-of-charging-bull/\" target=\"_blank\" rel=\"noopener noreferrer\">drove</a> the bull into the Financial District. He <a href=\"https://www.phillips.com/article/37187333/arturo-di-modica-charging-bull\" target=\"_blank\" rel=\"noopener noreferrer\">had spent</a> the previous nights studying the security routine and knew the guard would be gone for 4.5 minutes. They left the bull under the Christmas tree on Broad Street, outside the NYSE. No commission. No permit. By morning, brokers, tourists and journalists had gathered around it, while Di Modica handed out leaflets nearby."
     },
     {
@@ -39,8 +37,6 @@
       "address": "Queens, NY",
       "lng": -73.7949,
       "lat": 40.7282,
-      "image": "./images/impound.jpg",
-      "imageCaption": "Photo: arturodimodica.com",
       "comment": "The bull lasted less than a day outside the exchange. By evening, the NYSE chairman <a href=\"https://www.nytimes.com/1989/12/16/nyregion/soho-gift-to-wall-st-a-3-1-2-ton-bronze-bull.html\" target=\"_blank\" rel=\"noopener noreferrer\">had ordered</a> it removed, and the NYPD had hauled it to an impound lot in Queens. Then the newspapers joined in. The New York Post <a href=\"https://nypost.com/2017/12/09/prototype-of-wall-street-bull-statue-sells-for-37k-at-auction/\" target=\"_blank\" rel=\"noopener noreferrer\">ran</a> “Bah, Humbug!” on its front page. A removal order became a citywide argument."
     },
     {
@@ -51,8 +47,6 @@
       "address": "Broadway at Bowling Green",
       "lng": -74.01344,
       "lat": 40.705568,
-      "image": "./images/bowling-green.jpg",
-      "imageCaption": "Tourists at the bull, Bowling Green",
       "comment": "Public outcry forced a compromise. The NYC Parks Department <a href=\"https://www.nytimes.com/1989/12/20/nyregion/wall-st-s-bronze-bull-moves-2-blocks-south.html\" target=\"_blank\" rel=\"noopener noreferrer\">allowed</a> the bull to return downtown, but not to the exchange. It went slightly south, to the small paved island at Bowling Green, beside the city’s oldest public park. The permit was temporary. It <a href=\"https://www.nytimes.com/1989/12/20/nyregion/wall-st-s-bronze-bull-moves-2-blocks-south.html\" target=\"_blank\" rel=\"noopener noreferrer\">still is</a>."
     }
   ],

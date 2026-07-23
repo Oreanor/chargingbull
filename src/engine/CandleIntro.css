@@ -1,6 +1,6 @@
 /* CandleIntro overlay — gridlines, facts, the "Black Monday 1987" label, and the
    hero (logo / wordmark / subtitle / coords).
-   Ported from wallst-rodeo/candlesticks-v4.html (#grid / #facts / #bmlabel),
+   Ported from ../wallst-rodeo/candlesticks/candlesticks-v4.html (#grid / #facts / #bmlabel),
    re-pointed onto the longread's font variables. Element opacity is driven from
    JS (per-frame), except the grid, which shares the container's --ci-grid.
 

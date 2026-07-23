@@ -1,5 +1,5 @@
 /* ChartsChapter — de-iframed S&P 500 bear-markets chart. Ported from the standalone
-   chapter's CSS (public/chapters/charts/index.html), scoped under .cc-* . */
+   chapter's CSS (../wallst-rodeo/charts/index.html), scoped under .cc-* . */
 
 /* Pink (bear-ground) backdrop so the moment the explainer slides off, the charts' own
    pink is already there behind the canvas — never a flash of black. Matches the engine's

@@ -17,10 +17,10 @@ type CameraInit = {
 };
 
 /**
- * Real Datum SDK splat viewer — drop-in replacement for FakeSplat.
- * Mounts a DatumEngine into its container, loads the published scene from the
- * Studio API by `sceneId`, and disposes on unmount (so HeavyBlock tears down
- * the WebGL context when scrolled past).
+ * Real Datum SDK splat viewer. Mounts a DatumEngine into its container, loads
+ * the published scene from the Studio API by `sceneId`, and disposes on unmount —
+ * so the useInViewMount gate in MapBullHandoff tears the WebGL context down when
+ * the reader is past it (see deviceBudget).
  *
  * Pass `stats` to overlay a live FPS / splat-count / memory panel.
  */
@@ -180,7 +180,7 @@ const DatumSplat = forwardRef<DatumSplatHandle, DatumSplatProps>(function DatumS
     });
     ro.observe(container);
 
-    // Drop the (54 MB) splat canvas out of paint/composite while it's scrolled off
+    // Drop the splat canvas out of paint/composite while it's scrolled off
     // screen — reversible, NOT a dispose (the scene stays loaded). The Datum engine
     // self-idles its render loop when nothing's dirty, so a hidden static bull is
     // cheap; this also spares the compositor the big layer. `visibility` keeps the

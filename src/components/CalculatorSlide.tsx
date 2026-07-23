@@ -8,7 +8,7 @@ import './CalculatorSlide.css';
 
 /**
  * CalculatorSlide — an interactive "what would $X invested in the S&P 500 be worth"
- * widget, ported from wallst-rodeo/calculator.html. Uses the bundled Shiller monthly
+ * widget, ported from ../wallst-rodeo/calculator/calculator.html. Uses the bundled Shiller monthly
  * series (no CSV fetch), draws a log-scale total-return curve and lets the reader drag
  * two year flags to pick the holding window; shows final value, multiple, CAGR and the
  * inflation-adjusted ("real") value.
