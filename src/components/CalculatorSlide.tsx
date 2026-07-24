@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { CALC_CPI, CALC_DIV, CALC_PRICE, CALC_T0 } from '../data/sp500Monthly';
 import {
-  FILL_MAX, HATCH_ALPHA, makeHatch, inkText,
+  FILL_MAX, HATCH_ALPHA, hatchArea, inkText,
   LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, END_DOT_R_FOCUS,
 } from '../engine/charts/chartInk';
 import './CalculatorSlide.css';
@@ -84,11 +84,6 @@ export function CalculatorSlide() {
     const fmtPct = (p: number) => (p >= 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
     const fmtX = (m: number) => (m >= 100 ? Math.round(m).toLocaleString('en-US') : m.toFixed(1)) + '×';
 
-    // Diagonal hatch under the selected area — literally the charts chapter's, now that
-    // both take it from chartInk. This file used to carry its own 45°/1.3px copy, which
-    // is why the calculator's hatch never matched the S&P frames.
-    const hatch = makeHatch();
-
     function render() {
       if (!rows.length) return;
       tMin = MINY; tMax = rows[rows.length - 1].t;
@@ -97,7 +92,6 @@ export function CalculatorSlide() {
       const dpr = window.devicePixelRatio || 1;
       const W = canvas!.clientWidth, H = canvas!.clientHeight;
       canvas!.width = W * dpr; canvas!.height = H * dpr;
-      hatch.clear(); // the resize invalidates the cached pattern — rebuild it this frame
       const ctx = canvas!.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
 
       const floor = padB(), top = padT();
@@ -139,8 +133,12 @@ export function CalculatorSlide() {
       const grad = ctx.createLinearGradient(0, top, 0, ay);
       grad.addColorStop(0, `rgba(97,226,107,${FILL_MAX})`); grad.addColorStop(1, 'rgba(97,226,107,0)');
       ctx.fillStyle = grad; ctx.fill();
-      const pat = hatch.get(ctx, GREEN); // diagonal hatch over the same area (mockup signature)
-      if (pat) { ctx.save(); ctx.globalAlpha = HATCH_ALPHA; ctx.fillStyle = pat; ctx.fill(); ctx.restore(); }
+      // Diagonal hatch over the same area (mockup signature) — the charts chapter's own,
+      // now that both take it from chartInk. This file used to carry a 45°/1.3px copy,
+      // which is why the calculator's hatch never matched the S&P frames.
+      ctx.save(); ctx.globalAlpha = HATCH_ALPHA;
+      hatchArea(ctx, xOf(rows[i0].t), top, xOf(rows[i1].t), ay, GREEN);
+      ctx.restore();
       drawSeg(i0, i1, GREEN, LINE_W_THICK);
       for (const [i, label] of [[i0, startY], [i1, endY]] as const) {
         const px = xOf(rows[i].t), py = yOf(rows[i].tr);
@@ -180,8 +178,10 @@ export function CalculatorSlide() {
       resultEl!.innerHTML =
         `<div class="sub">${fmtX(nomMult)} · <b>${fmtPct(nomCAGR)}</b>/yr · <span class="ri">real ${fmtMoney(realFinal)}</span></div>` +
         `<div class="big">${fmtMoney(nomFinal)}</div>`;
+      // The break is authored, not left to the wrap: the second line starts on «purchasing»,
+      // so «“Real” = value in <year>» stays whole on the first.
       noteEl!.innerHTML =
-        `S&amp;P 500 total return (dividends reinvested), Shiller data. “Real” = value in ${startY} purchasing power (CPI-adjusted). Excludes taxes and fees.`;
+        `S&amp;P 500 total return (dividends reinvested), Shiller data. “Real” = value in ${startY}<br>purchasing power (CPI-adjusted). Excludes taxes and fees.`;
     }
 
     let drag: 'A' | 'B' | null = null;

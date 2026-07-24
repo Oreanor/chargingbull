@@ -40,7 +40,11 @@ const START_SCALE = 1.02; // model is 2% bigger under the mask at the reveal STA
 // Reveal START pose, as an offset from the resting (nose-to-us) pose — tuned so the splat
 // bull enters roughly matching the MAP bull (small, seen from above, backed to us) for a
 // seamless swap, then orbits down-and-around to rest. Knobs to eyeball the match:
-const AZ_START = -187;     // start angle: ~half-turn, turned 3° further CW than -184. (Map DIVE_BEARING left as-is; only the splat bull nudged.)
+// Start angle: a half-turn, then 25° back CCW (−187 → −162). Less negative = CCW here, the
+// same axis the old −184→−187 nudge moved along, only the other way. The map's DIVE_BEARING
+// stays at 184: it and this have been allowed to differ by a few degrees since that nudge,
+// and the lockstep the reader sees is the ~half-turn, not the last degrees of it.
+const AZ_START = -162;
 const POLAR_START = -50;   // starts looking almost straight down at it…
 const DIST_START_MUL = 6;   // …from far out (small, ≈ the map bull's on-screen size), zooming to full
 // The map bull is projected from its GROUND coord, which lands at its feet — nudge the iris

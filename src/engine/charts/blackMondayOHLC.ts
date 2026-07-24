@@ -74,7 +74,8 @@ export const BM_CRASH_I = BM_OHLC.findIndex((r) => r[0] === '1987-10-19');
 export const BM_OHLC_OPENER: OHLCRow[] =
   BM_OHLC.slice(BM_AUG_I, BM_OHLC.findIndex((r) => r[0] > '1987-10-19'));
 
-/** Candle-chart SVG Y from absolute price (Desktop-36 ticks 325 → 225). */
+/** Candle-chart SVG Y from absolute price. Reads the first and last tick, so extending the
+ *  scale (Desktop-36's 325…225 plus our 200 section) re-maps every candle by itself. */
 export function bmPriceSvgY(price: number): number {
   const hi = BM_GEOM.ticks[0], lo = BM_GEOM.ticks[BM_GEOM.ticks.length - 1];
   return hi.y + (hi.v - price) / (hi.v - lo.v) * (lo.y - hi.y);

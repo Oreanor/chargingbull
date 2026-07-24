@@ -47,47 +47,50 @@ export const END_DOT_R_FOCUS = 7;
  *  multipliers — the colour × fill-opacity .25 × group .4 — which is this one number. */
 export const FILL_MAX = 0.1;
 
-/** Alpha the hatch is painted at (mockup: the stripes are drawn at .4). */
+/** Alpha the hatch is painted at: every hatched frame (39/40/41/43/46/47) wraps its area
+ *  in one opacity="0.4" group, so that is the number. The stripes looked weak not because
+ *  of this but because they were rasterised through a CSS-pixel tile — see hatchArea. */
 export const HATCH_ALPHA = 0.4;
 
-// Hatch geometry, taken from the designer's pattern rather than eyeballed: the stripe runs
-// corner-to-corner of a 16×28 tile — ~60° off horizontal — repeating every 16px across
-// (13.9px measured perpendicular), at hairline weight.
+// Hatch geometry, taken from the designer's pattern rather than eyeballed: the frames'
+// pattern0 is a 15.94×27.61 tile (viewBox 106.25×184.03 scaled by 0.15) with one
+// corner-to-corner stripe — ~60° off horizontal — stroked at 3 → 0.45 user px. The stripe
+// takes the series colour, exactly as the frames do: white on the bear/price frames,
+// #61E26B on the bull ones.
 const HATCH_W = 16;
 const HATCH_H = 28;
 const HATCH_STROKE = 0.45;
 
-export interface Hatch {
-  /** Pattern in `color`, built once per colour. */
-  get(ctx: CanvasRenderingContext2D, color: string): CanvasPattern | null;
-  /** Drop the cache — a CanvasPattern dies with the backing store, so call this whenever
-   *  the canvas is resized. */
-  clear(): void;
-}
-
-/** One hatch cache per canvas: patterns belong to the context that created them. */
-export function makeHatch(): Hatch {
-  const cache: Record<string, CanvasPattern | null> = {};
-  return {
-    get(ctx, color) {
-      if (color in cache) return cache[color];
-      const tile = document.createElement('canvas');
-      tile.width = HATCH_W; tile.height = HATCH_H;
-      const tc = tile.getContext('2d');
-      if (tc) {
-        tc.strokeStyle = color; tc.lineWidth = HATCH_STROKE;
-        // The stripe plus a copy either side, so it continues across the tile seam.
-        tc.beginPath();
-        for (let k = -1; k <= 1; k++) {
-          tc.moveTo(k * HATCH_W, HATCH_H); tc.lineTo((k + 1) * HATCH_W, 0);
-        }
-        tc.stroke();
-      }
-      cache[color] = ctx.createPattern(tile, 'repeat');
-      return cache[color];
-    },
-    clear() { for (const k in cache) delete cache[k]; },
-  };
+/**
+ * Hatch the CURRENT PATH — the caller builds its area, fills its gradient, then calls this
+ * and the same path becomes the clip. Like the mockup's <pattern>, the stripes are real
+ * lines: the canvas rasterises them at device resolution, so there is nothing to scale,
+ * cache or invalidate. (This used to be a CanvasPattern over a tile bitmap authored in CSS
+ * pixels — into a context already scaled by dpr, which is what smeared every stripe across
+ * two device pixels.)
+ *
+ * [x0,y0,x1,y1] is the box to cover — the shape's bounds; anything outside is clipped away.
+ * Stripes are laid on a global grid (multiples of HATCH_W from the canvas origin), so two
+ * hatched areas on one plot read as one continuous weave, exactly like a repeating pattern.
+ */
+export function hatchArea(
+  ctx: CanvasRenderingContext2D,
+  x0: number, y0: number, x1: number, y1: number,
+  color: string,
+) {
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = HATCH_STROKE;
+  // One stripe crosses the box's height in this much x — the tile's corner-to-corner slope.
+  const run = ((y1 - y0) / HATCH_H) * HATCH_W;
+  const start = Math.floor((x0 - run) / HATCH_W) * HATCH_W;
+  ctx.beginPath();
+  for (let sx = start; sx <= x1; sx += HATCH_W) {
+    ctx.moveTo(sx, y1); ctx.lineTo(sx + run, y0);
+  }
+  ctx.stroke(); // one stroke for all of them: overlapping alpha would double up
+  ctx.restore();
 }
 
 /** Knockout halo width: the mockup strokes 4px behind 14px type and 6px behind 18px. */

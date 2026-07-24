@@ -19,6 +19,10 @@ import BADGE_FOUNDRY from '../assets/map/badge-foundry.svg?raw';
 import BADGE_NYSE from '../assets/map/badge-nyse.svg?raw';
 import BADGE_NYPD from '../assets/map/badge-nypd.svg?raw';
 import BADGE_PARK from '../assets/map/badge-park.svg?raw';
+// Manhattan's outline for the mini-map locator, projected into its 200×200 viewBox with
+// LOC_BOUNDS/locProject below. His prototype fetches the borough GeoJSON from GitHub on
+// every load and builds this string at runtime; the shape never changes, so it is baked.
+import LOCATOR_MANHATTAN from '../assets/map/locator-manhattan.txt?raw';
 
 // id → badge markup + which side of the anchor the text pill sits on.
 // Studio's pill hangs to the LEFT (it lives at the top-left of the route); the
@@ -176,7 +180,20 @@ function pathHeadingAt(progress: number, steps: { lng: number; lat: number }[], 
   return (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180) / Math.PI;
 }
 
-const TRAIL_RGB = [251, 199, 95] as const;
+const TRAIL_RGB = [251, 199, 95] as const; // #FBC75F — the route, the bull, and the locator frame
+
+// ── Mini-map locator (wallst-rodeo/map) ──────────────────────────────────────
+/** His bounding box: the whole 5-borough metro, so the bull dot stays inside the frame
+ *  even out at the Queens impound. */
+const LOC_BOUNDS = { minLng: -74.06, maxLng: -73.66, minLat: 40.54, maxLat: 40.92 };
+const LOC_VIEW = { w: 200, h: 200 };
+/** lng/lat → locator viewBox coords. His projection, unchanged. */
+function locProject(lng: number, lat: number): [number, number] {
+  return [
+    (lng - LOC_BOUNDS.minLng) / (LOC_BOUNDS.maxLng - LOC_BOUNDS.minLng) * LOC_VIEW.w,
+    (LOC_BOUNDS.maxLat - lat) / (LOC_BOUNDS.maxLat - LOC_BOUNDS.minLat) * LOC_VIEW.h,
+  ];
+}
 const TRAIL_ALPHA = 204;
 const TRAIL_ALPHA_DONE = 102; // 50% of full opacity — completed legs
 
@@ -273,14 +290,27 @@ interface MapCfg {
 // Fallback framings if bullMapData.mapConfig is missing.
 // Four chained stops: Foundry → NYSE → Queens impound → Bowling Green. (The Crosby
 // Street studio is a map landmark now, not a stop.)
+// Copied out of wallst-rodeo/map/index.html — its own STEP_CAMERAS, verbatim. That file,
+// not its data.json, is what his prototype actually flies: the page never reads `mapConfig`.
+// FIVE cameras for FOUR stops — the first frames the studio and is what the title plays
+// over, so camera index == landmark index and the camera reads STOP progress, not location.
 const DEFAULT_CAMERAS: CamStop[] = [
-  { center: [-73.979, 40.7214], zoom: 13.2, pitch: 54, bearing: 8.4 },    // Foundry / opener wide
-  { center: [-74.0111, 40.7067], zoom: 17.11, pitch: 46, bearing: -9 },   // NYSE night raid
-  { center: [-73.9601, 40.7161], zoom: 12.65, pitch: 61, bearing: 68 },   // Queens impound
-  { center: [-74.0096, 40.7066], zoom: 15.46, pitch: 36, bearing: 9 },    // Bowling Green
+  { center: [-73.9863, 40.7187], zoom: 13.36, pitch: 53, bearing: 13 },   // 0 Studio, Crosby St
+  { center: [-73.97, 40.7295], zoom: 13.2, pitch: 55, bearing: -22 },     // 1 Bedi-Makky foundry
+  // 2 NYSE night raid. Nudged off his centre the same way stop 4 is: his framing puts the
+  // bull at 52% of the width, wanted 15 points further right. Solved against the live
+  // projection and baked into the centre — the bull sits at 67%, matching the last stop.
+  { center: [-74.01217, 40.70657], zoom: 17.11, pitch: 46, bearing: -9 },
+  { center: [-73.9601, 40.7161], zoom: 12.65, pitch: 61, bearing: 68 },   // 3 Queens impound
+  // 4 Bowling Green. The ONLY framing that is not his: his centre lands the bull at 34% of
+  // the width, and it is wanted out in the right half. Solved against the live projection
+  // (pitch 39° means a screen-space nudge is not a translation) and baked into the centre
+  // itself — the bull sits at 65% of 1440, and 61–67% from 1280 to 1920.
+  { center: [-74.01482, 40.70621], zoom: 16.52, pitch: 39, bearing: 19 },
 ];
 const DEFAULT_WEIGHTS = [17, 24, 21, 18];
-const DEFAULT_HEADINGS: (number | null)[] = [118, 21, null, 15];
+/** His BULL_HEADING_OVERRIDE, in stop space: NYSE parallel to the street, BG the resting pose. */
+const DEFAULT_HEADINGS: (number | null)[] = [null, 21, null, 19];
 const DEFAULT_BULL_SCALE = 1.3;
 const DEFAULT_CFG: MapCfg = {
   cameras: DEFAULT_CAMERAS, weights: DEFAULT_WEIGHTS,
@@ -307,68 +337,80 @@ const clamp = (t: number, lo: number, hi: number) => (t < lo ? lo : t > hi ? hi 
 const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 - 2 * x); };
 
 // ── Journey framing ──────────────────────────────────────────────────────────
-// The step card sits at the LEFT, so the map is shifted RIGHT (via the camera's left
-// padding) to keep the bull out in the card-FREE half of the screen instead of jammed
-// against the card. Mapbox centres `cam.center` inside the padding box, so a left
-// padding ≈ the card's right edge lands the framing centre in the open space; BULL_GUTTER
-// pushes it a bit further right so the bull (which frames slightly left of centre) reads
-// as ~mid free-area. Whole map + bull translate together — same principle everywhere.
+// There ISN'T any. The framing is exactly the four authored cameras (+ subCams) and
+// nothing else, because they are Sasha's, keyframed against a map with no padding and no
+// follow: wallst-rodeo/map centres each `cam.center` on the viewport centre, full stop.
 //
-// Hard guarantee every frame (desktop + mobile): corridor clamp pins the LIVE trail-head
-// into a viewport band. Authored cameras/subCams are the path; this is the safety rail.
-const CARD_MAX_W = 672;       // .mc-card width cap (desktop)
-const CARD_MARGIN_MAX = 80;   // .mc-card margin-left (clamp(24, 5vw, 80)) cap
-const BULL_GUTTER = 260;      // extra px past the card edge — tune to slide the bull left/right
-/** Bull screen corridor — fractions of viewport width/height. */
-const BULL_CORRIDOR = { x0: 0.70, x1: 0.80, y0: 0.25, y1: 0.75 } as const;
-/**
- * How much of the corridor correction is applied, by distance (in stop progress) from the
- * nearest stop. The clamp used to run at full strength every frame, which is exactly what
- * made our camera sit somewhere other than the authored one: mid-flight the bull is far
- * off the straight line between two stops, so the rail dragged the whole map after it and
- * the framing stopped being the framing Sasha keyframed.
- *
- * So it lets go of the wheel for the flight and takes it back on the approach: nothing
- * from CORRIDOR_OFF away, full by CORRIDOR_ON, smoothstepped between — the camera CATCHES
- * UP with the bull as it comes into the stop instead of being yanked onto it. With the
- * dwell in place (DWELL_HOLD_FRAC) the progress sits exactly on a stop for most of a leg,
- * so the rail is at full strength through every dwell — where the framing actually matters.
- */
-const CORRIDOR_ON = 0.15;
-const CORRIDOR_OFF = 0.42;
-/** Desktop journey left padding: shift the map right so the bull sits in the free area. */
-function journeyPadLeft(vw: number): number {
-  const cardLeft = clamp(0.05 * vw, 24, CARD_MARGIN_MAX);
-  const cardW = Math.min(CARD_MAX_W, vw - 64);
-  return cardLeft + cardW + BULL_GUTTER;
-}
+// We used to bolt two of our own mechanisms on top of his keyframes, and between them the
+// journey stopped being his. Both are now OFF, each behind one switch, because we may want
+// to try them again — but neither should be on while we are still matching the prototype.
+
+/** Journey padding. The prototype sets NONE: `cam.center` lands on the viewport centre.
+ *  Ours used to be `cardLeft + cardW + BULL_GUTTER` ≈ 1012px of LEFT padding on a 1440
+ *  viewport, to hold the card's gutter — which moves the projection centre 476px right, so
+ *  every framing authored around the centre was shoved toward (and past) the right edge.
+ *  That is why the bull was on screen less than in his. Restore by putting that expression
+ *  back as `left`. */
+const JOURNEY_PAD = { top: 80, right: 60, bottom: 80, left: 60 };
+const JOURNEY_PAD_NARROW = { top: 60, right: 30, bottom: 40, left: 30 };
+
+/** Bull follow — the corridor clamp: re-solve the camera each frame so the live trail-head
+ *  stays inside a screen band [x0,x1]×[y0,y1] (fractions of the viewport), at full strength
+ *  within `on` of a stop and released beyond `off`. It drags the whole map after the bull,
+ *  so what you see is no longer the authored camera. OFF — set this to a corridor, e.g.
+ *  `{ x0: 0.70, x1: 0.80, y0: 0.25, y1: 0.75, on: 0.06, off: 0.20 }`, to switch it back on. */
+const BULL_FOLLOW: { x0: number; x1: number; y0: number; y1: number; on: number; off: number } | null = null;
 
 // ── Journey pacing ───────────────────────────────────────────────────────────
 // Ported wholesale from the source engine (wallst-rodeo/map), because the feel of the
 // journey is Sasha's call: a leg is DWELL · flight · DWELL, the flight is eased at both
 // ends, and the legs are not all the same length.
 //
-// Scroll room per leg, AVERAGED — the per-leg split is the `weights` (see boundsOf).
-// 200vh is the source engine's own pacing: wallst-rodeo/map gives its five `.step`
-// sections 100 / 240 / 240 / 180 / 180 vh and anchors progress on their CENTRES, so its
-// four legs get 170 / 240 / 210 / 180 = 800vh between them. We had stretched this to
-// 487vh a leg (BASE_STOP_VH 150 × BULL_SLOW 3.25) to slow the bull down — but the bull
-// does not need slowing once the stops actually hold (DWELL_HOLD_FRAC below); all the
-// stretch bought was 2.4× the scrolling for the same journey.
-const JOURNEY_STOP_VH = 200;
+// The journey's total scroll, split per leg by `weights`. Read off wallst-rodeo/map, which
+// anchors progress on its `.step` CENTRES, so a leg is the mean of two section heights.
+// Its CSS is authored for five sections (100 / 240 / 240 / 180 / 180) — its data currently
+// only produces four, so its last leg never runs, but the intent is in the rule for
+// `data-step="4"`. Mapped by CAMERA, its legs are:
+//   studio→foundry 170 · foundry→NYSE 240 · NYSE→impound 210 · impound→Bowling Green 180
+// Our four cameras start at FOUNDRY — his studio opener is not one of ours; the title
+// dwell stands in for it. So our bands are [title, 240, 210, 180] = weights [17,24,21,18].
+// (Matching band-for-band instead of camera-for-camera is the trap: it slides every leg
+// onto the wrong pair of stops.)
+//
+// DOUBLED against the prototype, at Sasha's call: matching his scroll leg-for-leg still ran
+// the bull across the map about twice as fast as his does, so the journey is given twice his
+// room — 480 / 420 / 360 instead of 240 / 210 / 180. The `weights` still carry his rhythm;
+// only the total changed, so the legs keep their relative lengths.
+const LEGS_VH = 2 * 630;
+/** Scroll the "Bull's ROUTE" title holds before the journey starts — ours, standing in for
+ *  his studio opener, which is why it carries that leg's 170vh (doubled with the rest). */
+const TITLE_BAND_VH = 2 * 170;
 /** Scroll a card takes to cross the screen. Held at what it has always been, so the
  *  plaques keep their on-screen speed no matter how the journey underneath is paced —
  *  it used to be pinned to BULL_SLOW, which tied card velocity to the bull's. */
 const CARD_TRAVEL_VH = 150;
 // The dive (map → 3D bull handoff) is OURS — the source engine has no such thing — and
 // it keeps its own absolute scroll, unaffected by how the journey ahead of it is paced.
-const DIVE_STOP_VH = 33;
+// 118 is what the old per-step constant actually delivered on screen (its nominal 4 × 33
+// leaked the same way the journey did), so fixing the journey leaves the dive untouched.
+const DIVE_VH = 118;
 
-// The final slice of the chapter's scroll is the "dive": the journey is squeezed
-// into the first (1 − DIVE_FRAC), then the camera zooms hard into the last stop
-// (Bowling Green — where the bull actually stands) while a black veil closes in,
-// handing off to the Datum bull scene that emerges from that darkness.
-const DIVE_FRAC = DIVE_STOP_VH / (JOURNEY_STOP_VH + DIVE_STOP_VH);
+// The chapter's scroll, in vh, and the split between the three things that spend it. All
+// ABSOLUTE, and the sticky screen is added on top — because progress runs over
+// `offsetHeight − innerHeight`, a chapter that is only journey + dive hands the journey
+// less than it was promised. Paying for the viewport here is what makes each band come out
+// at the vh its weight says. (It used to be `N × (per-leg + dive)` with the dive as a
+// FRACTION of the per-leg budget, so both the dive and the sticky screen were quietly
+// billed to the journey and every leg ran 0.893× — the "too fast" Sasha caught.)
+const LEG_COUNT = readMapCfg(bullMapData).weights.length;
+const JOURNEY_VH = TITLE_BAND_VH + LEGS_VH;
+const CHAPTER_VH = JOURNEY_VH + DIVE_VH + 100;
+
+// The final slice of the chapter's scroll is the "dive": the journey owns the first
+// (1 − DIVE_FRAC), then the camera zooms hard into the last stop (Bowling Green — where
+// the bull actually stands) while a black veil closes in, handing off to the Datum bull
+// scene that emerges from that darkness.
+const DIVE_FRAC = DIVE_VH / (JOURNEY_VH + DIVE_VH);
 const DIVE_ZOOM = 3.4;    // extra mapbox zoom levels added across the dive (~2× closer)
 const DIVE_BEARING = 184; // rotate the map ~184° as we dive in — MATCHES the splat bull's orbit (AZ_START) so they spin in lockstep (bull turns to face us)
 const DIVE_PITCH = 38;    // tilt up toward the horizon (so the view matches the bull scene)
@@ -614,6 +656,9 @@ export default function MapChapter({
   const introTitleRef = useRef<HTMLDivElement>(null);
   const introBodyRef = useRef<HTMLParagraphElement>(null);
   const outroRef = useRef<HTMLDivElement>(null);
+  const locatorRef = useRef<HTMLDivElement>(null);
+  const locVpRef = useRef<SVGPolygonElement>(null);
+  const locBullRef = useRef<SVGCircleElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const poiUpdateRef = useRef<(() => void) | null>(null);
   // Road polylines from Mapbox Directions — shared so the ?bullTrack=1 sampler can
@@ -657,10 +702,7 @@ export default function MapChapter({
     mapboxToken = token;
     mapboxgl.accessToken = token;
 
-    const isNarrow = window.innerWidth < 720;
-    const padding = isNarrow
-      ? { top: 60, right: 30, bottom: 40, left: 30 }
-      : { top: 80, right: 60, bottom: 80, left: journeyPadLeft(window.innerWidth) };
+    const padding = window.innerWidth < 720 ? JOURNEY_PAD_NARROW : JOURNEY_PAD;
     const v0 = stopAt(cfgRef.current.cameras, 0);
     const map = new mapboxgl.Map({
       container: host,
@@ -950,6 +992,10 @@ export default function MapChapter({
     }
 
     const nyseIds = new Set<string | number>();
+    /** Tops (m) of the parts already tagged as the exchange — the faces a floating part is
+     *  allowed to rest on. Persists across tagNYSE() calls: tiles arrive over several of
+     *  them, so a crown can show up after the mass it stands on was tagged. */
+    const nyseTops = new Set<number>();
     const fadedIds = new Set<string | number>();
     // location-progress (Foundry=0…Bowling=3): stop 0 is the title dwell, so subtract 1.
     let cachedProgress = camLocation(playhead.get(), bounds);
@@ -996,22 +1042,37 @@ export default function MapChapter({
     const tagNYSE = () => {
       if (!map.getLayer('building-3d')) return;
       const before = nyseIds.size;
+      // Candidates: inside the precise footprint, and not a tall neighbour. The exchange
+      // facade is ~90 m; 14 Wall St is ~164 m and 40 Wall St ~283 m, so >120 m is somebody
+      // else clipping the polygon. Strict on the centroid — a neighbour merely overlapping
+      // the edge stays out, while tile-split halves of the exchange still land inside.
+      const cand: { id: string | number; min: number; top: number }[] = [];
       for (const f of queryPoly(NYSE_FOOTPRINT)) {
         if (f.id == null || nyseIds.has(f.id)) continue;
-        // The exchange facade is ~90 m; neighbouring towers are much taller (14 Wall
-        // St ~164 m, 40 Wall St ~283 m). Skip anything over 120 m so a tall neighbour
-        // clipping the footprint doesn't get bronzed.
-        if ((Number(f.properties?.height) || 0) > 120) continue;
-        // tag if the fragment's centroid OR any of its vertices is inside the PRECISE
-        // footprint — covers tile-split halves and the roof/top-floor fragments (whose
-        // ground footprint is still inside the building), without catching neighbours.
-        // Strict: only fragments whose CENTRE is inside the footprint. NYSE fragments
-        // (incl. the top cube, now reachable via the upward-padded query) sit mostly
-        // inside → centroid in; a neighbour merely clipping the edge stays out.
+        const top = Number(f.properties?.height) || 0;
+        if (top > 120) continue;
         const c = geomCentroid(f.geometry);
         if (!c || !pointInPolygon(c, NYSE_FOOTPRINT)) continue;
-        map.setFeatureState({ source: 'composite', sourceLayer: 'building', id: f.id }, { nyse: true });
-        nyseIds.add(f.id);
+        cand.push({ id: f.id, min: Number(f.properties?.min_height) || 0, top });
+      }
+      // OSM models 11 Wall Street as a stack of building:parts, and five of them float.
+      // Two kinds, and only one of them belongs to the exchange's silhouette:
+      //   · roof plant / crown — floats at min_height 96, exactly the top of the 96 m
+      //     mass it stands on. Drop it and the tower is decapitated.
+      //   · a ledge at min_height 74.2, which starts BELOW the top of the 78.5 m part it
+      //     hangs off. Bronzed, it reads as a balcony the building does not have.
+      // So a floating part is the exchange only if it RESTS on a face already tagged: its
+      // min_height meets some tagged part's top. Passing the tops down as we go lets a
+      // stack chain upward, and it stays true if OSM re-ids or re-splits the parts.
+      const LEVEL_EPS = 0.5;
+      const tag = (c: { id: string | number; top: number }) => {
+        map.setFeatureState({ source: 'composite', sourceLayer: 'building', id: c.id }, { nyse: true });
+        nyseIds.add(c.id);
+        nyseTops.add(c.top);
+      };
+      for (const c of cand) if (c.min === 0) tag(c);
+      for (const c of cand.filter((x) => x.min > 0).sort((a, b) => a.min - b.min)) {
+        if ([...nyseTops].some((t) => Math.abs(t - c.min) <= LEVEL_EPS)) tag(c);
       }
       // eslint-disable-next-line no-console
       if (nyseIds.size !== before) console.log('[MAP-DIAG v3] NYSE tagged:', nyseIds.size, [...nyseIds]);
@@ -1073,8 +1134,12 @@ export default function MapChapter({
       // tracks scroll closely while moving, so the map still unsticks ≈ when the dive
       // completes (no slide-up), and docks the reveal home when you pause.
       const sj = playhead.get();
-      // stop 0 is the title; locations are stops 1..N → location progress = stop − 1.
-      const cam = cameraAt(camLocation(sj, bounds), cfg.cameras, cfg.subCams);
+      // The camera rides STOP progress (0..4), because his camera list starts one before
+      // the first stop: camera 0 frames the studio the title plays over, then it flies to
+      // the foundry. The BULL still rides location progress — it only exists from the
+      // foundry on. (This used to read camLocation, which pinned the whole journey one
+      // camera early and left his last framing, Bowling Green, unreachable.)
+      const cam = cameraAt(camProgress(sj, bounds), cfg.cameras, cfg.subCams);
       // dive: zoom into the last stop (where the bull stands), rotate CCW and tilt
       // up toward the horizon so the framing lands on the bull-scene viewpoint.
       const dive = easeInOutCubic(diveOf(sj));
@@ -1096,10 +1161,8 @@ export default function MapChapter({
         introZoom = INTRO_ZOOM * (1 - e) * (1 - e); // start zoomed-in, ease out to 0
       }
 
-      // The stop cameras are offset (and the left padding holds the card gutter) so
-      // the bull sits off-centre during the journey. On the dive, pan to the bull's
-      // ACTUAL coordinate and pull the left padding back to symmetric, so the bull
-      // ends up in the screen centre (where the revealed splat scene is centred).
+      // On the dive, pan from the authored stop camera to the bull's ACTUAL coordinate, so
+      // it ends up in the screen centre (where the revealed splat scene is centred).
       const last = steps[steps.length - 1];
       const bull: [number, number] = last ? [last.lng, last.lat] : cam.center;
       // Pan to the bull is slightly front-loaded (centred by ~45% of the dive) so the
@@ -1110,11 +1173,10 @@ export default function MapChapter({
       const rotE = easeInOutCubic(clamp((diveOf(sj) - REVEAL_DIVE_FROM) / REVEAL_DIVE_SPAN, 0, 1));
       let center: [number, number] = [lerp(cam.center[0], bull[0], panE), lerp(cam.center[1], bull[1], panE)];
       const isNarrow = window.innerWidth < 720;
-      const padLeft = lerp(isNarrow ? 30 : journeyPadLeft(window.innerWidth), isNarrow ? 30 : 60, panE);
       const zoom = cam.zoom + DIVE_ZOOM * dive + introZoom;
       const pitch = Math.min(85, cam.pitch + DIVE_PITCH * dive);
       const bearing = cam.bearing + DIVE_BEARING * rotE;
-      map.setPadding({ top: isNarrow ? 60 : 80, right: isNarrow ? 30 : 60, bottom: isNarrow ? 40 : 80, left: padLeft });
+      map.setPadding(isNarrow ? JOURNEY_PAD_NARROW : JOURNEY_PAD);
       map.jumpTo({ center, zoom, pitch, bearing });
 
       // Journey bull head (same trail tip the 3D marker uses) — for corridor clamp + debug.
@@ -1139,19 +1201,21 @@ export default function MapChapter({
         head = center;
       }
 
-      // Corridor clamp (desktop + mobile): on the LIVE trail-head (same tip as the 3D bull)
-      // — not on authored camera keyframes. Band: X 70–80%, Y 25–75% of the viewport.
-      // Dive pans to centre — don't fight it. Strength ramps with the approach to a stop
-      // (see CORRIDOR_ON/OFF): the flight is the authored camera, untouched.
+      // Corridor clamp — OFF (BULL_FOLLOW = null). Kept intact behind the switch: it runs on
+      // the LIVE trail-head (same tip as the 3D bull), not on authored keyframes, and its
+      // strength ramps with the approach to a stop, full within `on` and released past `off`.
+      // The dive pans to centre — don't fight it.
       const nearStop = Math.abs(locProg - Math.round(locProg));
-      const followK = 1 - smoothstep(clamp((nearStop - CORRIDOR_ON) / (CORRIDOR_OFF - CORRIDOR_ON), 0, 1));
-      if (dv < 0.02 && followK > 0.004) {
+      const followK = BULL_FOLLOW
+        ? 1 - smoothstep(clamp((nearStop - BULL_FOLLOW.on) / (BULL_FOLLOW.off - BULL_FOLLOW.on), 0, 1))
+        : 0;
+      if (BULL_FOLLOW && dv < 0.02 && followK > 0.004) {
         const W = window.innerWidth;
         const H = window.innerHeight;
-        const loX = W * BULL_CORRIDOR.x0;
-        const hiX = W * BULL_CORRIDOR.x1;
-        const loY = H * BULL_CORRIDOR.y0;
-        const hiY = H * BULL_CORRIDOR.y1;
+        const loX = W * BULL_FOLLOW.x0;
+        const hiX = W * BULL_FOLLOW.x1;
+        const loY = H * BULL_FOLLOW.y0;
+        const hiY = H * BULL_FOLLOW.y1;
         // Converge on the FULLY corrected centre first — pitch makes a single screen-space
         // nudge imperfect, so it takes a couple of passes. The ramp is applied once, at the
         // end: scaling the error inside the loop would not weaken the clamp at all, because
@@ -1182,6 +1246,23 @@ export default function MapChapter({
 
       // POI pills ride the same jumpTo — don't wait for a later render tick.
       poiUpdateRef.current?.();
+
+      // Locator: the camera's four screen corners unprojected and re-projected into the
+      // locator box (a trapezoid, since the map is pitched), plus the bull dot on the live
+      // trail-head. His update, on our frame. It fades out with the dive, like the POI
+      // pills — the 3D handoff owns the screen from there.
+      if (locatorRef.current && locVpRef.current && locBullRef.current) {
+        const cw = map.getContainer().clientWidth, ch = map.getContainer().clientHeight;
+        const corners: [number, number][] = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
+        locVpRef.current.setAttribute('points', corners.map(([px, py]) => {
+          const ll = map.unproject([px, py]);
+          return locProject(ll.lng, ll.lat).map((n) => n.toFixed(2)).join(',');
+        }).join(' '));
+        const [bx, by] = locProject(head[0], head[1]);
+        locBullRef.current.setAttribute('cx', bx.toFixed(2));
+        locBullRef.current.setAttribute('cy', by.toFixed(2));
+        locatorRef.current.style.opacity = (1 - smoothstep(clamp(dv / 0.25, 0, 1))).toFixed(3);
+      }
       // Project the bull's world coord to the (updated) screen and hand its offset from
       // viewport centre to the splat reveal, so the iris + bull start GLUED to the map
       // bull and ride to centre with the pan — not popping in higher/right at a fixed centre.
@@ -1201,16 +1282,17 @@ export default function MapChapter({
           ready: steps.length >= 2,
           prog: locProg,
           dive: dv,
+          zoom: map.getZoom(),
           x: bp.x,
           y: bp.y,
           W,
           H,
           head,
           camCenter: center,
-          lo: W * BULL_CORRIDOR.x0,
-          hi: W * BULL_CORRIDOR.x1,
-          loY: H * BULL_CORRIDOR.y0,
-          hiY: H * BULL_CORRIDOR.y1,
+          lo: BULL_FOLLOW ? W * BULL_FOLLOW.x0 : null,
+          hi: BULL_FOLLOW ? W * BULL_FOLLOW.x1 : null,
+          loY: BULL_FOLLOW ? H * BULL_FOLLOW.y0 : null,
+          hiY: BULL_FOLLOW ? H * BULL_FOLLOW.y1 : null,
           cameras: cfg.cameras,
           subCams: cfg.subCams,
           project: (ll: [number, number]) => {
@@ -1222,6 +1304,13 @@ export default function MapChapter({
             const n = map.unproject([c.x + errX, c.y + errY]);
             return [n.lng, n.lat];
           },
+          /** Park the map on a trial centre so a solver can iterate against the real
+           *  projection (pitch makes one screen-space nudge inexact). The next scroll
+           *  frame overwrites it — this is a probe, not a control. */
+          setCenter: (ll: [number, number]) => map.jumpTo({ center: ll }),
+          /** The live map, for querying what the style actually tagged (which buildings
+           *  carry feature-state `nyse`, what a footprint polygon really caught, …). */
+          map,
         };
       }
     };
@@ -1268,7 +1357,7 @@ export default function MapChapter({
       // Half-window the card travels, in stop-progress. Derived from CARD_TRAVEL_VH so the
       // plaques cross the screen in the same amount of SCROLL whatever the journey pacing
       // underneath does — repacing the bull must not change how fast the text reads.
-      const REACH = CARD_TRAVEL_VH / (2 * JOURNEY_STOP_VH);
+      const REACH = CARD_TRAVEL_VH / (2 * (JOURNEY_VH / LEG_COUNT));
       const FADE = 0.15;   // fade only over the outer (off-screen) edges
       const lastCardIdx = steps.length - 1; // card i ↔ stop i+1, so the last card is i = N−1
       const dive = diveOf(sj);
@@ -1311,12 +1400,11 @@ export default function MapChapter({
   // "The Bull's ROUTE" title pieces + the paragraph carry their baked offset(vh)+scale
   // transforms inline in the JSX (see the route-title block below) — no runtime loop.
 
-  const N = steps.length || cfg.cameras.length;
   return (
     <section
       ref={sectionRef}
       className="mc-section relative w-full bg-black"
-      style={{ height: `${Math.max(N, 2) * (JOURNEY_STOP_VH + DIVE_STOP_VH)}vh` }}
+      style={{ height: `${CHAPTER_VH}vh` }}
     >
       <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
         {/* Hidden until the style is recoloured + labels hidden + buildings added
@@ -1327,6 +1415,25 @@ export default function MapChapter({
           style={{ opacity: mapReady ? 1 : 0, transition: 'opacity 0.35s ease' }}
         />
         <div className="mc-vignette absolute inset-0 pointer-events-none z-[1]" />
+        {/* Mini-map locator (bottom-right) — ported from wallst-rodeo/map: the same NYC-metro
+            bounding box, the same Manhattan silhouette, the same trapezoid of the pitched
+            camera's four unprojected corners, and the same bull dot. Two departures: the
+            silhouette is baked into an asset instead of fetched from GitHub at runtime, and
+            it is absolute inside the sticky stage rather than fixed to the page, so it
+            belongs to this chapter instead of floating over the whole longread. */}
+        <div ref={locatorRef} className="mc-locator" style={{ opacity: 0 }} aria-hidden>
+          <svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet">
+            <path d={LOCATOR_MANHATTAN} fill="rgba(200,200,200,0.22)" stroke="none" />
+            <polygon
+              ref={locVpRef}
+              fill={`rgba(${TRAIL_RGB.join(',')},0.18)`}
+              stroke={`rgba(${TRAIL_RGB.join(',')},0.85)`}
+              strokeWidth="0.9"
+              strokeLinejoin="round"
+            />
+            <circle ref={locBullRef} r="2.6" fill="#fff5dc" stroke="#0a0a10" strokeWidth="0.6" />
+          </svg>
+        </div>
         {/* outro veil — dissolves the map to black across the final dive (only when
             standalone; in underlay mode the whole stage fades to transparent instead) */}
         {revealUnderlay ? null : (

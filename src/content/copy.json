@@ -97,7 +97,7 @@
       "title": "Black Monday",
       "figure": "−20.5%"
     },
-    "footer": "© Méridien 2026 — <a href=\"https://creativecommons.org/licenses/by-nc/4.0/deed.en\">CC BY 4.0</a>. Data: Robert J. Shiller, U.S. Stock Markets 1871–Present and CAPE Ratio (Yale University) — monthly S&P 500 price, dividends, earnings, and CPI; daily S&P 500 close prices from Yahoo Finance.",
+    "footer": "© Méridien 2026 — <a href=\"https://creativecommons.org/licenses/by-nc/4.0/deed.en\">CC BY 4.0</a>. Data: Robert J. Shiller, U.S. Stock Markets 1871–Present and CAPE Ratio (Yale University) —<br>monthly S&P 500 price, dividends, earnings, and CPI; daily S&P 500 close prices from Yahoo Finance.",
     "crises": [
       {
         "troughMonth": "September",

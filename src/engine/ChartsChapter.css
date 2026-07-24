@@ -36,6 +36,11 @@
   z-index: 40; pointer-events: auto;
   font-family: var(--font-struve);
   font-size: clamp(11px, 1.05vw, 16px); line-height: 1.5;
+  /* Sources are a footnote, not a rule under the chart. On desktop they break where the
+     COPY says — a <br> after the «(Yale University) —» dash — into exactly two lines, each
+     ending short of the plot's right edge. The measure only has to be wide enough not to
+     add a wrap of its own; the phone rule below drops the authored break and lets the text
+     flow, since there is no room to indent it there. */
   max-width: 80vw; color: rgba(0, 0, 0, 0.5);
 }
 .cc-legend a { color: inherit; text-decoration: underline; }
@@ -116,4 +121,6 @@
     font-size: 16px;
     line-height: 24px;
   }
+  /* The desktop break lands mid-column on a phone — let the text find its own. */
+  .cc-legend br { display: none; }
 }

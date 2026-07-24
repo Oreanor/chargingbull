@@ -6,7 +6,17 @@ export const BM_CANDLES: BMCandle[] = [{"d":"M192.054 405.062H184.039V414.285H19
 // SVG plot box (maps to the canvas plot rect) + tick/month positions (SVG coords).
 export const BM_GEOM = {
   box: { x: 149, y: 150, w: 1142, h: 501.5 },
-  ticks: [ {v:325,y:204.5}, {v:300,y:316.25}, {v:275,y:428}, {v:250,y:539.75}, {v:225,y:651.5} ],
+  // Desktop-36 runs 325…225 in four sections. We carry a FIFTH, down to 200, inside the
+  // same frame — the top line and the baseline stay where he put them, so the sections
+  // tighten from 111.75 to 89.4 instead of the chart growing. That extra room is the point:
+  // his export stops at Black Monday, but the series we draw runs on to November and its
+  // extremes did not fit — Oct 20 traded down to 216.46, which on his scale hung 38 units
+  // BELOW the baseline (the crash candle punched through the zero line), and Aug 25 ran up
+  // to 337.89, above the top of the box. On this one the low sits 59 units clear of the
+  // baseline and the high is inside the frame.
+  // Everything price-driven reads the first and last tick (bmPriceSvgY), and the candle→
+  // drawdown warp reads their COUNT (BM_WARP_PCT_MIN), so both follow from this line.
+  ticks: [ {v:325,y:204.5}, {v:300,y:293.9}, {v:275,y:383.3}, {v:250,y:472.7}, {v:225,y:562.1}, {v:200,y:651.5} ],
   months: [ {l:"JUN",x:252.142}, {l:"JUL",x:459.642}, {l:"AUG",x:667.142}, {l:"SEP",x:874.642}, {l:"OCT",x:1082.14} ],
   monthY: 688, dotY: 666, baselineY: 651.5, labelX: 1265.28, indexX: 1180, indexY: 150,
 };

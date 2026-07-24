@@ -92,7 +92,7 @@
 /* Green curved arrow hangs off the text's right edge and dives at the year flag below.
    Absolute, so it can overhang the hint's max-width and drop past its bottom. */
 .calc-hint .arc {
-  position: absolute; left: calc(100% - 78px); bottom: -41px;
+  position: absolute; left: calc(100% - 78px); bottom: -44px;
   width: 2.9em; height: 3.07em; fill: #61E26B;
 }
 /* Credits tone close to .cc-legend on bull frames */
@@ -100,6 +100,9 @@
   font: 400 clamp(11px, 1.05vw, 16px)/1.5 var(--font-struve);
   color: rgba(245, 243, 238, 0.55);
   margin-top: 20px;
+  /* Same rule as the charts chapter's sources (.cc-legend): a footnote wraps well short of
+     the plot's right edge instead of running its full width. Phones get it back below. */
+  max-width: 46vw;
 }
 /* Mobile: keep 10vw sides (like charts); shorten the plot so the sticky still fits.
    ≤800 is the project-wide phone breakpoint (MOBILE_MAX in the engine, ModelChapter.css,
@@ -113,7 +116,7 @@
   .calc-result .big { font-size: clamp(27px, 7.4vw, 40px); }
   .calc-chart { height: clamp(240px, 42vh, 480px); }
   .calc-viz { margin: 16px 0 6px; }
-  .calc-note { margin-top: 12px; }
+  .calc-note { margin-top: 12px; max-width: none; }
 
   /* Year pills → round green knobs with the ↔ SVG; years move onto the canvas.
      Same seat as the pill: bottom: 0 on a floor cut to the knob's own height. */

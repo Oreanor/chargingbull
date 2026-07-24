@@ -19,7 +19,7 @@ import { CHART_NOM, CHART_REAL, CHART_T0 } from '../../data/sp500Monthly';
 import { BM_GEOM } from './blackMondayCandles';
 import {
   GRID_DASH, BASE_LINE_W, TICK_BELOW, TICK_ABOVE, tickAlphaPct, tickAlphaAbs,
-  FILL_MAX, HATCH_ALPHA, makeHatch, inkText,
+  FILL_MAX, HATCH_ALPHA, hatchArea, inkText,
   LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, END_DOT_R, END_DOT_R_FOCUS,
 } from './chartInk';
 
@@ -33,7 +33,7 @@ import {
 } from './blackMondayOHLC';
 import {
   BM_PLATE_GAP,
-  BM_PLATE_PATHS_PORT, BM_PLATE_ORIGIN_PORT, BM_PLATE_SIZE_PORT,
+  BM_PLATE_PATHS, BM_PLATE_ORIGIN, BM_PLATE_SIZE,
   BM_PLATE_BASE_GAP, BM_PLATE_BASE_GAP_PORT, BM_PLATE_W, BM_PLATE_W_PORT,
 } from './blackMondayPlate';
 import { BULL_1989_PATH, BULL_1989_BOX } from './bull1989';
@@ -84,6 +84,11 @@ let BG = '#000000';
 const MINUS_RE = /^[-−–]/;
 const MARK_GAP = 25;
 const MARK_STEP = 20;
+/** …and 12px tighter for a marker parked ABOVE its point — the crisis percentages (−42%
+ *  2000, −51% 2008) sit that much lower, closer to the peak they name. Its own seat rather
+ *  than a nudge on MARK_GAP: that one also seats the trough dates BELOW their dot, and
+ *  shrinking it would push those the other way. */
+const MARK_GAP_ABOVE = 13;
 
 /** Shared Y-axis title: right edge at plot right, parked above the top grid. */
 function drawIndexCaption(ctx: CanvasRenderingContext2D, xRight: number, plotTop: number) {
@@ -233,9 +238,13 @@ function drawMarkerTwoLine(
   maxRight?: number,
   above = false,
   halo = true,
+  shiftDigits = 0,
 ) {
   ctx.font = font2;
   const w2 = ctx.measureText(line2).width;
+  // Seat adjustment in digit widths (see Crisis.labelShift) — the unit the copy is set in,
+  // so «a couple of characters» stays a couple of characters at any type size.
+  const shift = shiftDigits * ctx.measureText('0').width;
   // Measure the pair, not the glyph alone, so any kerning is included.
   const lead = ctx.measureText(line2.slice(0, 1)).width;
   const second = ctx.measureText(line2.slice(0, 2)).width - lead;
@@ -248,9 +257,9 @@ function drawMarkerTwoLine(
   const signW = sign ? ctx.measureText(sign).width : 0;
   const w = Math.max(ctx.measureText(body1).width, w2);
   // Short line 2 (nothing to anchor on) falls back to centring the block.
-  let left = line2.length >= 2 ? px - (lead + second / 2) : px - w / 2;
+  let left = (line2.length >= 2 ? px - (lead + second / 2) : px - w / 2) - shift;
   if (maxRight != null && left + w > maxRight) left = maxRight - w;
-  const base = above ? py - MARK_GAP - MARK_STEP : py + MARK_GAP;
+  const base = above ? py - MARK_GAP_ABOVE - MARK_STEP : py + MARK_GAP;
   ctx.fillStyle = CRISIS;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -269,6 +278,11 @@ type YM = [number, number];
 interface Crisis {
   peak: YM; trough: YM;
   troughMonth: string; troughYear: string; label: string;
+  /** Seat of the drop label, in DIGIT widths left of where the block would otherwise sit.
+   *  The block hangs to the right of its peak, which is clear space for every crisis whose
+   *  line keeps falling away from it. 2020 is the exception: the recovery is near-vertical
+   *  and right up against the peak, so the label lands on the curve. */
+  labelShift?: number;
 }
 
 // Numeric peak/trough are data; trough date + crisis label come from copy.json.
@@ -278,7 +292,7 @@ const CRISES: Crisis[] = [
   { peak: [1987, 8], trough: [1987, 11], ...CRISIS_LABELS[1] },
   { peak: [2000, 8], trough: [2002, 9], ...CRISIS_LABELS[2] },
   { peak: [2007, 10], trough: [2009, 3], ...CRISIS_LABELS[3] },
-  { peak: [2020, 1], trough: [2020, 3], ...CRISIS_LABELS[4] },
+  { peak: [2020, 1], trough: [2020, 3], ...CRISIS_LABELS[4], labelShift: 2 },
 ];
 
 const ymToX = ([y, m]: YM) => y + (m - 1) / 12;
@@ -309,9 +323,10 @@ const withAlpha = (h: string, a: number) => {
   return `rgba(${r},${g},${b},${a})`;
 };
 
-// Area-fill palette (mockup): white-ish under the bear/nominal line, GROWTH green
-// under the bull/invest line. Lerped by investAlpha so it tracks the theme morph.
-const FILL_BEAR = '#f5f3ee';
+// Area-fill palette, straight off the frames: the bear/price ones (39/40/41/43) paint
+// their area and its stripes in plain white, the bull ones (46/47) in GROWTH green.
+// Lerped by investAlpha so it tracks the theme morph.
+const FILL_BEAR = '#ffffff';
 const FILL_BULL = '#61e26b';
 
 // The bull figurine (Desktop-43) in SVG coords — the gold marker dot sits at SVG
@@ -505,11 +520,6 @@ export interface ChartsEngine {
 /** Fraction of each step's travel spent dwelling (held) on the view, per end.
  *  Keep morph budget (~20%); longer “sit” comes from SEG_W chronometry, not denser dwells. */
 export const DWELL_HOLD_FRAC = 0.4;
-// On-graph labels wait for the line to finish building: they stay hidden through the morph
-// and slide in a beat AFTER the view settles (LABEL_DELAY into the end-dwell), so a label
-// never sits on a still-moving line. The leaving label fades over the first slice of the morph.
-const LABEL_DELAY = 0.28;     // fraction of the end-dwell held before the label enters (~half a wheel notch)
-const LABEL_FADE_OUT = 0.35;  // fraction of the morph over which the leaving label fades out
 const smoothstep = (x: number) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
 
 // 0a → 0b hands off from the candle stage to the data slide EARLY, at the same density,
@@ -563,9 +573,6 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   let scrubReady = false; // true after the first scroll-driven draw(); blocks premature resize paints
   let lastBull = 0; // 0..1 bull-phase factor for the React topbar, set each draw
   let entryFade = 1;  // 0..1 — the very first frame's content fades IN over the pink ground
-  // Gates invest-overlay copy only. Crisis trough/drop labels ride with their lines
-  // (appear when the bold series appears, never blink out during morphs).
-  let labelReveal = 1;
   // Grid handoff out of the candle stage (see BM_GRID_*): 1 = the slide's true grid,
   // 0 = that same grid folded onto the candle grid's lines and month seats.
   let gridWarp = 1;
@@ -643,8 +650,6 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
 
   const ys = () => (mode === 'nominal' ? yNom : yReal);
 
-  const hatch = makeHatch();
-
   // Translucent area under a polyline: vertical gradient (denser at the curve,
   // fading to the axis) + faint diagonal hatch on top. pts = [[x,y],…].
   function fillAreaUnder(
@@ -663,8 +668,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     g.addColorStop(0, withAlpha(color, FILL_MAX));
     g.addColorStop(1, withAlpha(color, 0));
     ctx.fillStyle = g; ctx.fill();
-    const pat = hatch.get(ctx, color);
-    if (pat) { ctx.globalAlpha = HATCH_ALPHA; ctx.fillStyle = pat; ctx.fill(); }
+    ctx.globalAlpha = HATCH_ALPHA;
+    hatchArea(ctx, pts[0][0], topY, pts[pts.length - 1][0], baseY, color);
     ctx.restore();
   }
 
@@ -698,8 +703,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     g.addColorStop(1, withAlpha(color, FILL_MAX));  // barely white at the trough
     ctx.fillStyle = g; ctx.fill();
     if (hatchK > 0.01) {
-      const pat = hatch.get(ctx, color);
-      if (pat) { ctx.globalAlpha = a0 * HATCH_ALPHA * k * hatchK; ctx.fillStyle = pat; ctx.fill(); }
+      ctx.globalAlpha = a0 * HATCH_ALPHA * k * hatchK;
+      hatchArea(ctx, pts[0][0], topY, pts[pts.length - 1][0], botY, color);
     }
     ctx.restore();
   }
@@ -722,12 +727,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
     const needW = Math.round(W * dpr), needH = Math.round(H * dpr);
-    // Only resize the backing store when the size actually changed. Reassigning
-    // canvas.width every frame reallocated the buffer AND invalidated every CanvasPattern
-    // (so the hatch cache had to be rebuilt each frame). Guarded, the cache now survives.
+    // Only resize the backing store when the size actually changed: reassigning
+    // canvas.width every frame reallocates the buffer and clears it.
     if (canvas.width !== needW || canvas.height !== needH) {
       canvas.width = needW; canvas.height = needH;
-      hatch.clear();
     }
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1139,6 +1142,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         drawMarkerTwoLine(
           ctx, `${drop.toFixed(0)}%`, c.label,
           sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK, xData1, true, false,
+          c.labelShift ?? 0,
         );
       }
       ctx.restore();
@@ -1165,9 +1169,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // marking it — a dot on top of it was a second marker for the same moment.
       ctx.fillStyle = GROWTH;
       ctx.beginPath(); ctx.arc(xC, yC, END_DOT_R_FOCUS, 0, 2 * Math.PI); ctx.fill();
-      // Labels wait for the line to finish building (marker line + dots above stay at full
-      // investAlpha; only the text is gated by labelReveal so it slides in a beat later).
-      ctx.globalAlpha = investAlpha * labelReveal;
+      // Labels ride the view itself — no separate gate. They used to be held back, faded out
+      // across the morph and slid back in a beat after it, which read as the copy blinking
+      // off and on for a change that is only a number. Now the purchase label simply
+      // travels with its point, and the end value cross-fades nominal→real in place.
+      ctx.globalAlpha = investAlpha;
       // Purchase copy left-flush to the rule (SVG: line 514.5 → text 522). Park it in the
       // clear band under the green HTML card so the tick doesn’t “fall off” behind the plate
       // on the inflation step (taller card / higher rest).
@@ -1182,14 +1188,26 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // dot (Desktop-46: both lines start at x=1031, the block's right edge stopping short
       // of the end point). Right-aligning each line on its own left the shorter one
       // starting further right — a ragged left edge inside the label.
+      // The value is the only thing that changes between the two invest views ($4.85M
+      // nominal → $2.13M real), so it swaps by cross-fade on the SAME seat instead of the
+      // whole block leaving and coming back. mb is the morph's own nominal→real blend, so
+      // the two texts cross exactly while the series does.
       const inv = getInvest();
-      const endVal = inv ? (cfg.isReal ? fmtMln(inv.realVal) : fmtMln(inv.nomVal)) : '—';
+      const mb = Math.max(0, Math.min(1, (cfg.modeBlend as number) ?? (cfg.isReal ? 1 : 0)));
+      const valNom = inv ? fmtMln(inv.nomVal) : '—';
+      const valReal = inv ? fmtMln(inv.realVal) : '—';
       ctx.textAlign = 'left';
       ctx.font = FONT_INVEST_BOLD;
-      const wVal = ctx.measureText(endVal).width;
+      const wNom = ctx.measureText(valNom).width, wReal = ctx.measureText(valReal).width;
       ctx.font = FONT_INVEST;
-      const endLeft = xC - 10 - Math.max(wVal, ctx.measureText(LBL.compareDate).width);
-      ctx.font = FONT_INVEST_BOLD; ctx.fillText(endVal, endLeft, yC - 28);
+      const wDate = ctx.measureText(LBL.compareDate).width;
+      // The block hangs off its right edge, and the two values are different widths — lerp
+      // the left edge too, so it slides instead of stepping as the text swaps.
+      const endLeft = xC - 10 - lerp(Math.max(wNom, wDate), Math.max(wReal, wDate), mb);
+      ctx.font = FONT_INVEST_BOLD;
+      if (mb < 0.999) { ctx.globalAlpha = investAlpha * (1 - mb); ctx.fillText(valNom, endLeft, yC - 28); }
+      if (mb > 0.001) { ctx.globalAlpha = investAlpha * mb; ctx.fillText(valReal, endLeft, yC - 28); }
+      ctx.globalAlpha = investAlpha;
       ctx.font = FONT_INVEST; ctx.fillText(LBL.compareDate, endLeft, yC - 6);
       ctx.restore();
     }
@@ -1336,7 +1354,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
 
     // Crisis date labels — fade out with a1Alpha as the growth chart arrives, instead of
     // popping the instant drawNow hands the '1' overview off to drawMixed (which drew none).
-    // Overview trough dates ride with the crisis lines (a1Alpha), never gated by labelReveal.
+    // Overview trough dates ride with the crisis lines (a1Alpha) — every on-graph label now
+    // stays with the thing it names; nothing is held back or blinked.
     if (a1Alpha > 0.02) {
       ctx.save(); ctx.globalAlpha = a1Alpha;
       for (const c of CRISES) {
@@ -1443,7 +1462,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.font = FONT; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
       // Y grid + numbers. Same price scale as Desktop-43: the numbers ink up as they climb
       // AWAY from the white baseline, and sit a clear line ABOVE their grid line (not
-      // hugging it). The bottom tick (225) shares the baseline, so it gets no dashed line.
+      // hugging it). The bottom tick (200) shares the baseline, so it gets no dashed line.
       const nTicks = BM_GEOM.ticks.length;
       BM_GEOM.ticks.forEach((tk, i) => {
         const y = mapY(tk.y);
@@ -1481,24 +1500,22 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.globalAlpha = 1;
     }
 
-    // Candle width = the designer's 80% of the PITCH — his export is 8.015 wide on a 10.02
-    // step (Desktop-36), i.e. columns that nearly touch. It used to be measured off
-    // `leftSpan` (HALF the plot) while the candles were laid out across the WHOLE of it, so
-    // every column came out at about a third of its slot with a gap wider than itself.
-    // Read off the real seats, so it cannot drift from the layout again.
+    // Candle width as a share of the PITCH. Desktop-36 is 8.015 on a 10.019 step = 0.80,
+    // and we sat on that number — but his frame is the crash window alone, ~60 columns,
+    // while we run Aug→Nov across the same plot, so the same ratio buys thinner columns
+    // with a wider gutter. 0.9 puts the gap back to what his frame reads like. Measured off
+    // the real seats, so it cannot drift from the layout again.
     const pitch = nDD > 1 ? (candleX(N - 1) - candleX(BM_AUG_I)) / (nDD - 1) : 8;
-    const colW0 = Math.max(2, pitch * 0.8);
+    const colW0 = Math.max(2, pitch * 0.9);
 
     // ---- candles burn down → daily line → straighten ----
     if (cAlpha > 0.02) {
       ctx.save();
       ctx.beginPath();
       // The clip is sized to the DATA, not to the designer's grid box — a wick that is cut
-      // off is a wrong price. The window overflows his 325…225 frame at BOTH ends: Aug 25
-      // traded up to 337.89 (above the top grid line) and Oct 20 down to 216.46 (well below
-      // the baseline). His export stops at Black Monday and never had to hold either. A
-      // candle chart's grid is a scale, not a cage; the white rule at 225 still paints over
-      // the wick that crosses it, so the frame reads as designed.
+      // off is a wrong price. With the 200 section added (BM_GEOM) the whole window now
+      // fits inside the frame, so this reaches no further than the box; it stays data-sized
+      // because the series can be extended and a grid is a scale, not a cage.
       let clipTop = Math.min(gy0, gy1), clipBot = Math.max(gy0, gy1);
       for (let i = BM_AUG_I; i < N; i++) {
         clipTop = Math.min(clipTop, mapY(bmPriceSvgY(BM_OHLC[i][2])));
@@ -1565,12 +1582,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // candle frame, so it is gone before the straightening starts.
     const plateA = entryFade * cAlpha * Math.pow(1 - burn, 4);
     if (plateA > 0.01) {
-      // ONE export on both breakpoints — the designer's portrait re-layout, whose type is
-      // set right-aligned inside the block, which is what this seat needs. (The landscape
-      // export was a second, left-aligned layout for the old right-of-the-candle seat.)
-      if (!platePaths) platePaths = BM_PLATE_PATHS_PORT.map((d) => new Path2D(d));
-      const origin = BM_PLATE_ORIGIN_PORT;
-      const size = BM_PLATE_SIZE_PORT;
+      // ONE art on both breakpoints — his «Group 190» export, right-aligned in
+      // blackMondayPlate (he sets it flush left; this seat needs the lines flush right,
+      // because the plate hangs off the crash column by its RIGHT edge).
+      if (!platePaths) platePaths = BM_PLATE_PATHS.map((d) => new Path2D(d));
+      const origin = BM_PLATE_ORIGIN;
+      const size = BM_PLATE_SIZE;
       // NEVER scaled — the export is the mockup, so it is drawn at its native size and
       // only ever MOVES. It used to ride the plot-box transform (and then a uniform
       // version of it), which rubber-banded the outlined type with the chart: the plate
@@ -1582,9 +1599,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // flat «20% of the canvas» doesn't — the candle window is laid out from the plot and
       // rescales per breakpoint, so the plate drifted away from the thing it labels.
       //
-      // The ART is the portrait layout on both breakpoints; the WIDTH it is drawn at is
-      // still per-breakpoint. Taking the portrait width along with the portrait art shrank
-      // the desktop plate by a quarter — the layout changed, the size shouldn't have.
+      // The ART is one export on both breakpoints; the WIDTH it is drawn at is still
+      // per-breakpoint, and it did not move when the art was swapped — the layout changed,
+      // the on-screen size shouldn't have.
       const mobile = isMobileViewport();
       const drawnW = mobile ? BM_PLATE_W_PORT : BM_PLATE_W;
       const k = drawnW / size.w;
@@ -1628,15 +1645,6 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     if (frac < startDwell) p = 0;
     else if (frac > 1 - endDwell) p = 1;
     else p = (frac - startDwell) / (1 - startDwell - endDwell);
-    // Invest labels only: wait for the settle, then slide in. Crisis date/% labels do not
-    // use this gate — they stay glued to their lines through every morph.
-    if (frac < startDwell) labelReveal = 1;
-    else if (frac < 1 - endDwell) {
-      labelReveal = 1 - smoothstep((frac - startDwell) / (1 - startDwell - endDwell) / LABEL_FADE_OUT);
-    } else {
-      const d = (frac - (1 - endDwell)) / endDwell;
-      labelReveal = smoothstep((d - LABEL_DELAY) / (1 - LABEL_DELAY));
-    }
     const fromIdx = Math.min(i, N - 1);
     const toIdx = Math.min(i + 1, N - 1);
     fromKey = CHART_STEPS[fromIdx].view;
