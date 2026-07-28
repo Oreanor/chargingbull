@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } from 'mapbox-gl';
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
@@ -204,6 +204,17 @@ function locProject(lng: number, lat: number): [number, number] {
 const TRAIL_ALPHA = 204;
 const TRAIL_ALPHA_DONE = 102; // 50% of full opacity — completed legs
 
+/**
+ * How much of the first leg the bull takes to fade up, in location progress.
+ *
+ * It must not already be standing on the map when the chapter opens. Location progress is
+ * pinned at 0 for the whole title band and the first dwell — the bull has nowhere to be
+ * yet — so keying the fade on it means the model is absent for exactly that stretch and
+ * appears the moment it actually starts travelling. Short on purpose: this is an arrival,
+ * not a dissolve, so it is done inside the first few percent of the leg.
+ */
+const BULL_FADE_IN = 0.04;
+
 /** deck.gl layers: stop dots · trail · bull head (3D model). */
 function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: number; lat: number }[], routes: LngLat[][], headings: (number | null)[] = [], bullScale = 1.3): Layer[] {
   const { ScatterplotLayer, PathLayer, ScenegraphLayer } = DL;
@@ -247,12 +258,19 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: numbe
       const t = 1 - smoothstep(legFrac / 0.02);
       heading = lerpBearing(heading, headings[leg]!, t);
     }
-    layers.push(new ScenegraphLayer({
-      id: 'bull-3d', data: [{ position: head, heading }], scenegraph: BULL_3D_MODEL_URL,
-      getPosition: (d) => d.position, getOrientation: (d) => [0, -d.heading + 180, 90], getScale: [bullScale, bullScale, bullScale],
-      getColor: [251, 199, 95, 255], sizeScale: 1, sizeMinPixels: 40, sizeMaxPixels: 105, _lighting: 'flat',
-      parameters: NO_DEPTH, updateTriggers: { getPosition: head, getOrientation: heading },
-    }));
+    // Absent until the journey starts moving, then up in a few percent of the first leg
+    // (see BULL_FADE_IN). Skipped entirely at zero rather than drawn transparent — a
+    // 0-alpha scenegraph still costs a draw and still writes the picking buffer.
+    const appear = smoothstep(clamp(progress / BULL_FADE_IN, 0, 1));
+    if (appear > 0.004) {
+      const bullAlpha = Math.round(255 * appear);
+      layers.push(new ScenegraphLayer({
+        id: 'bull-3d', data: [{ position: head, heading }], scenegraph: BULL_3D_MODEL_URL,
+        getPosition: (d) => d.position, getOrientation: (d) => [0, -d.heading + 180, 90], getScale: [bullScale, bullScale, bullScale],
+        getColor: [251, 199, 95, bullAlpha], sizeScale: 1, sizeMinPixels: 40, sizeMaxPixels: 105, _lighting: 'flat',
+        parameters: NO_DEPTH, updateTriggers: { getPosition: head, getOrientation: heading, getColor: bullAlpha },
+      }));
+    }
   }
   return layers;
 }
@@ -286,13 +304,34 @@ interface SubCam { at: number; camera: CamStop }
 // five `.step` sections (100/240/240/180/180 vh), anchored on their centres, which makes
 // the four legs 170/240/210/180. Those are the ratios here — the export is what the panel
 // happened to hold, the section heights are what Sasha actually ships.
+/** Per-flight speed profile — speed as a function of the fraction of the PATH covered,
+ *  not of scroll. "Slow" means "spend a lot of scroll on this stretch of path". Either
+ *  half is optional; a group counts as present if any one of its three keys is set. */
+interface FlightEase { s0?: number; s1?: number; slow?: number; e0?: number; e1?: number; slowEnd?: number }
+
 interface MapCfg {
   cameras: CamStop[];
   weights: number[];
   subCams: SubCam[][];   // subCams[k] = waypoints for the leg ARRIVING at cameras[k]
+  /** How hard the camera drifts toward the moving bull head on the leg INTO stop k
+   *  (0 = hold the authored framing, 1 = ride the bull). Indexed by DESTINATION, like
+   *  subCams. Default all-zero, i.e. no follow. */
+  follow: number[];
+  /** How much the final dive pans onto the bull's actual coordinate. Default 1. */
+  diveFollow: number;
+  /** Dwell per location stop, in PIXELS of scroll — an absolute band during which the
+   *  camera and the bull hold still while the stop's card rides past. Multiplied by
+   *  PACE, and the same sum is added to the section height so dwells don't eat flights. */
+  dwellPx: number[];
+  /** Speed profile per flight, indexed by destination stop; null ⇒ linear. */
+  flightEase: (FlightEase | null)[];
   headings: (number | null)[];
   bullScale: number;
 }
+
+/** Phone override — FRAMING ONLY. `cameras`/`subCams` replace the desktop arrays whole
+ *  (never merged per element); every timing field is inherited and cannot be forked. */
+type MobileCfg = { cameras?: CamStop[]; subCams?: SubCam[][] };
 
 // Fallback framings if bullMapData.mapConfig is missing.
 // Four chained stops: Foundry → NYSE → Queens impound → Bowling Green. (The Crosby
@@ -319,10 +358,48 @@ const DEFAULT_WEIGHTS = [17, 24, 21, 18];
 /** His BULL_HEADING_OVERRIDE, in stop space: NYSE parallel to the street, BG the resting pose. */
 const DEFAULT_HEADINGS: (number | null)[] = [null, 21, null, 19];
 const DEFAULT_BULL_SCALE = 1.3;
+const DEFAULT_DWELL_PX = 600;
 const DEFAULT_CFG: MapCfg = {
   cameras: DEFAULT_CAMERAS, weights: DEFAULT_WEIGHTS,
-  subCams: [], headings: DEFAULT_HEADINGS, bullScale: DEFAULT_BULL_SCALE,
+  subCams: [], follow: [], diveFollow: 1, dwellPx: [], flightEase: [],
+  headings: DEFAULT_HEADINGS, bullScale: DEFAULT_BULL_SCALE,
 };
+
+const hasStartEase = (p: FlightEase) => p.s0 != null || p.s1 != null || p.slow != null;
+const hasEndEase = (p: FlightEase) => p.e0 != null || p.e1 != null || p.slowEnd != null;
+
+/** One number ⇒ same dwell on every stop; missing ⇒ 600 each. */
+function normalizeDwellPx(v: unknown, nLoc: number): number[] {
+  if (Array.isArray(v)) return (v as number[]).slice();
+  if (typeof v === 'number') return Array(nLoc).fill(v);
+  return Array(nLoc).fill(DEFAULT_DWELL_PX);
+}
+/** A profile with none of the six keys normalises to null (= linear flight). Partial
+ *  groups are completed with the authoring tool's own defaults, not with zeros. */
+function normalizeFlightEase(v: unknown): (FlightEase | null)[] {
+  if (!Array.isArray(v)) return [];
+  return (v as unknown[]).map((f) => {
+    if (!f || typeof f !== 'object') return null;
+    const src = f as FlightEase;
+    const out: FlightEase = {};
+    if (hasStartEase(src)) { out.s0 = +(src.s0 ?? 0.1); out.s1 = +(src.s1 ?? 0.2); out.slow = +(src.slow ?? 0.25); }
+    if (hasEndEase(src)) { out.e0 = +(src.e0 ?? 0.1); out.e1 = +(src.e1 ?? 0.2); out.slowEnd = +(src.slowEnd ?? 0.25); }
+    return hasStartEase(out) || hasEndEase(out) ? out : null;
+  });
+}
+/** Anything that isn't a number becomes null = "face along the travel direction". */
+function normalizeHeadings(v: unknown): (number | null)[] {
+  return Array.isArray(v) ? (v as unknown[]).map((h) => (typeof h === 'number' ? h : null)) : [];
+}
+/** The ONLY two keys a phone override may carry; anything else in the JSON is dropped. */
+function normalizeMobileCfg(v: unknown): MobileCfg {
+  if (!v || typeof v !== 'object') return {};
+  const m = v as Record<string, unknown>;
+  const out: MobileCfg = {};
+  if (Array.isArray(m.cameras) && m.cameras.length) out.cameras = m.cameras as CamStop[];
+  if (Array.isArray(m.subCams)) out.subCams = (m.subCams as (SubCam[] | null)[]).map((x) => x ?? []);
+  return out;
+}
 
 /** Read the drivable subset of bullMapData.mapConfig, falling back per-field. */
 function readMapCfg(d: unknown): MapCfg {
@@ -332,9 +409,23 @@ function readMapCfg(d: unknown): MapCfg {
   const weights = Array.isArray(mc.weights) && mc.weights.length ? (mc.weights as number[]) : cameras.map(() => 1);
   const subCams = Array.isArray(mc.subCams) ? (mc.subCams as SubCam[][]) : [];
   const bull = mc.bull as { scale?: number; headings?: (number | null)[] } | undefined;
-  const headings = Array.isArray(bull?.headings) ? bull!.headings! : cameras.map(() => null);
+  const headings = Array.isArray(bull?.headings) ? normalizeHeadings(bull!.headings) : cameras.map(() => null);
   const bullScale = typeof bull?.scale === 'number' ? bull!.scale! : DEFAULT_BULL_SCALE;
-  return { cameras, weights, subCams, headings, bullScale };
+  const follow = Array.isArray(mc.follow) && mc.follow.length ? (mc.follow as number[]) : [];
+  const diveFollow = typeof mc.diveFollow === 'number' ? mc.diveFollow : 1;
+  const dwellPx = normalizeDwellPx(mc.dwellPx, weights.length);
+  const flightEase = normalizeFlightEase(mc.flightEase);
+  return { cameras, weights, subCams, follow, diveFollow, dwellPx, flightEase, headings, bullScale };
+}
+
+/** Apply the phone override — whole arrays, framing only (see MobileCfg). */
+function withMobileCfg(cfg: MapCfg, mobile: MobileCfg, isMobile: boolean): MapCfg {
+  if (!isMobile) return cfg;
+  return {
+    ...cfg,
+    cameras: mobile.cameras ?? cfg.cameras,
+    subCams: mobile.subCams ?? cfg.subCams,
+  };
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -358,6 +449,14 @@ const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 
  *  every framing authored around the centre was shoved toward (and past) the right edge.
  *  That is why the bull was on screen less than in his. Restore by putting that expression
  *  back as `left`. */
+/** Phone breakpoint for map FRAMING — the authoring engine's own number, and strictly
+ *  "less than": exactly 720 is desktop. Distinct from the project-wide 800px CSS
+ *  breakpoint, so it is spelled out here rather than borrowed. */
+const MAP_MOBILE_MAX = 720;
+/** Fraction of a flight over which `follow` ramps from 0 to its authored strength. */
+const FOLLOW_RAMP = 0.2;
+const isNarrowViewport = () => typeof window !== 'undefined' && window.innerWidth < MAP_MOBILE_MAX;
+
 const JOURNEY_PAD = { top: 80, right: 60, bottom: 80, left: 60 };
 const JOURNEY_PAD_NARROW = { top: 60, right: 30, bottom: 40, left: 30 };
 
@@ -388,10 +487,15 @@ const BULL_FOLLOW: { x0: number; x1: number; y0: number; y1: number; on: number;
 // the bull across the map about twice as fast as his does, so the journey is given twice his
 // room — 480 / 420 / 360 instead of 240 / 210 / 180. The `weights` still carry his rhythm;
 // only the total changed, so the legs keep their relative lengths.
-const LEGS_VH = 2 * 630;
+/** GLOBAL pace knob: multiplies the whole scrollable length uniformly, so flights, dwells
+ *  and the card ride all slow by the same factor and their proportions are preserved. It is
+ *  the authoring engine's own constant and must match it. The doubling used to be written
+ *  inline at each band (`2 * 630`), which is the same number said twice. */
+const PACE = 2;
+const LEGS_VH = PACE * 630;
 /** Scroll the "Bull's ROUTE" title holds before the journey starts — ours, standing in for
  *  his studio opener, which is why it carries that leg's 170vh (doubled with the rest). */
-const TITLE_BAND_VH = 2 * 170;
+const TITLE_BAND_VH = PACE * 170;
 /** Scroll a card takes to cross the screen. Held at what it has always been, so the
  *  plaques keep their on-screen speed no matter how the journey underneath is paced —
  *  it used to be pinned to BULL_SLOW, which tied card velocity to the bull's. */
@@ -435,8 +539,18 @@ const INTRO_MS = 500;
 // Zoom band over which street/district/POI labels fade out: full at the wide journey
 // stops, gone by the time the 3D buildings read as buildings rather than specks.
 const LABEL_FADE: [number, number] = [13.8, 14.8];
-const journeyOf = (sp: number) => Math.min(1, sp / (1 - DIVE_FRAC));
-const diveOf = (sp: number) => clamp((sp - (1 - DIVE_FRAC)) / DIVE_FRAC, 0, 1);
+/**
+ * Split of the chapter's 0..1 scroll into journey and dive.
+ *
+ * The dive keeps an ABSOLUTE length — DIVE_VH of scroll — so it is a fraction only once the
+ * section has been measured. That matters because the dwells add pixels to the section: a
+ * fixed fraction would have handed the dive a share of them and stretched it by a third,
+ * and the dive is ours, timed against the splat handoff, not part of the journey's pacing.
+ * `DIVE_FRAC` below stays as the design-time value for anything that needs a number before
+ * layout; the live split comes off `Pacing`.
+ */
+const journeyOf = (sp: number, p: Pacing) => Math.min(1, sp / (1 - p.diveFrac));
+const diveOf = (sp: number, p: Pacing) => clamp((sp - (1 - p.diveFrac)) / p.diveFrac, 0, 1);
 
 function stopAt(cameras: CamStop[], i: number) {
   return cameras[Math.max(0, Math.min(cameras.length - 1, i))];
@@ -459,67 +573,230 @@ function cameraAt(progress: number, cameras: CamStop[], subCams: SubCam[][]): Ca
   const last = cameras.length - 1;
   if (progress >= last) return stopAt(cameras, last);
   const i = Math.floor(progress);
-  const raw = progress - i; // 0..1 across this segment
+  const frac = progress - i; // 0..1 across this segment
   const a = stopAt(cameras, i), b = stopAt(cameras, i + 1);
+  // Keys at or beyond the endpoints are dropped, not clamped — a key pinned to 0 or 1
+  // would duplicate an endpoint and flatten the tangent there. The sort is stable, so
+  // keys authored at the SAME `at` keep their order, which is load-bearing: the NYSE leg
+  // has two at 0.02 and two at 0.03 and they read as one accelerating pull-out.
   const vias = (subCams[i + 1] ?? [])
-    .filter((v) => v && v.camera)
-    .map((v) => ({ at: clamp(v.at, 0, 1), cam: v.camera }))
+    .filter((v) => v && v.camera && v.at > 0 && v.at < 1)
     .sort((x, y) => x.at - y.at);
-  if (!vias.length) return blendCam(a, b, easeInOutCubic(raw));
-  const anchors = [{ at: 0, cam: a }, ...vias, { at: 1, cam: b }];
-  for (let k = 0; k < anchors.length - 1; k++) {
-    const a0 = anchors[k], a1 = anchors[k + 1];
-    if (raw <= a1.at || k === anchors.length - 2) {
-      const span = a1.at - a0.at || 1;
-      return blendCam(a0.cam, a1.cam, easeInOutCubic(clamp((raw - a0.at) / span, 0, 1)));
-    }
-  }
-  return blendCam(a, b, easeInOutCubic(raw));
+  if (!vias.length) return blendCam(a, b, easeInOutCubic(frac));
+  const keys = [{ at: 0, cam: a }, ...vias.map((v) => ({ at: v.at, cam: v.camera })), { at: 1, cam: b }];
+  // ONE ease across the whole segment, then a spline maps the eased progress through the
+  // interior keys. Easing each sub-leg on its own — which is what this used to do — zeroes
+  // the velocity at every keyframe and stutters. Note `at` is therefore compared against
+  // the EASED fraction, not the linear one: `at: 0.05` is 5% along the ease curve, ≈23% of
+  // the leg's scroll.
+  const e = easeInOutCubic(frac);
+  const ats = keys.map((k) => k.at);
+  const center: [number, number] = [
+    splineScalar(ats, keys.map((k) => k.cam.center[0]), e),
+    splineScalar(ats, keys.map((k) => k.cam.center[1]), e),
+  ];
+  const zoom = splineScalar(ats, keys.map((k) => k.cam.zoom), e);
+  const pitch = splineScalar(ats, keys.map((k) => k.cam.pitch), e);
+  // Bearing stays a shortest-arc lerp inside the bracketing pair: spline math is unsafe
+  // across the 0/360 wrap, and constant velocity within a leg still avoids a stop.
+  let k = 0;
+  while (k < keys.length - 2 && e > keys[k + 1].at) k++;
+  const bt = clamp((e - keys[k].at) / ((keys[k + 1].at - keys[k].at) || 1), 0, 1);
+  const bearing = lerpBearing(keys[k].cam.bearing, keys[k + 1].cam.bearing, bt);
+  return { center, zoom, pitch, bearing };
 }
 
 // Per-leg journey weights come from mapConfig.weights: the first weight is the
 // title→stop-0 intro dwell, the rest the scroll room of each inter-stop flight (the
 // long inter-borough legs get more so they aren't skipped). journey-space (0..1)
 // position of each stop, from the cumulative weights.
-function boundsOf(weights: number[]): number[] {
-  const total = weights.reduce((a, b) => a + b, 0) || 1;
-  const b = [0];
+
+/**
+ * Speed profile → scroll remap. `flightEase` states speed as a function of the fraction
+ * of the PATH covered, so the inverse question — "at this fraction of the SCROLL, how far
+ * along the path are we?" — has no closed form. Cost to reach path `p` is ∫₀ᵖ dp'/speed;
+ * tabulate it on a fixed grid, normalise, then invert by binary search.
+ *
+ * Copied from the authoring engine unchanged, down to the 512-sample grid and the 0.02
+ * speed floor (which keeps the integral finite) — a different grid gives a different
+ * curve, and matching this profile is the whole point of the field.
+ */
+const FLIGHT_REMAP_STEPS = 512;
+function flightSpeedRemap(x: number, prof: FlightEase): number {
+  const start = hasStartEase(prof), end = hasEndEase(prof);
+  if (!start && !end) return clamp(x, 0, 1);
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const s0 = clamp(prof.s0 ?? 0.1, 0, 1);
+  const s1 = clamp(prof.s1 ?? 0.2, s0, 1);
+  const slow = clamp(prof.slow ?? 0.25, 0.02, 1);
+  const e0 = clamp(prof.e0 ?? 0.1, 0, 1);
+  const e1 = clamp(prof.e1 ?? 0.2, e0, 1);
+  const slowEnd = clamp(prof.slowEnd ?? 0.25, 0.02, 1);
+  const a = 1 - e1, b = 1 - e0; // end ramp over [a,b], crawl over [b,1]
+  const speed = (p: number) => {
+    let f = 1;
+    if (start) {
+      if (p <= s0) f *= slow;
+      else if (p < s1) f *= slow + (1 - slow) * smoothstep((p - s0) / (s1 - s0 || 1));
+    }
+    if (end) {
+      if (p >= b) f *= slowEnd;
+      else if (p > a) f *= 1 + (slowEnd - 1) * smoothstep((p - a) / (b - a || 1));
+    }
+    return f < 0.02 ? 0.02 : f;
+  };
+  const M = FLIGHT_REMAP_STEPS;
+  const X = new Float64Array(M + 1);
+  let prev = 1 / speed(0);
+  for (let i = 1; i <= M; i++) {
+    const cur = 1 / speed(i / M);
+    X[i] = X[i - 1] + ((prev + cur) * 0.5) / M;
+    prev = cur;
+  }
+  const total = X[M];
+  if (!(total > 0)) return clamp(x, 0, 1);
+  for (let i = 1; i <= M; i++) X[i] /= total;
+  let lo = 0, hi = M;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (X[mid] <= x) lo = mid; else hi = mid;
+  }
+  const span = X[hi] - X[lo];
+  const frac = span > 0 ? (x - X[lo]) / span : 0;
+  return clamp((lo + frac) / M, 0, 1);
+}
+
+/**
+ * Value-continuous interpolation THROUGH keyframes at non-uniform positions: Hermite with
+ * finite-difference tangents, monotone-limited (Fritsch–Carlson) so a segment can never
+ * overshoot past its bracketing keys. Easing each sub-leg separately instead would zero
+ * the velocity at every keyframe and stutter.
+ */
+function splineScalar(ats: number[], vs: number[], e: number): number {
+  const n = ats.length;
+  if (n === 1) return vs[0];
+  let j = 0;
+  while (j < n - 2 && e > ats[j + 1]) j++;
+  const t0 = ats[j], t1 = ats[j + 1];
+  const h = t1 - t0 || 1;
+  const s = clamp((e - t0) / h, 0, 1);
+  const p0 = vs[j], p1 = vs[j + 1];
+  const secant = (k: number) => (vs[k + 1] - vs[k]) / ((ats[k + 1] - ats[k]) || 1);
+  const tangent = (k: number): number => {
+    if (k <= 0) return secant(0);
+    if (k >= n - 1) return secant(n - 2);
+    const dl = secant(k - 1), dr = secant(k);
+    if (dl * dr <= 0) return 0; // local extremum → don't fly past it
+    const est = (vs[k + 1] - vs[k - 1]) / ((ats[k + 1] - ats[k - 1]) || 1);
+    const lim = 3 * Math.min(Math.abs(dl), Math.abs(dr));
+    return Math.sign(dl) * Math.min(Math.abs(est), lim);
+  };
+  const m0 = tangent(j) * h;
+  const m1 = tangent(j + 1) * h;
+  const s2 = s * s, s3 = s2 * s;
+  return (2 * s3 - 3 * s2 + 1) * p0 + (s3 - 2 * s2 + s) * m0 + (-2 * s3 + 3 * s2) * p1 + (s3 - s2) * m1;
+}
+
+/**
+ * A band is FLIGHT then HOLD. Dwells are absolute pixels of scroll, so they are subtracted
+ * from the journey first and only the remainder is split between flights by `weights` —
+ * longer dwells shorten every flight but keep their proportions. `dwellPx` is multiplied
+ * by PACE here because the section height pays for it with PACE too.
+ *
+ * This replaces a hold expressed as a FRACTION of each band (0.32 either side). That number
+ * came from ChartsChapter's hold model, not from the map at all; a fraction also makes the
+ * reading pause scale with the leg, when what a reader needs is a fixed amount of scroll.
+ */
+type JourneyBand = { flightStart: number; holdStart: number; holdEnd: number; flightWidth: number };
+function journeyBands(weights: number[], dwellPx: number[], scrollablePx: number, diveFrac: number): JourneyBand[] {
+  const N = weights.length;
+  const journeyPx = scrollablePx * (1 - diveFrac);
+  const holds: number[] = [];
+  let sumHold = 0;
+  for (let k = 1; k <= N; k++) {
+    const w = journeyPx > 0 ? ((dwellPx[k - 1] ?? DEFAULT_DWELL_PX) * PACE) / journeyPx : 0;
+    holds[k] = w; sumHold += w;
+  }
+  const flightTotal = Math.max(0, 1 - sumHold);
+  const W = weights.reduce((a, b) => a + b, 0) || 1;
+  const bands: JourneyBand[] = [];
   let acc = 0;
-  for (const w of weights) { acc += w; b.push(acc / total); }
-  return b;
+  for (let k = 1; k <= N; k++) {
+    const fw = flightTotal * (weights[k - 1] / W);
+    const flightStart = acc; acc += fw;
+    const holdStart = acc; acc += holds[k];
+    bands[k] = { flightStart, holdStart, holdEnd: acc, flightWidth: fw };
+  }
+  return bands;
 }
 
-/** How much of a leg the bull STANDS at a stop, each side. wallst-rodeo/map's own
- *  number: 32% at the departing stop, 32% at the arriving one, so only the middle 36%
- *  of the scroll is a flight. Without it the bull merely coasts through each landmark
- *  and the whole journey reads as one continuous drift. */
-const DWELL_HOLD_FRAC = 0.32;
-
-/** Hold · fly · hold, applied to the fractional part of a stop progress. */
-function dwelled(p: number): number {
-  const i = Math.floor(p), t = p - i;
-  if (t <= DWELL_HOLD_FRAC) return i;
-  if (t >= 1 - DWELL_HOLD_FRAC) return i + 1;
-  return i + (t - DWELL_HOLD_FRAC) / (1 - 2 * DWELL_HOLD_FRAC);
+/**
+ * journey 0..1 → continuous stop progress 0..N. Integer = parked, fractional = flying.
+ *
+ * `applyEase` is the split that is easy to miss: the BULL and its trail ride the eased
+ * fraction (it creeps along the authored speed profile), the CAMERA rides the LINEAR one,
+ * so its keyframes play against scroll. The profile reaches the camera only indirectly,
+ * through `follow` dragging the framing toward the bull's head.
+ */
+function stopProgress(jv: number, bands: JourneyBand[], flightEase: (FlightEase | null)[], applyEase = true): number {
+  const N = bands.length - 1;
+  const t = clamp(jv, 0, 1);
+  for (let k = 1; k <= N; k++) {
+    const b = bands[k];
+    if (t < b.holdStart) {
+      const x = b.flightWidth > 0 ? (t - b.flightStart) / b.flightWidth : 1;
+      const prof = applyEase ? flightEase[k - 1] : null;
+      return (k - 1) + (prof ? flightSpeedRemap(clamp(x, 0, 1), prof) : clamp(x, 0, 1));
+    }
+    if (t < b.holdEnd) return k;
+  }
+  return N;
 }
 
-// journey 0..1 → continuous stop progress 0..N over WEIGHTED bands. RAW — no dwell.
-// This is what the CARDS ride, and they must never stand still (see the cards loop);
-// the camera and everything pinned to the map read the dwelled version instead.
-function stopProgressWith(jv: number, bounds: number[]): number {
-  const N = bounds.length - 1;
-  let k = 0;
-  while (k < N - 1 && jv > bounds[k + 1]) k++;
-  const span = bounds[k + 1] - bounds[k] || 1;
-  return k + clamp((jv - bounds[k]) / span, 0, 1);
+/** Everything the progress functions need for the current viewport. The band geometry
+ *  depends on the live scroll length — dwells are absolute pixels — so this is rebuilt
+ *  whenever the section or the window is measured, not computed once. */
+type Pacing = { bands: JourneyBand[]; flightEase: (FlightEase | null)[]; diveFrac: number };
+function pacingOf(cfg: MapCfg, scrollablePx: number): Pacing {
+  // DIVE_VH of viewport height, as a share of the measured scroll — so the dive keeps its
+  // authored length whatever the dwells add. Falls back to the design-time constant until
+  // the section has a size.
+  const divePx = typeof window !== 'undefined' ? (DIVE_VH / 100) * window.innerHeight : 0;
+  const diveFrac = scrollablePx > 0 && divePx > 0 ? clamp(divePx / scrollablePx, 0.01, 0.9) : DIVE_FRAC;
+  return {
+    bands: journeyBands(cfg.weights, cfg.dwellPx, scrollablePx, diveFrac),
+    flightEase: cfg.flightEase,
+    diveFrac,
+  };
 }
 
-/** Stop progress the CAMERA and everything pinned to the map ride: weighted bands with
- *  the dwell in them, so the bull genuinely parks at each landmark. */
-const camProgress = (sj: number, bounds: number[]) =>
-  dwelled(stopProgressWith(journeyOf(sj), bounds));
-/** …shifted to LOCATION space (0…N−1): stop 0 is the title dwell and has no camera. */
-const camLocation = (sj: number, bounds: number[]) => Math.max(0, camProgress(sj, bounds) - 1);
+/** Stop progress the CAMERA rides: LINEAR inside each flight, so the authored keyframes
+ *  play against scroll. Stop space 0..N — our camera list starts one before the first
+ *  location, camera 0 framing the studio the title plays over. */
+const camProgress = (sj: number, p: Pacing) =>
+  stopProgress(journeyOf(sj, p), p.bands, p.flightEase, false);
+/** Location progress the BULL and its trail ride: EASED by flightEase, then shifted into
+ *  location space (0…N−1) — the bull only exists from the foundry on. */
+const camLocation = (sj: number, p: Pacing) =>
+  Math.max(0, stopProgress(journeyOf(sj, p), p.bands, p.flightEase, true) - 1);
+/** What the CARDS ride. Same bands, but a card must never park: it crosses the screen
+ *  through the flight AND the hold as one continuous run, because in the source engine the
+ *  cards are ordinary sections scrolling in flow at 1:1 and the dwell lives only in the
+ *  camera. Derived from the bands rather than a parallel mapping, so text cannot drift
+ *  away from the camera. */
+function cardProgress(sj: number, p: Pacing): number {
+  const jv = clamp(journeyOf(sj, p), 0, 1);
+  const N = p.bands.length - 1;
+  for (let k = 1; k <= N; k++) {
+    const b = p.bands[k];
+    if (jv < b.holdEnd) {
+      const span = b.holdEnd - b.flightStart || 1;
+      return (k - 1) + clamp((jv - b.flightStart) / span, 0, 1);
+    }
+  }
+  return N;
+}
 
 // ── Building x-ray (ported from wallst-rodeo/map) ─────────────────────────────
 // Foreground structures around the NYSE close-up are moved to a translucent
@@ -539,6 +816,32 @@ const BUILDING_RAMP: ExpressionSpecification = [
   0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3',
 ];
 const BUILDING_NYSE = '#d4a52a';
+
+/**
+ * Which features of the `building` source-layer get extruded — and THE reason the walls
+ * stopped shimmering.
+ *
+ * That layer carries three overlapping things: whole buildings, their `building:part`
+ * pieces (tied back by `building_id`) and plain footprints. Where a building has parts the
+ * tile marks the PARENT `extrude: "false"`, because the parts carry the real geometry.
+ * Selecting on `has height` alone drew both, so a parent's volume and its parts' volumes
+ * shared the same lower walls: two coplanar surfaces at one depth, and the depth test picks
+ * a different winner per pixel as the camera moves. That is the flicker.
+ *
+ * Measured on the NYSE close-up before the fix: 928 extrusions in frame, 87 of them flagged
+ * not-to-extrude, 645 of them `building:part`. Ids are NOT unique across a parent and its
+ * parts, which is why the x-ray layer has to carry this condition too — an id set alone
+ * would pull the non-extrude parent back in.
+ *
+ * One constant, because the same selection is needed in four places (both layers and both
+ * branches of the x-ray filter) and they must not drift apart.
+ */
+const BUILDING_FILTER: FilterSpecification = [
+  'all',
+  ['==', ['get', 'extrude'], 'true'],
+  ['has', 'height'],
+  ['!=', ['get', 'underground'], 'true'],
+];
 /** Foreground structures moved to the see-through sister layer around the NYSE close-up. */
 const BUILDING_FADE = '#5f6878';
 
@@ -674,9 +977,58 @@ export default function MapChapter({
   // Bundled map copy + camera config (src/data/bullMapData.json) — no fetch.
   const [steps] = useState<Step[]>(() => (bullMapData.steps ?? []) as Step[]);
   const [landmarks] = useState<Landmark[]>(() => (bullMapData.landmarks ?? []) as Landmark[]);
-  const [cfg] = useState<MapCfg>(() => readMapCfg(bullMapData));
+  const [baseCfg] = useState<MapCfg>(() => readMapCfg(bullMapData));
+  const [mobileCfg] = useState<MobileCfg>(
+    () => normalizeMobileCfg((bullMapData as { mapConfig?: { mobile?: unknown } }).mapConfig?.mobile),
+  );
+  // Phone framing is a whole-array override of cameras/subCams only; every timing field is
+  // inherited (see MobileCfg). Re-resolved on resize AND orientationchange, because a
+  // breakpoint crossing with no scroll would otherwise leave the old framing on screen.
+  const [isNarrow, setIsNarrow] = useState(isNarrowViewport);
+  useEffect(() => {
+    const onResize = () => setIsNarrow(isNarrowViewport());
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+  const cfg = useMemo(() => withMobileCfg(baseCfg, mobileCfg, isNarrow), [baseCfg, mobileCfg, isNarrow]);
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
+  // Band geometry depends on the LIVE scroll length, because dwells are absolute pixels —
+  // so it is measured, not computed once. Held in a ref so the per-frame loops read the
+  // current geometry without a resize tearing down the map or the deck.gl overlay.
+  const pacingRef = useRef<Pacing>(pacingOf(cfg, 0));
+  /** Last published bull trail head — what `follow` drags the camera centre toward. */
+  const lastBullHeadRef = useRef<LngLat | null>(null);
+  /** The dwells pay for themselves in the section height. Without this the holds are carved
+   *  out of the same scroll the flights were promised and every leg runs short — the vh
+   *  bands above would stop delivering the length their weights say. Added RAW, not scaled
+   *  up by the dive's share: the dive takes its own absolute DIVE_VH off the top (see
+   *  pacingOf), so every one of these pixels lands in the journey where it belongs. */
+  const dwellSumPx = useMemo(
+    () => Math.round(cfg.dwellPx.reduce((a, b) => a + (b || 0), 0) * PACE),
+    [cfg.dwellPx],
+  );
+  useEffect(() => {
+    const measure = () => {
+      const el = sectionRef.current;
+      const px = el ? Math.max(1, el.offsetHeight - window.innerHeight) : 0;
+      pacingRef.current = pacingOf(cfgRef.current, px);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    const ro = sectionRef.current ? new ResizeObserver(measure) : null;
+    if (ro && sectionRef.current) ro.observe(sectionRef.current);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+      ro?.disconnect();
+    };
+  }, [cfg]);
   const [err, setErr] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -712,7 +1064,7 @@ export default function MapChapter({
     mapboxToken = token;
     mapboxgl.accessToken = token;
 
-    const padding = window.innerWidth < 720 ? JOURNEY_PAD_NARROW : JOURNEY_PAD;
+    const padding = isNarrowViewport() ? JOURNEY_PAD_NARROW : JOURNEY_PAD;
     const v0 = stopAt(cfgRef.current.cameras, 0);
     const { antialias, maxTileCacheSize } = glQuality();
     // withCappedDpr: Mapbox sizes its drawing buffer straight off devicePixelRatio
@@ -764,7 +1116,7 @@ export default function MapChapter({
           map.addLayer({
             id: 'building-3d', source: 'composite', 'source-layer': 'building',
             type: 'fill-extrusion', minzoom: 12,
-            filter: ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']],
+            filter: BUILDING_FILTER,
             paint: {
               'fill-extrusion-color': BUILDING_RAMP,
               'fill-extrusion-height': ['get', 'height'],
@@ -848,7 +1200,6 @@ export default function MapChapter({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || steps.length < 2) return;
-    const bounds = boundsOf(cfg.weights);
     let cancelled = false;
     let raf = 0;
     let overlay: InstanceType<DeckLayers['MapboxOverlay']> | null = null;
@@ -897,7 +1248,7 @@ export default function MapChapter({
       let lastProg = -1;
       const loop = () => {
         if (visible) {
-          const prog = camLocation(playhead.get(), bounds);
+          const prog = camLocation(playhead.get(), pacingRef.current);
           // Only rebuild deck.gl layers when the playhead actually moved — a reader parked
           // on the map otherwise reconstructs every Scatterplot/Path/Scenegraph each frame.
           if (prog !== lastProg) { lastProg = prog; overlay!.setProps({ layers: buildMarkerLayers(DL, prog, steps, routes, cfg.headings, cfg.bullScale) }); }
@@ -924,7 +1275,6 @@ export default function MapChapter({
     const map = mapRef.current;
     const host = mapHostRef.current;
     if (!map || !mapReady || !host || !landmarks.length) return;
-    const bounds = boundsOf(cfg.weights);
 
     const layer = document.createElement('div');
     layer.className = 'mc-poi-layer';
@@ -963,11 +1313,11 @@ export default function MapChapter({
     // so labels never stick to / collide at the edge during wide pans or the dive.
     const EDGE_M = 64;
     const update = () => {
-      const sp = camProgress(playhead.get(), bounds);
+      const sp = camProgress(playhead.get(), pacingRef.current);
       // POIs belong to the wide journey — fade them ALL out on the dive so none linger or
       // slide to the edge while the camera zooms into the bull (progress freezes at the
       // last stop during the dive, which otherwise pins them at full opacity).
-      const diveFade = 1 - smoothstep(clamp(diveOf(playhead.get()) / 0.25, 0, 1));
+      const diveFade = 1 - smoothstep(clamp(diveOf(playhead.get(), pacingRef.current) / 0.25, 0, 1));
       const W = host.clientWidth, H = host.clientHeight;
       for (const { lm, el } of items) {
         const p = map.project([lm.lng, lm.lat]);
@@ -1000,7 +1350,6 @@ export default function MapChapter({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !map.getLayer('building-3d')) return;
-    const bounds = boundsOf(cfg.weights);
 
     // Clear any stale nyse/faded feature-state from a previous run/HMR so we don't keep
     // a wrongly-tagged fragment (e.g. a yellow growth on a neighbouring building).
@@ -1028,7 +1377,7 @@ export default function MapChapter({
         map.addLayer({
           id: 'building-3d-fade', source: 'composite', 'source-layer': 'building',
           type: 'fill-extrusion', minzoom: 13,
-          filter: ['in', ['id'], ['literal', []]],
+          filter: ['all', BUILDING_FILTER, ['in', ['id'], ['literal', []]]],
           paint: {
             'fill-extrusion-color': BUILDING_FADE,
             'fill-extrusion-height': ['get', 'height'],
@@ -1046,7 +1395,7 @@ export default function MapChapter({
     const nyseTops = new Set<number>();
     const fadedIds = new Set<string | number>();
     // location-progress (Foundry=0…Bowling=3): stop 0 is the title dwell, so subtract 1.
-    let cachedProgress = camLocation(playhead.get(), bounds);
+    let cachedProgress = camLocation(playhead.get(), pacingRef.current);
 
     // Only re-apply the layer filters when the fade state or the tagged-id set actually
     // changes — NOT every scroll frame. Calling setFilter each frame forces Mapbox to
@@ -1060,11 +1409,11 @@ export default function MapChapter({
       lastFilterKey = key;
       try {
         if (active) {
-          map.setFilter('building-3d', ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true'], ['!', ['in', ['id'], ['literal', ids]]]] as FilterSpecification);
-          map.setFilter('building-3d-fade', ['in', ['id'], ['literal', ids]] as FilterSpecification);
+          map.setFilter('building-3d', ['all', BUILDING_FILTER, ['!', ['in', ['id'], ['literal', ids]]]] as FilterSpecification);
+          map.setFilter('building-3d-fade', ['all', BUILDING_FILTER, ['in', ['id'], ['literal', ids]]] as FilterSpecification);
         } else {
-          map.setFilter('building-3d', ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']] as FilterSpecification);
-          map.setFilter('building-3d-fade', ['in', ['id'], ['literal', []]] as FilterSpecification);
+          map.setFilter('building-3d', BUILDING_FILTER);
+          map.setFilter('building-3d-fade', ['all', BUILDING_FILTER, ['in', ['id'], ['literal', []]]] as FilterSpecification);
         }
       } catch { /* layer/style transient */ }
     };
@@ -1144,7 +1493,7 @@ export default function MapChapter({
     map.on('sourcedata', onSourceData);
 
     const onPlayhead = () => {
-      cachedProgress = camLocation(playhead.get(), bounds);
+      cachedProgress = camLocation(playhead.get(), pacingRef.current);
       updateFilters();
     };
     onPlayhead();
@@ -1169,7 +1518,6 @@ export default function MapChapter({
     let punchT0 = -1;
     let punchFired = false;
     let punchRaf = 0;
-    const bounds = boundsOf(cfg.weights);
     const apply = () => {
       const map = mapRef.current;
       if (!map) return;
@@ -1187,14 +1535,14 @@ export default function MapChapter({
       // the foundry. The BULL still rides location progress — it only exists from the
       // foundry on. (This used to read camLocation, which pinned the whole journey one
       // camera early and left his last framing, Bowling Green, unreachable.)
-      const cam = cameraAt(camProgress(sj, bounds), cfg.cameras, cfg.subCams);
+      const cam = cameraAt(camProgress(sj, pacingRef.current), cfg.cameras, cfg.subCams);
       // dive: zoom into the last stop (where the bull stands), rotate CCW and tilt
       // up toward the horizon so the framing lands on the bull-scene viewpoint.
-      const dive = easeInOutCubic(diveOf(sj));
+      const dive = easeInOutCubic(diveOf(sj, pacingRef.current));
 
       // Fire the intro punch once, when the title starts dissolving into the map.
-      const revealProg = camProgress(sj, bounds);
-      if (!punchFired && diveOf(sj) === 0 && revealProg > 0.45) {
+      const revealProg = camProgress(sj, pacingRef.current);
+      if (!punchFired && diveOf(sj, pacingRef.current) === 0 && revealProg > 0.45) {
         punchFired = true;
         punchT0 = performance.now();
         const tick = () => {
@@ -1218,9 +1566,29 @@ export default function MapChapter({
       // reveal window (same easeInOutCubic + [0.26,0.80] window as the bull's orbit) so the
       // map spins in LOCKSTEP with the revealed bull instead of slower / across the whole dive.
       const panE = smoothstep(clamp(dive / 0.45, 0, 1));
-      const rotE = easeInOutCubic(clamp((diveOf(sj) - REVEAL_DIVE_FROM) / REVEAL_DIVE_SPAN, 0, 1));
-      let center: [number, number] = [lerp(cam.center[0], bull[0], panE), lerp(cam.center[1], bull[1], panE)];
-      const isNarrow = window.innerWidth < 720;
+      const rotE = easeInOutCubic(clamp((diveOf(sj, pacingRef.current) - REVEAL_DIVE_FROM) / REVEAL_DIVE_SPAN, 0, 1));
+      // follow: on the leg INTO a stop, drag the authored framing toward the bull's live
+      // trail head. Only `center` is blended — zoom/pitch/bearing keep their keyframes.
+      // Indexed by DESTINATION stop, like subCams. Ramped over the first 20% of the flight
+      // and zero while parked, otherwise the dwell before a leg would already be pulling at
+      // full strength and the camera would jump the moment a head is first published. Off
+      // entirely during the dive, which does its own aiming below. The head is last frame's
+      // — the trail is computed after this — which is what makes follow the one channel a
+      // flightEase profile reaches the camera through.
+      const camProg = camProgress(sj, pacingRef.current);
+      const flightFrac = camProg - Math.floor(camProg);
+      const seg = clamp(Math.floor(camProg), 0, cfg.follow.length - 1);
+      const followAmt = (cfg.follow[seg] ?? 0) * smoothstep(clamp(flightFrac / FOLLOW_RAMP, 0, 1));
+      const followHead = lastBullHeadRef.current;
+      const framed: [number, number] = followAmt > 0 && followHead && diveOf(sj, pacingRef.current) === 0
+        ? [lerp(cam.center[0], followHead[0], followAmt), lerp(cam.center[1], followHead[1], followAmt)]
+        : cam.center;
+      // The dive aims at the bull's ACTUAL coordinate rather than the authored centre —
+      // the framings deliberately keep it off-centre, and diveFollow scales how far the
+      // dive undoes that. 0 still zooms and rotates, it just doesn't re-aim.
+      const aim = panE * clamp(cfg.diveFollow, 0, 1);
+      let center: [number, number] = [lerp(framed[0], bull[0], aim), lerp(framed[1], bull[1], aim)];
+      const isNarrow = isNarrowViewport();
       const zoom = cam.zoom + DIVE_ZOOM * dive + introZoom;
       const pitch = Math.min(85, cam.pitch + DIVE_PITCH * dive);
       const bearing = cam.bearing + DIVE_BEARING * rotE;
@@ -1228,8 +1596,8 @@ export default function MapChapter({
       map.jumpTo({ center, zoom, pitch, bearing });
 
       // Journey bull head (same trail tip the 3D marker uses) — for corridor clamp + debug.
-      const dv = diveOf(sj);
-      const locProg = camLocation(sj, bounds);
+      const dv = diveOf(sj, pacingRef.current);
+      const locProg = camLocation(sj, pacingRef.current);
       const routes = routesRef.current;
       const trail = routes.length ? computeTrailCoords(locProg, steps, routes) : [];
       let head: [number, number];
@@ -1248,6 +1616,9 @@ export default function MapChapter({
       } else {
         head = center;
       }
+      // Published for the NEXT frame's follow blend: the trail only exists once the camera
+      // has been placed, so follow is one frame behind by construction.
+      lastBullHeadRef.current = head;
 
       // Corridor clamp — OFF (BULL_FOLLOW = null). Kept intact behind the switch: it runs on
       // the LIVE trail-head (same tip as the 3D bull), not on authored keyframes, and its
@@ -1377,23 +1748,22 @@ export default function MapChapter({
   // step cards: only the active stop's card is shown; it fades in from the left
   // (~45px) and out the same way as the stop changes (no scroll-from-below).
   useEffect(() => {
-    const bounds = boundsOf(cfg.weights);
     const apply = () => {
       const sj = playhead.get(); // everything on the playhead so cards/fades dock too
       // RAW progress, deliberately: the camera dwells at every stop, the cards must not.
       // In the source engine the cards are ordinary sections scrolling in flow at 1:1 —
       // the dwell lives only in the camera — and this is how we get the same split.
-      const prog = stopProgressWith(journeyOf(sj), bounds);
+      const prog = cardProgress(sj, pacingRef.current);
       // title card is a STOP: the black HOLDS solid through stop 0 (title types on
       // a clean black screen) and only dissolves over stop 0→1, revealing the map.
       if (introRef.current) {
-        const d = clamp((camProgress(sj, bounds) - 0.45) / 0.55, 0, 1); // after the title dwell
+        const d = clamp((camProgress(sj, pacingRef.current) - 0.45) / 0.55, 0, 1); // after the title dwell
         introRef.current.style.opacity = (1 - d * d * (3 - 2 * d)).toFixed(3);
       }
       // Outro veil (standalone preview only): fades the map to black across the dive's
       // second half. In underlay mode the bull unfolds OVER the map instead.
       if (!revealUnderlay && outroRef.current) {
-        const melt = smoothstep(clamp((diveOf(sj) - 0.5) / 0.5, 0, 1));
+        const melt = smoothstep(clamp((diveOf(sj, pacingRef.current) - 0.5) / 0.5, 0, 1));
         outroRef.current.style.opacity = melt.toFixed(3);
       }
       // Cards ride bottom→top at CONSTANT velocity through their stop, pinned to the
@@ -1408,7 +1778,7 @@ export default function MapChapter({
       const REACH = CARD_TRAVEL_VH / (2 * (JOURNEY_VH / LEG_COUNT));
       const FADE = 0.15;   // fade only over the outer (off-screen) edges
       const lastCardIdx = steps.length - 1; // card i ↔ stop i+1, so the last card is i = N−1
-      const dive = diveOf(sj);
+      const dive = diveOf(sj, pacingRef.current);
       cardRefs.current.forEach((el, i) => {
         if (!el) return;
         // The FINAL card («A permanent home at Bowling Green») doesn't just sit there —
@@ -1452,7 +1822,7 @@ export default function MapChapter({
     <section
       ref={sectionRef}
       className="mc-section relative w-full bg-black"
-      style={{ height: `${CHAPTER_VH}vh` }}
+      style={{ height: `calc(${CHAPTER_VH}vh + ${dwellSumPx}px)` }}
     >
       <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
         {/* Hidden until the style is recoloured + labels hidden + buildings added

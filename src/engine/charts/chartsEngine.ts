@@ -20,7 +20,7 @@ import { BM_GEOM, BM_WICK_OF_BODY } from './blackMondayCandles';
 import { cappedDpr } from '../deviceBudget';
 import {
   GRID_DASH, BASE_LINE_W, TICK_BELOW, TICK_ABOVE, tickAlphaPct, tickAlphaAbs,
-  FILL_MAX, HALO_EM, HALO_HAIRLINE_EM, HATCH_ALPHA, hatchArea, inkText,
+  FILL_MAX, HATCH_ALPHA, hatchArea, inkText,
   LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, HOLD_THIN_ALPHA, END_DOT_R, END_DOT_R_FOCUS,
 } from './chartInk';
 
@@ -237,9 +237,10 @@ function drawMarkerTwoLine(
   font1: string, font2: string,
   maxRight?: number,
   above = false,
-  /** Halo width in em (see chartInk). 0 draws the bare glyphs. */
-  haloEm: number = HALO_EM,
   shiftDigits = 0,
+  /** Colour to knock the label out of. Empty ⇒ no halo — pass that wherever the ground
+   *  under the marker is NOT the flat theme background (see the call sites). */
+  ground: string = BG,
 ) {
   ctx.font = font2;
   const w2 = ctx.measureText(line2).width;
@@ -264,16 +265,15 @@ function drawMarkerTwoLine(
   ctx.fillStyle = CRISIS;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  // Two weights, both in the ground colour (see chartInk): the full KNOCKOUT for markers
-  // that sit ON the plotted line — the trough dates on the drawdown frames — and a thin
-  // OUTLINE for the crisis percentages on the price frames. Those hang above their peak,
-  // but the hatch runs under them and 2020's near-vertical recovery comes up right beside
-  // its label, so bare glyphs lose their edges; the 0.3 knockout in that seat just fattened
-  // the type into a slab, which is why it used to be off there entirely.
-  const ground = haloEm > 0 ? BG : '';
-  if (sign) inkText(ctx, sign, left - signW, base, font1, ground, haloEm);
-  inkText(ctx, body1, left, base, font1, ground, haloEm);
-  inkText(ctx, line2, left, base + MARK_STEP, font2, ground, haloEm);
+  // The knockout is painted in the GROUND, so it only works where the ground is the flat
+  // theme colour: the trough dates on the drawdown frames sit ON the plotted line, and the
+  // crisis percentages on the wide price frame have the hatch running under them. Where the
+  // callout disc has lifted the ground (a translucent white wash), the same knockout paints
+  // the un-lifted pink back over it and reads as a dark slab behind the type — so that seat
+  // passes '' and goes bare instead.
+  if (sign) inkText(ctx, sign, left - signW, base, font1, ground);
+  inkText(ctx, body1, left, base, font1, ground);
+  inkText(ctx, line2, left, base + MARK_STEP, font2, ground);
   ctx.lineWidth = 1;
 }
 
@@ -1145,10 +1145,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         ctx.fill();
         // Label above the peak (left of the drop) so it doesn’t cross the line.
         const drop = ((Y[iT] - Y[iP]) / Y[iP]) * 100;
+        // No knockout once the callout disc is up (the "Charging Bull" zoom): the disc
+        // washes the ground lighter, so a BG-coloured halo would paint the base pink back
+        // over it — a dark box behind the type. Gated on the same alpha the disc itself
+        // uses, so the two can never disagree about whether the disc is there.
         drawMarkerTwoLine(
           ctx, `${drop.toFixed(0)}%`, c.label,
-          sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK, xData1, true, HALO_HAIRLINE_EM,
-          c.labelShift ?? 0,
+          sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK, xData1, true,
+          c.labelShift ?? 0, bullAlpha > 0.02 ? '' : BG,
         );
       }
       ctx.restore();
@@ -1187,12 +1191,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       const labelX = xP + 8;
       const pLabelY = Math.min(y1 - 52, Math.max(y0 + (y1 - y0) * 0.72, yP - 52));
-      // The same hairline outline the pink frames' percentages carry (HALO_HAIRLINE_EM), in
-      // the themed ground — which on the invest views IS black, since themeK tracks
-      // investAlpha. These labels sit over the green hatch and, at the compare point, right
-      // on the series, so bare glyphs lose their edges exactly like the crisis marks did.
-      inkText(ctx, LBL.investArrow, labelX, pLabelY, FONT_INVEST_BOLD, BG, HALO_HAIRLINE_EM);
-      inkText(ctx, LBL.buyDate, labelX, pLabelY + 22, FONT_INVEST, BG, HALO_HAIRLINE_EM);
+      // The same knockout the markers carry, in the themed ground — which on the invest
+      // views IS black, since themeK tracks investAlpha. These labels sit over the green
+      // hatch and, at the compare point, right on the series.
+      inkText(ctx, LBL.investArrow, labelX, pLabelY, FONT_INVEST_BOLD, BG);
+      inkText(ctx, LBL.buyDate, labelX, pLabelY + 22, FONT_INVEST, BG);
       // End: "$4.85M" / real "$2.13M" bold over "February 2021", parked above the dot.
       // The two lines are flush LEFT against each other and the BLOCK is what clears the
       // dot (Desktop-46: both lines start at x=1031, the block's right edge stopping short
@@ -1215,10 +1218,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // the left edge too, so it slides instead of stepping as the text swaps.
       const endLeft = xC - 10 - lerp(Math.max(wNom, wDate), Math.max(wReal, wDate), mb);
       ctx.font = FONT_INVEST_BOLD;
-      if (mb < 0.999) { ctx.globalAlpha = investAlpha * (1 - mb); inkText(ctx, valNom, endLeft, yC - 28, FONT_INVEST_BOLD, BG, HALO_HAIRLINE_EM); }
-      if (mb > 0.001) { ctx.globalAlpha = investAlpha * mb; inkText(ctx, valReal, endLeft, yC - 28, FONT_INVEST_BOLD, BG, HALO_HAIRLINE_EM); }
+      if (mb < 0.999) { ctx.globalAlpha = investAlpha * (1 - mb); inkText(ctx, valNom, endLeft, yC - 28, FONT_INVEST_BOLD, BG); }
+      if (mb > 0.001) { ctx.globalAlpha = investAlpha * mb; inkText(ctx, valReal, endLeft, yC - 28, FONT_INVEST_BOLD, BG); }
       ctx.globalAlpha = investAlpha;
-      inkText(ctx, LBL.compareDate, endLeft, yC - 6, FONT_INVEST, BG, HALO_HAIRLINE_EM);
+      inkText(ctx, LBL.compareDate, endLeft, yC - 6, FONT_INVEST, BG);
       ctx.restore();
     }
 

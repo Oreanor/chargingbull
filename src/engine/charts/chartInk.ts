@@ -108,18 +108,12 @@ export function hatchArea(
 }
 
 /**
- * Halo widths, in em of the type they sit behind. Two, because they do two jobs:
- *
- * HALO_EM (0.3) — the mockup's KNOCKOUT: 4px behind 14px type, 6px behind 18px. It cuts a
- * hole in whatever the label crosses, for markers that sit ON the plotted line.
- *
- * HALO_HAIRLINE_EM (0.12) — a thin OUTLINE, not a knockout. For labels that hang in their
- * own space but still land on the hatch or near the series (the crisis percentages on the
- * pink price frames): just enough ground around the glyphs to keep the edges crisp, without
- * the 0.3 knockout's habit of fattening the type into a slab.
+ * Knockout halo width, in em of the type it sits behind: the mockup strokes 4px behind
+ * 14px type and 6px behind 18px. ONE weight for every label that carries a halo — the
+ * crisis percentages and the green invest labels briefly had a 0.12 hairline of their own,
+ * but a thin outline is not what those seats want, so there is nothing to choose between.
  */
-export const HALO_EM = 0.3;
-export const HALO_HAIRLINE_EM = 0.12;
+const HALO_EM = 0.3;
 const fontPx = (f: string) => parseFloat(/(\d+(?:\.\d+)?)px/.exec(f)?.[1] ?? '14');
 
 /**
@@ -130,12 +124,11 @@ export function inkText(
   ctx: CanvasRenderingContext2D,
   text: string, x: number, y: number,
   font: string, ground: string,
-  haloEm: number = HALO_EM,
 ) {
   ctx.font = font;
   // Empty ground = no halo at all: some labels hang in clear space and want bare glyphs.
   if (!ground) { ctx.fillText(text, x, y); return; }
-  ctx.lineWidth = fontPx(font) * haloEm;
+  ctx.lineWidth = fontPx(font) * HALO_EM;
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.strokeStyle = ground;
   ctx.strokeText(text, x, y);
