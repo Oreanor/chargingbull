@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } from 'mapbox-gl';
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
-import { glWindow } from './deviceBudget';
+import { glQuality, glWindow, noteGlLive, onGlEvict, requestGl, withCappedDpr } from './deviceBudget';
+import { markGl } from './glDiag';
 import bullMapData from '../data/bullMapData.json';
 import './MapChapter.css';
 // Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
@@ -44,8 +45,14 @@ type Landmark = {
   lat: number;
   visibleOnSteps: number[];
   /** Optional screen-space nudge [dx, dy] in px, applied AFTER projection — lets a
-   *  label step off its anchor (e.g. the park pill off the bull, which stands on it)
-   *  without moving the real lng/lat. */
+   *  label step off its anchor without moving the real lng/lat.
+   *
+   *  Every stop needs one wherever the travelling bull comes to rest, because the
+   *  bull ends its leg ON the stop's coordinate and the label is centred on that
+   *  same point. The default direction is DOWN: the models are drawn standing on
+   *  their ground point and rise above it on a pitched map, so the clear space is
+   *  always directly below. (Foundry and the NYPD lot use exactly that; the park
+   *  and NYSE step sideways instead, where the route itself runs underneath.) */
   offset?: [number, number];
 };
 
@@ -689,10 +696,13 @@ export default function MapChapter({
     let wanted = false; // the map is (still) wanted at this scroll position
     let alive = true;   // the component is mounted
     let teardown = () => {};
+    let cancelRequest = () => {}; // drops a pending GPU request (see requestGl)
 
     const createMap = async () => {
       if (wanted) return;
       wanted = true;
+      noteGlLive('map', true);
+      markGl('map', true);
     // Lazy-load mapbox-gl (and its CSS) only now — keeps ~1MB out of the initial bundle.
     const mapboxgl = (await import('mapbox-gl')).default;
     await import('mapbox-gl/dist/mapbox-gl.css');
@@ -704,16 +714,26 @@ export default function MapChapter({
 
     const padding = window.innerWidth < 720 ? JOURNEY_PAD_NARROW : JOURNEY_PAD;
     const v0 = stopAt(cfgRef.current.cameras, 0);
-    const map = new mapboxgl.Map({
+    const { antialias, maxTileCacheSize } = glQuality();
+    // withCappedDpr: Mapbox sizes its drawing buffer straight off devicePixelRatio
+    // and takes no option for it, so on a DPR-3 phone it allocates 1170×2532 ≈ 3
+    // megapixels. Capped to 2 that is 55% of the pixels; with `antialias` off on
+    // mobile as well, the framebuffer set drops from ~105 MB to ~15 MB. That pair
+    // is the single biggest item in the map's budget (see deviceBudget).
+    const map = withCappedDpr(() => new mapboxgl.Map({
       container: host,
       style: 'mapbox://styles/mapbox/dark-v11',
       center: v0.center, zoom: v0.zoom, pitch: v0.pitch, bearing: v0.bearing,
-      antialias: true, minZoom: 0.5, maxZoom: 20, projection: 'mercator',
+      // 3D extrusions make each cached tile hold a fat vertex buffer, and the cache
+      // is unbounded by default — on the dive through five stops that alone ran into
+      // three digits of megabytes.
+      maxTileCacheSize,
+      antialias, minZoom: 0.5, maxZoom: 20, projection: 'mercator',
       // Non-interactive: the camera is fully scroll-driven, so the reader can't drag/pan/
       // zoom the map, and (without the mapboxgl-interactive class) the cursor stays a plain
       // arrow instead of the grab hand. The hand belongs on the bull splat, not here.
       interactive: false,
-    });
+    }));
     mapRef.current = map;
     map.setPadding(padding);
     map.scrollZoom.disable();   // wheel scrolls the page, not the map
@@ -761,8 +781,11 @@ export default function MapChapter({
       customizeBaseStyle(map);
       setMapReady(true);
 
-      // now the painter exists → safe to resize on container changes / scroll-in
-      const safeResize = () => { try { map.resize(); } catch { /* not ready */ } };
+      // now the painter exists → safe to resize on container changes / scroll-in.
+      // Mapbox re-reads devicePixelRatio on every resize, so the cap has to hold
+      // here too — otherwise the first rotate/URL-bar reflow re-inflates the
+      // drawing buffer back to full DPR and undoes the saving above.
+      const safeResize = () => { try { withCappedDpr(() => map.resize()); } catch { /* not ready */ } };
       ro = new ResizeObserver(safeResize); ro.observe(host);
       io = new IntersectionObserver((ents) => { if (ents.some((x) => x.isIntersecting)) safeResize(); });
       io.observe(host);
@@ -772,27 +795,42 @@ export default function MapChapter({
       teardown = () => { ro?.disconnect(); io?.disconnect(); map.remove(); mapRef.current = null; setMapReady(false); };
     };
 
-    /** Give the Mapbox context (and deck.gl's canvas on top of it) back. */
+    /** Give the Mapbox context (and, on desktop, deck.gl's own canvas) back. */
     const release = () => {
       if (!wanted) return;
       wanted = false;
+      cancelRequest();
+      cancelRequest = () => {};
       teardown();
       teardown = () => {};
+      noteGlLive('map', false);
+      markGl('map', false);
     };
 
     // Desktop creates well ahead (~5 viewports) so the map is loaded by the time the
     // title card is reached, and keeps it for good. The section is many viewports
     // tall, so 500% means "from the top of the page": on a phone that would hold a
-    // Mapbox context alongside the opener's canvases for the whole opener. So mobile
-    // gets one viewport of lead (still the whole intro card + first leg to load in)
-    // AND a release once the chapter is 1.5 viewports behind — otherwise the map,
-    // deck.gl and the splat are all still resident when the charts mount, which is
-    // where the tab was dying halfway down the page (see deviceBudget).
+    // Mapbox context alongside the opener's canvases for the whole opener.
+    //
+    // Mobile does not lead by distance at all. requestGl frees the opener first and
+    // grants only once it is actually gone, so building starts at the section edge —
+    // and the lead time comes from the chapter itself instead: the "Bull's ROUTE"
+    // title card holds opaque black over the map for the whole of stop 0 (it starts
+    // dissolving at 45% of the first leg), which is far more than the map needs to
+    // style and draw its first tiles. The context is also handed back once the
+    // chapter is 1.5 viewports behind, so the charts half of the article doesn't run
+    // on top of a resident map + splat.
     const { mountMargin, unmountMargin } = glWindow('map');
+    // …and hand it back early when a block outside the journey group (the charts)
+    // claims the GPU, even if this section is still inside its margins.
+    const unregister = onGlEvict('map', release);
     const vh = (n: number) => `${n * 100}% 0px`;
     const observers = [
       new IntersectionObserver(
-        (ents) => { if (ents.some((x) => x.isIntersecting)) void createMap(); },
+        (ents) => {
+          if (!ents.some((x) => x.isIntersecting)) return;
+          cancelRequest = requestGl('map', () => { void createMap(); });
+        },
         { rootMargin: vh(mountMargin) },
       ),
     ];
@@ -803,7 +841,7 @@ export default function MapChapter({
       ));
     }
     observers.forEach((o) => o.observe(section));
-    return () => { alive = false; observers.forEach((o) => o.disconnect()); teardown(); };
+    return () => { alive = false; cancelRequest(); unregister(); observers.forEach((o) => o.disconnect()); teardown(); noteGlLive('map', false); };
   }, []);
 
   // deck.gl overlay: trail + stops + 3D bull moving along the fetched route.
@@ -844,7 +882,17 @@ export default function MapChapter({
       const routes = await fetchAllRoutes(steps);
       if (cancelled || !mapRef.current) return;
       routesRef.current = routes;
-      overlay = new DL.MapboxOverlay({ interleaved: false, layers: buildMarkerLayers(DL, 0, steps, routes, cfg.headings, cfg.bullScale) });
+      // Stays NON-interleaved, on its own canvas, on every viewport. Interleaving
+      // would save a drawing buffer and a context slot on mobile — worth having —
+      // but sharing Mapbox's depth buffer occludes the trail behind the 3D
+      // extrusions even with NO_DEPTH set, and the route is meant to read OVER the
+      // city, not weave through it. Measured (scripts/gl-residency.mjs), the extra
+      // canvas is ~1.3 Mpx and the journey still peaks well inside budget, so the
+      // saving does not buy enough to change how the chapter looks.
+      overlay = new DL.MapboxOverlay({
+        interleaved: false,
+        layers: buildMarkerLayers(DL, 0, steps, routes, cfg.headings, cfg.bullScale),
+      });
       map.addControl(overlay);
       let lastProg = -1;
       const loop = () => {

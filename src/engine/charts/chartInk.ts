@@ -34,10 +34,24 @@ export const tickAlphaPct = (k: number, n: number) =>
 export const tickAlphaAbs = (k: number) => Math.min(1, 0.25 + k * 0.15); // price frames (43/36)
 
 /** Series weights. The stretch the frame is ABOUT is thick; whatever runs behind it is
- *  thin and stepped back to THIN_ALPHA — it is context, not a second subject. */
+ *  thin and stepped back — it is context, not a second subject. */
 export const LINE_W_THICK = 4;
 export const LINE_W_THIN = 2;
+
+/**
+ * How far a thin series steps back. The frames use TWO values for two different jobs, so
+ * this is two constants — collapsing them to one is what put the calculator's run-up at
+ * the wrong weight.
+ *
+ * THIN_ALPHA (0.6, Desktop-39) — a thin series carrying the plot on its own, with no
+ * highlighted stretch competing for attention. It is still the subject, just drawn light.
+ *
+ * HOLD_THIN_ALPHA (0.3, Desktop-43 · 46 · 47) — the SAME series either side of a thick
+ * highlighted hold. Here it is pure context and drops much further back, so the held
+ * stretch is unambiguously the thing being shown.
+ */
 export const THIN_ALPHA = 0.6;
+export const HOLD_THIN_ALPHA = 0.3;
 
 /** Endpoint dots. The focused/last point is the big one (Desktop-40: r7 against r5). */
 export const END_DOT_R = 5;
@@ -93,8 +107,19 @@ export function hatchArea(
   ctx.restore();
 }
 
-/** Knockout halo width: the mockup strokes 4px behind 14px type and 6px behind 18px. */
-const HALO_EM = 0.3;
+/**
+ * Halo widths, in em of the type they sit behind. Two, because they do two jobs:
+ *
+ * HALO_EM (0.3) — the mockup's KNOCKOUT: 4px behind 14px type, 6px behind 18px. It cuts a
+ * hole in whatever the label crosses, for markers that sit ON the plotted line.
+ *
+ * HALO_HAIRLINE_EM (0.12) — a thin OUTLINE, not a knockout. For labels that hang in their
+ * own space but still land on the hatch or near the series (the crisis percentages on the
+ * pink price frames): just enough ground around the glyphs to keep the edges crisp, without
+ * the 0.3 knockout's habit of fattening the type into a slab.
+ */
+export const HALO_EM = 0.3;
+export const HALO_HAIRLINE_EM = 0.12;
 const fontPx = (f: string) => parseFloat(/(\d+(?:\.\d+)?)px/.exec(f)?.[1] ?? '14');
 
 /**
@@ -105,11 +130,12 @@ export function inkText(
   ctx: CanvasRenderingContext2D,
   text: string, x: number, y: number,
   font: string, ground: string,
+  haloEm: number = HALO_EM,
 ) {
   ctx.font = font;
-  // Empty ground = no knockout: some labels hang in clear space and want the bare glyphs.
+  // Empty ground = no halo at all: some labels hang in clear space and want bare glyphs.
   if (!ground) { ctx.fillText(text, x, y); return; }
-  ctx.lineWidth = fontPx(font) * HALO_EM;
+  ctx.lineWidth = fontPx(font) * haloEm;
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.strokeStyle = ground;
   ctx.strokeText(text, x, y);

@@ -81,8 +81,10 @@ const CARD_STEPS = CHART_STEPS
 
 export default function ChartsChapter() {
   // Series is bundled (no CSV fetch). Mount a bit early so the canvas is ready when
-  // the explainer hands off — avoids a blank first paint after a heavy scene.
-  const { ref, mounted } = useInViewMount<HTMLElement>({ mountMargin: 2, unmountMargin: 2.5 });
+  // the explainer hands off — avoids a blank first paint after a heavy scene. On a
+  // phone the mount also evicts the map + splat (see deviceBudget), so the charts
+  // half of the article no longer runs on top of a resident journey chapter.
+  const { ref, mounted } = useInViewMount<HTMLElement>('charts');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const brandRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);

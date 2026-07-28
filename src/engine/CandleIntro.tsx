@@ -1,11 +1,11 @@
-import { useEffect, useRef, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { type MotionValue } from 'motion/react';
 import * as THREE from 'three';
 import './CandleIntro.css';
 import { useChapterProgress } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
 import { useInViewMount } from './useInViewMount';
-import { glWindow, MOBILE_MAX, releaseRenderer } from './deviceBudget';
+import { disposeMaterialTextures, glQuality, MOBILE_MAX, releaseRenderer } from './deviceBudget';
 import copy from '../content/copy.json';
 import { tuneStore } from './tuneEditor';
 // Marker icons — the designer's own SVGs (docs/), inlined as raw markup so they
@@ -114,6 +114,11 @@ function niceTicks(min: number, max: number): number[] {
 // Landscape
 // is the project's 1440×800 frame; portrait is a reference phone (≈iPhone 15).
 // The breakpoint is the project's 800px.
+/** Scroll margin around the candles' span in which the canvas is kept alive: built
+ *  before the reader gets there, released once they are past. In chapter-progress
+ *  units, so ~8% of the opener on either side. */
+const SPAN_PAD = 0.08;
+
 const LAND_FRAME = { w: 1440, h: 800 } as const;
 const PORT_FRAME = { w: 393, h: 852 } as const;
 // Portrait frame below the project-wide phone breakpoint (deviceBudget.MOBILE_MAX).
@@ -123,7 +128,20 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
   // It used to be created on page load and held for the WHOLE article (it lives in
   // ModelChapter's always-rendered children layer), so the map + splat chapters ran
   // on top of it. Gate it on proximity like every other heavy block (see deviceBudget).
-  const { ref: gateRef, mounted: glLive } = useInViewMount<HTMLDivElement>(glWindow('candles'));
+  // …but proximity alone is not enough here. The gate element fills ModelChapter's
+  // STICKY container, so its box is on screen for the whole opener — the candles
+  // occupy only `span` (the first half), yet the canvas stayed resident through the
+  // bull's second half and straight into the map seam, which is the one place on
+  // the page that cannot spare a context. So the canvas also tracks the scroll:
+  // live only inside its own span, plus a margin so it is built before it is seen
+  // and released once it is comfortably past.
+  const [inSpan, setInSpan] = useState(() => progress.get() <= span[1] + SPAN_PAD);
+  useEffect(() => {
+    const check = (p: number) => setInSpan(p >= span[0] - SPAN_PAD && p <= span[1] + SPAN_PAD);
+    check(progress.get());
+    return progress.on('change', check);
+  }, [progress, span]);
+  const { ref: gateRef, mounted: glLive } = useInViewMount<HTMLDivElement>('candles', inSpan);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   // One element, two observers: the fit ResizeObserver and the mount gate.
   const setWrap = (el: HTMLDivElement | null) => {
@@ -274,8 +292,14 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const xOfIdx = (i: number) => (i - (N - 1) / 2) * COLW;
 
     // --- three.js scene (transparent canvas) ---
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    // preserveDrawingBuffer was set but never read (nothing here calls toDataURL or
+    // readPixels). It costs a full extra copy of the drawing buffer and defeats the
+    // discard-after-present path that tile-based mobile GPUs rely on — pure loss.
+    // antialias goes the same way on a phone: on a 3-megapixel buffer MSAA is the
+    // most expensive thing in the scene, and these are flat unlit boxes.
+    const { antialias, maxPixelRatio } = glQuality();
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias });
+    renderer.setPixelRatio(Math.min(maxPixelRatio, window.devicePixelRatio || 1));
     host.appendChild(renderer.domElement);
     // CSS holds the canvas at 100% of the host so a stale mobile size measurement can't
     // letterbox it (black bars); only the render buffer lags a frame until resize() corrects.
@@ -638,7 +662,10 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.geometry) m.geometry.dispose();
-        if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
+        if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => {
+          disposeMaterialTextures(x); // material.dispose() does not free its maps
+          x.dispose();
+        });
       });
       // dispose() alone leaves the context alive until GC — hand it back now, this
       // canvas is one of only a handful the phone will grant (see deviceBudget).

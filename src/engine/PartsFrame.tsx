@@ -36,7 +36,7 @@ const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); 
 
 const MOBILE_MAX = 800;
 
-interface Piece { id: string; x: number; y: number; s: number; ref: React.RefObject<HTMLDivElement> }
+interface Piece { id: string; x: number; y: number; ref: React.RefObject<HTMLDivElement> }
 
 // Base offsets = each piece's CENTRE from screen centre, in vh.
 //  desktop: laid out to Desktop-63.svg (design 1440×800 → centre 720,400, 1vh≈8px).
@@ -60,13 +60,22 @@ const COORDS_MOBILE: Record<string, [number, number]> = {
   'parts.hornsDot1': [-21.8, -11.5], // tip of the left horn fragment
   'parts.hornsDot2': [7.2, -26.5],   // tip of the right horn fragment
 };
-// Per-piece scale, DESKTOP only (mobile = 1). Baked from the old tune layer: the "30"
-// title, "Empty inside" and "5 cm" measure were scaled down to fit the wide layout.
-const SCALE_DESKTOP: Record<string, number> = {
-  'parts.title': 1.185,
-  'parts.emptyInside': 0.706,
-  'parts.measure5cm': 0.751,
-};
+// Desktop sizes are the ASSETS' OWN design sizes, in vh against the 1440×800 frame
+// (1vh = 8px), so each label lands at the mockup's size with nothing multiplying it:
+//   n30.svg 172×149 · empty-inside.svg 181×28 · measure-5cm.svg 74×116 · dot.svg 33×33.
+// Both text-bearing assets carry font-size="30" inside a viewBox in those same design
+// px, so drawing them at their own width IS the mockup's 30px type.
+//
+// There used to be a per-piece SCALE_DESKTOP layer here (1.185 / 0.706 / 0.751) sitting
+// on top of widths that were already in the right units. It was compensating for a bug,
+// not expressing a design: on desktop the label SVGs are wrapped in an inner <div>, so
+// the pieces' `[&>svg]:w-full` never reached them and their `width` did nothing at all —
+// the assets drew at intrinsic size and the scale then shrank them. Net result was
+// "Empty inside" at 21px and "5 cm" at 22.5px instead of 30, and the "30" 7.5% oversized.
+// The sizing classes now sit on the element that actually holds the svg, and the scale
+// layer is gone.
+const DESKTOP_PX_PER_VH = 8;
+const px = (n: number) => `${(n / DESKTOP_PX_PER_VH).toFixed(4)}vh`;
 
 export default function PartsFrame() {
   const progress = useChapterProgress();
@@ -91,7 +100,7 @@ export default function PartsFrame() {
   const hornsDot2Ref = useRef<HTMLDivElement>(null);
 
   const C = isMobile ? COORDS_MOBILE : COORDS_DESKTOP;
-  const mk = (id: string, ref: React.RefObject<HTMLDivElement>): Piece => ({ id, x: C[id][0], y: C[id][1], s: isMobile ? 1 : (SCALE_DESKTOP[id] ?? 1), ref });
+  const mk = (id: string, ref: React.RefObject<HTMLDivElement>): Piece => ({ id, x: C[id][0], y: C[id][1], ref });
   const pieces: Piece[] = [
     mk('parts.title', titleRef),
     mk('parts.dot', dotRef),
@@ -117,7 +126,7 @@ export default function PartsFrame() {
         const ts = tuneStore.getScale(pc.id);
         el.style.transform =
           `translate(${(pc.x + ox).toFixed(2)}vh, ${(pc.y + oy).toFixed(2)}vh) ` +
-          `scale(${(pc.s * ts).toFixed(4)}) translate(-50%, -50%)`;
+          `scale(${ts.toFixed(4)}) translate(-50%, -50%)`;
       }
       const green = greenRef.current;
       if (green) {
@@ -167,11 +176,15 @@ export default function PartsFrame() {
         <div ref={titleRef} data-tune="parts.title" data-tune-mode="store" className="absolute" style={anchor}>
           <div
             className="[&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-            style={{ width: mob('12vh', '19.5vh') }}
+            style={{ width: mob('12vh', px(172)) }}
             dangerouslySetInnerHTML={{ __html: N30 }}
           />
+          {/* The mockup's gap is 27.1px measured INK-to-ink ("30" bottom → the caption's
+              first glyph top). CSS margin joins boxes, not ink: the 36px line box adds the
+              font's own ascent above the glyphs, so the margin that puts the caption's
+              baseline on the mockup's 443.56 is 16.3px, not 27.1. */}
           <div
-            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.75vh', '3vh'), lineHeight: 1.2, marginTop: mob('0.8vh', '1.2vh') }}
+            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.75vh', px(30)), lineHeight: 1.2, marginTop: mob('0.8vh', px(16.3)) }}
             dangerouslySetInnerHTML={{ __html: copy.parts.subtitle }}
           />
         </div>
@@ -182,7 +195,7 @@ export default function PartsFrame() {
           data-tune="parts.dot"
           data-tune-mode="store"
           className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob('4.6vh', '4vh') }}
+          style={{ ...anchor, width: mob('4.6vh', px(33)) }}
           dangerouslySetInnerHTML={{ __html: DOT }}
         />
 
@@ -191,12 +204,12 @@ export default function PartsFrame() {
           ref={emptyRef}
           data-tune="parts.emptyInside"
           data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob('9vh', '32vh') }}
+          className="absolute"
+          style={{ ...anchor, width: mob('9vh', px(181)) }}
         >
           {isMobile
             ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75vh', lineHeight: 1.15 }}>{copy.parts.emptyInside}</div>
-            : <div dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }} />}
+            : <div className="w-full [&>svg]:block [&>svg]:w-full [&>svg]:h-auto" dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }} />}
         </div>
 
         {/* "5 cm" vertical measure (wall thickness) — DOM text + arrow on mobile, SVG on desktop */}
@@ -204,8 +217,8 @@ export default function PartsFrame() {
           ref={measureRef}
           data-tune="parts.measure5cm"
           data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob('7vh', '11vh') }}
+          className="absolute"
+          style={{ ...anchor, width: mob('7vh', px(74)) }}
         >
           {isMobile
             ? (
@@ -218,13 +231,13 @@ export default function PartsFrame() {
                 />
               </>
             )
-            : <div dangerouslySetInnerHTML={{ __html: MEASURE_5CM }} />}
+            : <div className="w-full [&>svg]:block [&>svg]:w-full [&>svg]:h-auto" dangerouslySetInnerHTML={{ __html: MEASURE_5CM }} />}
         </div>
 
         {/* horns note — "cast thicker, ~7.5 cm of bronze" (DOM text, both layouts) */}
         <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: mob('34vh', '57vh') }}>
           <div
-            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06vh', '2.25vh'), lineHeight: 1.55 }}
+            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06vh', px(18)), lineHeight: mob(1.55, 24 / 18) }}
             dangerouslySetInnerHTML={{ __html: copy.parts.horns }}
           />
         </div>
@@ -237,7 +250,7 @@ export default function PartsFrame() {
           data-tune="parts.hornsDot1"
           data-tune-mode="store"
           className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob('4.6vh', '4vh') }}
+          style={{ ...anchor, width: mob('4.6vh', px(33)) }}
           dangerouslySetInnerHTML={{ __html: DOT }}
         />
         <div
@@ -245,7 +258,7 @@ export default function PartsFrame() {
           data-tune="parts.hornsDot2"
           data-tune-mode="store"
           className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob('4.6vh', '4vh') }}
+          style={{ ...anchor, width: mob('4.6vh', px(33)) }}
           dangerouslySetInnerHTML={{ __html: DOT }}
         />
       </div>

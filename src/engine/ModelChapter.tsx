@@ -3,7 +3,7 @@ import { type MotionValue } from 'motion/react';
 import { DatumScene, type CameraSpherical } from './DatumScene';
 import { GlbScene, type ExtraModelSpec } from './GlbScene';
 import { useInViewMount } from './useInViewMount';
-import { glWindow, isMobileViewport } from './deviceBudget';
+import { isMobileViewport } from './deviceBudget';
 import { ChapterScrollContext } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
 import './ModelChapter.css';
@@ -167,7 +167,7 @@ export default function ModelChapter({
   // up, or they overlap at the «Bulls Route» seam and iOS kills the tab. The
   // window (narrow on mobile, generous on desktop) comes from deviceBudget, which
   // owns the budget for all four heavy GL blocks.
-  const { ref, mounted } = useInViewMount<HTMLElement>(glWindow('model'));
+  const { ref, mounted } = useInViewMount<HTMLElement>('model');
   // Jump the page scroll to a chapter progress (0..1) — lets the editor's scrub
   // handle drag the real scrollbar (so overlays/plaques, which ride the scroll,
   // follow the green line on release).

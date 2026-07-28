@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, type ComponentProps } from 'react';
 import MapChapter from './MapChapter';
 import DatumSplat, { type DatumSplatHandle } from '../components/DatumSplat';
 import { useInViewMount } from './useInViewMount';
-import { glWindow } from './deviceBudget';
 import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotate» hint (text is HTML)
 
 /**
@@ -115,7 +114,7 @@ export default function MapBullHandoff({
   // both narrower AND finite there: 0.4 arms it at the map's intro card, and the
   // splat is released 1.5 viewports past the block so the charts half of the
   // article doesn't run with it still resident. Desktop keeps it loaded for good.
-  const { ref: gateRef, mounted: armed } = useInViewMount<HTMLDivElement>(glWindow('splat'));
+  const { ref: gateRef, mounted: armed } = useInViewMount<HTMLDivElement>('splat');
 
   // Unfold the bull over the map. Iris mask + opacity on the outer (un-transformed)
   // layer, scale on the inner layer — kept separate so the mask isn't shrunk by scale.

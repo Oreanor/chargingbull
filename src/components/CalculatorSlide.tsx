@@ -2,8 +2,9 @@ import { useEffect, useRef } from 'react';
 import { CALC_CPI, CALC_DIV, CALC_PRICE, CALC_T0 } from '../data/sp500Monthly';
 import {
   FILL_MAX, HATCH_ALPHA, hatchArea, inkText,
-  LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, END_DOT_R_FOCUS,
+  LINE_W_THICK, LINE_W_THIN, HOLD_THIN_ALPHA, END_DOT_R_FOCUS,
 } from '../engine/charts/chartInk';
+import { cappedDpr } from '../engine/deviceBudget';
 import './CalculatorSlide.css';
 
 /**
@@ -89,7 +90,9 @@ export function CalculatorSlide() {
       tMin = MINY; tMax = rows[rows.length - 1].t;
       const amt = Math.max(0, +amountEl!.value || 0);
       const i0 = firstIdx[startY], i1 = lastIdx[endY];
-      const dpr = window.devicePixelRatio || 1;
+      // DPR ceiling shared with the GL blocks (see deviceBudget) — this redraws on
+      // every input change, so an uncapped DPR-3 backing store is reallocated a lot.
+      const dpr = cappedDpr();
       const W = canvas!.clientWidth, H = canvas!.clientHeight;
       canvas!.width = W * dpr; canvas!.height = H * dpr;
       const ctx = canvas!.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
@@ -122,10 +125,12 @@ export function CalculatorSlide() {
         for (let i = a; i <= b; i++) { const px = xOf(rows[i].t), py = yOf(rows[i].tr); if (i === a) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
         ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.stroke();
       };
-      // Same weights as the S&P chapter (chartInk): the held stretch is thick, the rest is
-      // thin context at THIN_ALPHA. This file used to carry its own 1.4px at 22%.
-      ctx.save(); ctx.globalAlpha = THIN_ALPHA;
-      drawSeg(I0, rows.length - 1, '#ECEFEC', LINE_W_THIN);
+      // Same weights AND the same ink as the S&P chapter's invest view (chartsEngine's
+      // GROWTH/GROWTH_THIN pair): one green series, thick across the held stretch and
+      // stepped back to HOLD_THIN_ALPHA either side of it — the run up to the start flag
+      // is context, not a different series. It used to be white here, which read as two.
+      ctx.save(); ctx.globalAlpha = HOLD_THIN_ALPHA;
+      drawSeg(I0, rows.length - 1, GREEN, LINE_W_THIN);
       ctx.restore();
       ctx.beginPath(); ctx.moveTo(xOf(rows[i0].t), H - floor);
       for (let i = i0; i <= i1; i++) ctx.lineTo(xOf(rows[i].t), yOf(rows[i].tr));

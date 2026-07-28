@@ -16,11 +16,12 @@
  */
 import copy from '../../content/copy.json';
 import { CHART_NOM, CHART_REAL, CHART_T0 } from '../../data/sp500Monthly';
-import { BM_GEOM } from './blackMondayCandles';
+import { BM_GEOM, BM_WICK_OF_BODY } from './blackMondayCandles';
+import { cappedDpr } from '../deviceBudget';
 import {
   GRID_DASH, BASE_LINE_W, TICK_BELOW, TICK_ABOVE, tickAlphaPct, tickAlphaAbs,
-  FILL_MAX, HATCH_ALPHA, hatchArea, inkText,
-  LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, END_DOT_R, END_DOT_R_FOCUS,
+  FILL_MAX, HALO_EM, HALO_HAIRLINE_EM, HATCH_ALPHA, hatchArea, inkText,
+  LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, HOLD_THIN_ALPHA, END_DOT_R, END_DOT_R_FOCUS,
 } from './chartInk';
 
 /** Bull-callout circle radius in the 1142-wide design box (Desktop-43). On screen it is
@@ -34,10 +35,9 @@ import {
 import {
   BM_PLATE_GAP,
   BM_PLATE_PATHS, BM_PLATE_ORIGIN, BM_PLATE_SIZE,
-  BM_PLATE_BASE_GAP, BM_PLATE_BASE_GAP_PORT, BM_PLATE_W, BM_PLATE_W_PORT,
+  BM_PLATE_SEAT_GAP, BM_PLATE_W,
 } from './blackMondayPlate';
 import { BULL_1989_PATH, BULL_1989_BOX } from './bull1989';
-import { isMobileViewport } from '../deviceBudget';
 
 export interface ChartStep {
   /** View key the chart morphs to on this step. */
@@ -237,7 +237,8 @@ function drawMarkerTwoLine(
   font1: string, font2: string,
   maxRight?: number,
   above = false,
-  halo = true,
+  /** Halo width in em (see chartInk). 0 draws the bare glyphs. */
+  haloEm: number = HALO_EM,
   shiftDigits = 0,
 ) {
   ctx.font = font2;
@@ -263,14 +264,16 @@ function drawMarkerTwoLine(
   ctx.fillStyle = CRISIS;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  // The knockout is only for markers that sit ON the plotted line — the trough dates on
-  // the drawdown frames (41 / 40 stroke them in the ground colour). The crisis percentages
-  // on the price frames are never stroked in the mockups (39 / 43 carry none): they hang in
-  // clear space above their peak, so the halo bought nothing and just fattened the type.
-  const ground = halo ? BG : '';
-  if (sign) inkText(ctx, sign, left - signW, base, font1, ground);
-  inkText(ctx, body1, left, base, font1, ground);
-  inkText(ctx, line2, left, base + MARK_STEP, font2, ground);
+  // Two weights, both in the ground colour (see chartInk): the full KNOCKOUT for markers
+  // that sit ON the plotted line — the trough dates on the drawdown frames — and a thin
+  // OUTLINE for the crisis percentages on the price frames. Those hang above their peak,
+  // but the hatch runs under them and 2020's near-vertical recovery comes up right beside
+  // its label, so bare glyphs lose their edges; the 0.3 knockout in that seat just fattened
+  // the type into a slab, which is why it used to be off there entirely.
+  const ground = haloEm > 0 ? BG : '';
+  if (sign) inkText(ctx, sign, left - signW, base, font1, ground, haloEm);
+  inkText(ctx, body1, left, base, font1, ground, haloEm);
+  inkText(ctx, line2, left, base + MARK_STEP, font2, ground, haloEm);
   ctx.lineWidth = 1;
 }
 
@@ -724,7 +727,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   }
 
   function setupCtx() {
-    const dpr = window.devicePixelRatio || 1;
+    // Same DPR ceiling as the GL blocks (see deviceBudget): a full-screen 2D
+    // backing store at DPR 3 is ~12 MB, and this one is re-read on every resize.
+    const dpr = cappedDpr();
     const W = canvas.clientWidth, H = canvas.clientHeight;
     const needW = Math.round(W * dpr), needH = Math.round(H * dpr);
     // Only resize the backing store when the size actually changed: reassigning
@@ -1094,8 +1099,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     };
 
     const GROWTH = '#61e26b'; // bull/invest highlight — GREEN, not the bear pink/crisis red
-    // The thin series is CONTEXT under the highlighted stretch, so it runs at 60%.
-    const GROWTH_THIN = withAlpha(GROWTH, THIN_ALPHA);
+    // Either side of the thick hold this is pure context, so it takes the deeper
+    // step-back (Desktop-46/47: opacity 0.3), not the plain thin-series 0.6.
+    const GROWTH_THIN = withAlpha(GROWTH, HOLD_THIN_ALPHA);
     const investAlpha = (cfg.investAlpha as number) || 0;
     if (investAlpha > 0.01) {
       // Thin = translucent green; thick hold = solid. investAlpha fades the pair in.
@@ -1141,7 +1147,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         const drop = ((Y[iT] - Y[iP]) / Y[iP]) * 100;
         drawMarkerTwoLine(
           ctx, `${drop.toFixed(0)}%`, c.label,
-          sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK, xData1, true, false,
+          sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK, xData1, true, HALO_HAIRLINE_EM,
           c.labelShift ?? 0,
         );
       }
@@ -1181,8 +1187,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       const labelX = xP + 8;
       const pLabelY = Math.min(y1 - 52, Math.max(y0 + (y1 - y0) * 0.72, yP - 52));
-      ctx.font = FONT_INVEST_BOLD; ctx.fillText(LBL.investArrow, labelX, pLabelY);
-      ctx.font = FONT_INVEST; ctx.fillText(LBL.buyDate, labelX, pLabelY + 22);
+      // The same hairline outline the pink frames' percentages carry (HALO_HAIRLINE_EM), in
+      // the themed ground — which on the invest views IS black, since themeK tracks
+      // investAlpha. These labels sit over the green hatch and, at the compare point, right
+      // on the series, so bare glyphs lose their edges exactly like the crisis marks did.
+      inkText(ctx, LBL.investArrow, labelX, pLabelY, FONT_INVEST_BOLD, BG, HALO_HAIRLINE_EM);
+      inkText(ctx, LBL.buyDate, labelX, pLabelY + 22, FONT_INVEST, BG, HALO_HAIRLINE_EM);
       // End: "$4.85M" / real "$2.13M" bold over "February 2021", parked above the dot.
       // The two lines are flush LEFT against each other and the BLOCK is what clears the
       // dot (Desktop-46: both lines start at x=1031, the block's right edge stopping short
@@ -1205,10 +1215,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // the left edge too, so it slides instead of stepping as the text swaps.
       const endLeft = xC - 10 - lerp(Math.max(wNom, wDate), Math.max(wReal, wDate), mb);
       ctx.font = FONT_INVEST_BOLD;
-      if (mb < 0.999) { ctx.globalAlpha = investAlpha * (1 - mb); ctx.fillText(valNom, endLeft, yC - 28); }
-      if (mb > 0.001) { ctx.globalAlpha = investAlpha * mb; ctx.fillText(valReal, endLeft, yC - 28); }
+      if (mb < 0.999) { ctx.globalAlpha = investAlpha * (1 - mb); inkText(ctx, valNom, endLeft, yC - 28, FONT_INVEST_BOLD, BG, HALO_HAIRLINE_EM); }
+      if (mb > 0.001) { ctx.globalAlpha = investAlpha * mb; inkText(ctx, valReal, endLeft, yC - 28, FONT_INVEST_BOLD, BG, HALO_HAIRLINE_EM); }
       ctx.globalAlpha = investAlpha;
-      ctx.font = FONT_INVEST; ctx.fillText(LBL.compareDate, endLeft, yC - 6);
+      inkText(ctx, LBL.compareDate, endLeft, yC - 6, FONT_INVEST, BG, HALO_HAIRLINE_EM);
       ctx.restore();
     }
 
@@ -1507,6 +1517,13 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // the real seats, so it cannot drift from the layout again.
     const pitch = nDD > 1 ? (candleX(N - 1) - candleX(BM_AUG_I)) / (nDD - 1) : 8;
     const colW0 = Math.max(2, pitch * 0.9);
+    // Wick width as a share of the BODY, read off the same export: his wick columns are
+    // 1.28 wide on an 8.02 body. The code carried 0.2 — a quarter fatter than his line, for
+    // no reason anyone wrote down — which is what made the wicks read a pixel too heavy.
+    // Snapped to a whole pixel: a fractional stroke straddles two device pixels and renders
+    // as a soft grey smear instead of a clean line. At the desktop body of ~12.4 that is
+    // 1.98 → 2, where the old 0.2 gave 2.48 and read as three.
+    const wickW = Math.max(1, Math.round(colW0 * BM_WICK_OF_BODY));
 
     // ---- candles burn down → daily line → straighten ----
     if (cAlpha > 0.02) {
@@ -1542,7 +1559,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
           ctx.globalAlpha = candleA;
           ctx.fillStyle = ink; ctx.strokeStyle = ink;
           if (wickBot - wickTop > 0.5) {
-            ctx.lineWidth = Math.max(1, colW0 * 0.2);
+            ctx.lineWidth = wickW;
             ctx.beginPath(); ctx.moveTo(x, wickTop); ctx.lineTo(x, wickBot); ctx.stroke();
           }
           ctx.fillRect(x - colW0 / 2, bodyTop, colW0, Math.max(1, bodyBot - bodyTop));
@@ -1599,18 +1616,17 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // flat «20% of the canvas» doesn't — the candle window is laid out from the plot and
       // rescales per breakpoint, so the plate drifted away from the thing it labels.
       //
-      // The ART is one export on both breakpoints; the WIDTH it is drawn at is still
-      // per-breakpoint, and it did not move when the art was swapped — the layout changed,
-      // the on-screen size shouldn't have.
-      const mobile = isMobileViewport();
-      const drawnW = mobile ? BM_PLATE_W_PORT : BM_PLATE_W;
-      const k = drawnW / size.w;
-      const px = candleX(BM_CRASH_I) - BM_PLATE_GAP - drawnW;
-      // Vertical seat: the plate STANDS ON the white baseline, a clear gap above it. Its own
-      // y used to be an authored design coord per breakpoint, which drifted off the line
-      // whenever the plot box rescaled — the rule is the seat, the gap is the only knob.
-      const gap = mobile ? BM_PLATE_BASE_GAP_PORT : BM_PLATE_BASE_GAP;
-      const py = mapY(BM_GEOM.baselineY) - gap - size.h * k;
+      // ONE art at ONE size on both breakpoints. Desktop used to draw it wider than the
+      // phone (188.65 vs 142.27) for nothing the layout asks for; the phone's size is now
+      // the size everywhere.
+      const k = BM_PLATE_W / size.w;
+      const px = candleX(BM_CRASH_I) - BM_PLATE_GAP - BM_PLATE_W;
+      // Vertical seat: the plate SITS ON a price line — one step above the baseline, where
+      // it reads against the candles instead of down among the axis chrome. The 4px is a
+      // hairline of ground under the ink, not a gap: the plate is meant to touch its line.
+      // The seat is the rule and that hairline is the only knob; the y is never authored.
+      const seatY = BM_GEOM.ticks[BM_GEOM.ticks.length - 2].y;
+      const py = mapY(seatY) - BM_PLATE_SEAT_GAP - size.h * k;
       ctx.save();
       ctx.globalAlpha = plateA;
       ctx.translate(px, py);

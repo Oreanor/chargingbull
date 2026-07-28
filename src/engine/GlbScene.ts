@@ -15,7 +15,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CameraSpherical } from './DatumScene';
-import { releaseRenderer } from './deviceBudget';
+import { disposeMaterialTextures, glQuality, releaseRenderer } from './deviceBudget';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -150,8 +150,11 @@ export class GlbScene {
     const h = host.clientHeight || window.innerHeight;
     const bg = this.options.background ?? [0, 0, 0, 1];
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: bg[3] < 1 });
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    // MSAA off on a phone: the bull shares its budget with the map + splat, and a
+    // multisampled 3-megapixel buffer is the single most expensive thing here.
+    const { antialias, maxPixelRatio } = glQuality();
+    const renderer = new THREE.WebGLRenderer({ antialias, alpha: bg[3] < 1 });
+    renderer.setPixelRatio(Math.min(maxPixelRatio, window.devicePixelRatio || 1));
     renderer.setSize(w, h, false); // buffer only — CSS holds the canvas at 100% of the host
     renderer.setClearColor(new THREE.Color(bg[0], bg[1], bg[2]), bg[3]);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -786,12 +789,25 @@ export class GlbScene {
       if (mesh.geometry) mesh.geometry.dispose();
       if (mesh.material) {
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mats.forEach((m) => m.dispose());
+        mats.forEach((m) => {
+          // Textures FIRST: material.dispose() frees the program, not the maps
+          // hanging off it — three leaves those to the caller because one texture
+          // is routinely shared. Without this every mount/unmount cycle stranded
+          // the GLB's maps (and the generated CanvasTextures) in GPU memory, and
+          // on a phone the margins are narrow enough that scrolling back over the
+          // seam cycles the scene repeatedly.
+          disposeMaterialTextures(m);
+          m.dispose();
+        });
       }
     });
     this.extraEnvTex?.dispose();
     this.extraEnvTex = null;
     this.draco?.dispose();
+    // GLTFLoader parks decoded buffers/images in THREE.Cache under their URL, so a
+    // re-mount is fast but nothing is ever evicted. The scene is rebuilt from the
+    // network on the way back anyway (the file is 1 MB and cached by HTTP).
+    THREE.Cache.clear();
     // dispose() alone leaves the GL context alive until GC — on iOS that keeps a
     // context slot occupied while the map/splat spin up. releaseRenderer forces it out.
     if (this.renderer) releaseRenderer(this.renderer);

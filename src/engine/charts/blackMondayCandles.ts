@@ -23,6 +23,11 @@ export const BM_GEOM = {
 
 // The single-1987 drawdown frame (Desktop-41), same SVG box/x as the candles so it
 // lines up. The candle→drawdown crossfade morphs the grid 5→4 (price → percent).
+/** Wick width as a share of the candle BODY, measured off Desktop-36: every wick column
+ *  in his export is 1.28 wide on an 8.02 body. Lives here with the rest of the geometry
+ *  read off that frame, so the drawing code can't quietly drift from it again. */
+export const BM_WICK_OF_BODY = 1.28 / 8.02;
+
 export const BM_DD = {
   line: [[176, 154], [517.641, 215.07], [863.301, 411.545], [1217, 590]] as [number, number][],
   topY: 153.5, // the 0% line

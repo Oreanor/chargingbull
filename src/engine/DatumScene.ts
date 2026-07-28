@@ -22,6 +22,7 @@ import type {
   DeviceTier,
 } from '@datum-sdk/engine';
 import type { DatumEngineStats, RenderStats } from '@datum-sdk/plugins';
+import { glQuality } from './deviceBudget';
 
 export type { RenderStats, DeviceTier };
 
@@ -128,7 +129,11 @@ export class DatumScene {
     // DPR-кап: дефолт window.devicePixelRatio без потолка душит филлрейт на HiDPI.
     // Явный renderSettings.pixelRatio (через spread ниже) перекрывает кап.
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const maxDpr = this.options.maxPixelRatio ?? 2;
+    // Потолок берём из общего бюджета (deviceBudget), а не из локальной константы:
+    // сплат делит GPU с картой на том же экране, и на DPR-3 телефоне это тот же
+    // трёхмегапиксельный буфер, что убивал вкладку. Явный maxPixelRatio в опциях
+    // (редактор/десктопные превью) по-прежнему перекрывает.
+    const maxDpr = this.options.maxPixelRatio ?? glQuality().maxPixelRatio;
     const renderSettings: RenderSettings = {
       pixelRatio: Math.min(dpr, maxDpr),
       // Spark по умолчанию сортирует сплаты при каждой возможности — во время драга
@@ -427,5 +432,26 @@ export class DatumScene {
       this.engine = null;
     }
     this.splatMesh = null;
+    this.releaseCanvases();
+  }
+
+  /**
+   * Отдать GL-контекст браузеру немедленно.
+   *
+   * `engine.destroy()` освобождает ресурсы SDK, но сам контекст WebKit держит до
+   * GC — а до тех пор он занимает слот и его память, ровно пока карта/графики
+   * поднимают свои. Мы не владеем рендерером SDK, поэтому дотягиваемся до канваса
+   * в нашем же контейнере и гасим контекст через WEBGL_lose_context (то же, что
+   * releaseRenderer делает для three).
+   */
+  private releaseCanvases(): void {
+    const host = this.options.container;
+    if (!host) return;
+    for (const canvas of Array.from(host.querySelectorAll('canvas'))) {
+      const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+      const lose = gl?.getExtension('WEBGL_lose_context');
+      try { lose?.loseContext(); } catch { /* контекст уже отдан */ }
+      canvas.remove();
+    }
   }
 }

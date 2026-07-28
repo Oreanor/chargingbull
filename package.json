@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "knip": "knip",
     "test:bull-frame": "node scripts/fix-bull-framing.mjs",
-    "test:bull-frame:fix": "node scripts/fix-bull-framing.mjs --fix"
+    "test:bull-frame:fix": "node scripts/fix-bull-framing.mjs --fix",
+    "test:gl": "node scripts/gl-residency.mjs"
   },
   "dependencies": {
     "@datum-sdk/engine": "file:./vendor/datum-sdk-engine-0.6.1.tgz",
