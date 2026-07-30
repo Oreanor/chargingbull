@@ -725,13 +725,20 @@ export class GlbScene {
           ud._origOpacity = mat.opacity;
           ud._glass = mat.transparent; // originally-transparent = glass
           mat.alphaHash = false;
+          // Bodywork goes transparent ONCE, here, and stays that way for good. `transparent`
+          // is part of three's program cache key, so flipping it per fade boundary — which is
+          // what this used to do — recompiled every one of the cab's materials on the way in
+          // AND on the way out. That stall is long enough for the compositor to present an
+          // uninitialised buffer: the white flash that fired every single time the cab
+          // appeared or left, in either scroll direction. depthWrite below is plain draw
+          // state, not part of the key, so that one is still free to toggle per frame.
+          if (!ud._glass) mat.transparent = true;
         }
         if (ud._glass) {
           // Keep the GLB's own glass settings (transparent/depthWrite) — only fade its
           // opacity. Forcing depthWrite here made the rear window pop on rotation.
           mat.opacity = (ud._origOpacity ?? 1) * level;
         } else {
-          mat.transparent = fading;
           mat.opacity = level;
           mat.depthWrite = !fading; // the shell carries depth while fading
         }
@@ -775,6 +782,20 @@ export class GlbScene {
           scene.add(obj);
           this.extraObjects[i] = obj;
           this.extraHomes[i] = obj.position.clone();
+          // Pay for this model NOW, while it is invisible and the reader is nowhere near it.
+          // Everything the first visible frame would otherwise do — build the depth shells
+          // (a MeshBasicMaterial, i.e. a program this scene has never compiled), compile the
+          // body's programs, upload its textures — lands on that single frame, and that frame
+          // overruns badly enough that the compositor presents a stale surface instead: one
+          // whole WHITE frame, immediately before the cab shows up. Forwards only, because
+          // afterwards it is all cached, which is why scrolling back never showed it.
+          this.ensureExtraShells(i);
+          const cam = this.camera;
+          const r = this.renderer;
+          if (cam && r) {
+            if (typeof r.compileAsync === 'function') void r.compileAsync(obj, cam, scene).catch(() => {});
+            else r.compile(scene, cam);
+          }
           // Separate wheel nodes (front_wheels / back_wheels) spin as the model drives. Find
           // them + their world radius (from the LOCAL geometry's two circular-face dims ×
           // the model scale — rotation-invariant), so setExtraOffset can roll them by dist.

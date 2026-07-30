@@ -16,7 +16,7 @@ import {
 import { stagesToTrack, type StagesFile } from './stagesToTrack';
 import { bullEditStore } from './editStore';
 import { tuneStore } from './tuneEditor';
-import { mobileProfileDistScale } from './overlayFit';
+import { mobileProfileDistScale, mobileProfileShiftX } from './overlayFit';
 
 /** What ModelChapter needs from a renderer. Both DatumScene (splats) and
  *  GlbScene (three.js meshes) satisfy it, so the editor/runtime are renderer-
@@ -413,7 +413,9 @@ function TrackDriver({
       }
       const u = MOBILE_HERO_RELEASE_T > 0 ? Math.min(1, Math.max(0, t / MOBILE_HERO_RELEASE_T)) : 1;
       const raise = MOBILE_HERO_RAISE * (1 - ss01(u));
-      scene.setFrameNudge(0, raise);
+      // …and pan right across the broadside beat so the muzzle (and the cab's front) stay
+      // inside the phone's centre crop — see mobileProfileShiftX.
+      scene.setFrameNudge(mobileProfileShiftX(t), raise);
     };
 
     // Initial pose (force, even on a plateau) so the camera starts on the track.

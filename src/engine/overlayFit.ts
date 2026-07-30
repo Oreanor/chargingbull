@@ -30,7 +30,7 @@ const FIT_OUT1 = 0.80;
 
 /** Peak distance multiplier at full fit (1 = no pull). Stronger on the 800px
  *  frozen host — phone only sees the center crop, so a mild pull barely reads. */
-export const MOBILE_PROFILE_DIST_MUL = 1.55;
+export const MOBILE_PROFILE_DIST_MUL = 1.21;
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const smoothstep = (t: number) => {
@@ -64,6 +64,30 @@ export function mobileProfileFitAmount(t: number): number {
 export function mobileProfileDistScale(t: number): number {
   const a = mobileProfileFitAmount(t);
   return 1 + (MOBILE_PROFILE_DIST_MUL - 1) * a;
+}
+
+/* ── Broadside shift ──────────────────────────────────────────────────────────
+   The authored composition puts the bull's head LEFT of centre, and the phone sees only
+   the middle ~50% of the frozen 800px host, so from the moment the bull becomes the whole
+   subject its muzzle sits outside the crop — and the cab, arriving on the right, loses its
+   tail the same way. Answer is a pan, not more pull-back: the pair is meant to read big
+   here, so the frame moves to where the subjects are instead of shrinking them.
+
+   Rises with the camera's move out of the goring close-up into the broadside pose it then
+   holds — it rides exactly that segment (OPENER_TRACK, 0.37 → 0.55) — and is multiplied by 1 − fitAmount so it hands over to the
+   distance pull rather than adding to it: by the Tonnes beat the pull alone fits everything,
+   the shift is 0, and the green overlays sit on an un-panned bull. */
+const SHIFT_IN0 = 0.4;
+const SHIFT_IN1 = 0.55;
+/** Peak pan, as a fraction of frame height (+ = subject right) — the unit setFrameNudge
+ *  takes. 0.08 ≈ 70px on a 874-tall phone, which clears the muzzle with a margin. */
+const MOBILE_PROFILE_SHIFT = 0.08;
+
+/** Horizontal frame nudge for the broadside beat. Desktop always 0. */
+export function mobileProfileShiftX(t: number): number {
+  if (typeof window === 'undefined' || window.innerWidth > MOBILE_MAX) return 0;
+  const rise = smoothstep(clamp01((t - SHIFT_IN0) / (SHIFT_IN1 - SHIFT_IN0)));
+  return MOBILE_PROFILE_SHIFT * rise * (1 - mobileProfileFitAmount(t));
 }
 
 /**

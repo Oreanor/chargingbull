@@ -61,7 +61,11 @@ export default function TonnesFrame() {
   const greenPieces: Piece[] = [
     { id: 'tonnes.headline', x: -25.81, y: -32.65, s: 0.696, ref: headlineRef },
     { id: 'tonnes.measureW', x: -6.55, y: -15.95, s: 0.964, ref: measureWRef },
-    { id: 'tonnes.measureH', x: 66, y: -8.88, s: 0.94, ref: measureHRef },
+    // x re-seated with the frame's new size (see MOBILE_PROFILE_DIST_MUL): these offsets are
+    // multiplied by the group scale, so growing the composition threw this one clean off the
+    // right edge of a phone. 41.5vh puts its centre 138px right of centre, where «iPhone 17 -
+    // 15» has it — just inside the bull's rump instead of past it.
+    { id: 'tonnes.measureH', x: 41.5, y: -8.88, s: 0.94, ref: measureHRef },
     { id: 'tonnes.baseline', x: 41.02, y: 25.41, s: 1, ref: baselineRef },
     { id: 'tonnes.leaderTop', x: 50.11, y: -39, s: 1, ref: leaderTopRef },
   ];

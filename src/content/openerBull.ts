@@ -45,10 +45,16 @@ export const OPENER_TRACK: CameraTrack = {
     { at: 0, az: 17.5, polar: 79.5, dist: 1.47, push: 0.1, fov: 40, target: [0.09, 0.32, 0.39] },
     { at: 0.05, az: 85.3, polar: 86.1, dist: 5.2, opacity: 0, fov: 40, target: [0.27, 0.52, -0.16] },
     { at: 0.3, az: 27.5, polar: 68.8, dist: 5.2, push: 0.6, opacity: 0, fov: 40, target: [0.27, 0.52, -0.16] },
+    // The goring: the bull is invisible through 0.3 (opacity 0) and both appears and drives
+    // forward on THIS move — push 0.6 → 0 while the camera dives 5.2 → 1.32 into the chart.
     { at: 0.37, az: 33.8, polar: 77, dist: 1.32, fov: 44, target: [0.02, 0.39, 0.18] },
-    { at: 0.39, az: 39.7, polar: 81.4, dist: 1.62, fov: 44, target: [0.05, 0.36, 0.18] },
-    { at: 0.44, az: 39.7, polar: 81.4, dist: 1.62, fov: 44, target: [0.05, 0.36, 0.18] },
-    { at: 0.58, az: 41.6, polar: 76.6, dist: 2.13, fov: 46.9, target: [0.42, 0.34, 0.1] },
+    // …then straight into the pose the cab arrives in, and held there. There used to be a
+    // second, near-identical pose (az 39.7 / dist 1.62) held 0.39→0.44 in between: two moves
+    // and a stop to reach a view the reader sits in anyway. The pose itself is unchanged —
+    // still the captured one that used to start at 0.58 — only the moment it is reached. It
+    // lands at 0.55, not at 0.44: one slow move keeps the bull big enough to sit behind the
+    // «Meet the bull» plaque, which reaching it early leaves reading over an empty frame.
+    { at: 0.55, az: 41.6, polar: 76.6, dist: 2.13, fov: 46.9, target: [0.42, 0.34, 0.1] },
     { at: 0.62, az: 41.6, polar: 76.6, dist: 2.13, fov: 46.9, target: [0.42, 0.34, 0.1] },
     { at: 0.67, az: 87.4, polar: 94.4, dist: 2.86, fov: 39.6, target: [0.08, 0.44, -0.07] },
     { at: 0.75, az: 87.4, polar: 94.4, dist: 2.86, fov: 39.6, target: [0.08, 0.44, -0.07] },
