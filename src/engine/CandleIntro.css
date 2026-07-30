@@ -139,6 +139,8 @@
   font: 400 34px / 1.176 var(--font-struve); color: #fff;
   transform: translate(-14.6px, 10px);
 }
+/* One block per authored copy line — the landscape frame breaks where the copy breaks. */
+.ci-subtitle > span { display: block; }
 
 /* ── portrait frame overrides (≤800px viewport) ─────────────────────────── */
 /* Fixed SVG/design px — hero stage is scale(1), so these never change with width. */
@@ -148,19 +150,41 @@
   inset: 0;
   width: auto;
 }
+/* Hero elements are authored 1:1 on the designer's own phone frame — 402×874,
+   «iPhone 17 - 4», PORT_FRAME_HERO in CandleIntro.tsx. Every number below is that
+   frame's px, so the whole title composition contain-fits as ONE unit: nothing reflows
+   with the viewport, a narrower phone just shrinks all of it by the same k. Anything
+   centred here is centred on the frame, not on the viewport. */
 .ci-stage--portrait .ci-coords {
-  font-size: 17px; transform: translate(-4.2px, 96.4px);
+  /* Space Mono 18, no tracking. The wrap centres the line; this only sets its y — with
+     a 13px dot between two normal spaces the monospace advance lands the disc on the
+     frame's circle (cx 142) and the line's left edge on its x (38.2) by itself. */
+  font-size: 18px; letter-spacing: 0; color: #f9f9f9;
+  transform: translate(0, 119px);
 }
-.ci-stage--portrait .ci-hero { transform: translateY(0); }
-.ci-stage--portrait .ci-wordmark { transform: none; }
+/* The frame draws the line solid, not at the landscape reference's 70%. */
+.ci-stage--portrait .ci-coords-wrap { opacity: 1; }
+.ci-stage--portrait .ci-coords-dot { width: 13px; height: 13px; top: -1px; }
+/* Wordmark + subtitle are placed absolutely in the frame, so the flex centring the
+   landscape hero uses is off here — two coordinates, no stack to balance. */
+.ci-stage--portrait .ci-hero { display: block; padding: 0; transform: none; }
+.ci-stage--portrait .ci-wordmark {
+  position: absolute; left: 24.3px; top: 403.81px; transform: none;
+}
 .ci-stage--portrait .ci-wordmark-desktop { display: none; }
-/* wallst-rodeo-mobile.svg is 402×400 — keep that size; frame clips the bleed. */
+/* wallst-rodeo-mobile.svg is cut to its own ink (343.27×324.64) off the outlined
+   frame, so its box IS the mark — the left/top above are the mark's, not a bleed. */
 .ci-stage--portrait .ci-wordmark-mobile {
-  display: block; width: 402px; height: auto; max-width: none;
+  display: block; width: 343.27px; height: auto; max-width: none;
 }
 .ci-stage--portrait .ci-subtitle {
-  font-size: 19.2px; max-width: 345px; transform: translate(-5.2px, 47.7px);
+  position: absolute; left: 50%; top: 752.5px; margin: 0;
+  width: 292px; max-width: none; transform: translateX(-50%);
+  font-size: 18px; line-height: 24px;
 }
+/* The frame wraps the tagline freely into three lines, so the copy's two authored
+   lines flow together here instead of breaking where landscape breaks them. */
+.ci-stage--portrait .ci-subtitle > span { display: inline; }
 /* Fact plates — mockup width (not desktop 300), never viewport-squeezed. */
 .ci-stage--portrait .ci-overlay .ci-fact { width: 268px; max-width: none; }
 /* Black Monday plate — the designer's outlined export, one image per frame (separate
@@ -173,7 +197,10 @@
   user-select: none; -webkit-user-drag: none;
 }
 
-/* Meridian mark — SVG native 90×57 (outside the hero stage, viewport-pinned). */
+/* Meridian mark — off the same 402×874 frame (ink 18,24.86 → 94.7 wide; the SVG's ink
+   is flush to its 90×57 box, so the box width that draws it is 94.7×90/89.17). It is
+   viewport-pinned rather than in the hero frame — deliberate, see the .ci-logo note —
+   which on a phone is the same spot to within a pixel. */
 @media (max-width: 800px) {
-  .ci-logo { left: 16px; top: 16px; width: 90px; height: 57px; }
+  .ci-logo { left: 18px; top: 24.86px; width: 95.6px; height: auto; }
 }

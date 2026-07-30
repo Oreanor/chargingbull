@@ -16,6 +16,8 @@ export function BreakReveal({
   preload,
   titleClassName = '',
   bodyClassName = '',
+  phoneMeasure,
+  phoneGap,
 }: {
   /** Plain gold cursive title text… */
   title?: string;
@@ -27,6 +29,16 @@ export function BreakReveal({
   /** Optional Tailwind classes baked onto the title / body (position + scale). */
   titleClassName?: string;
   bodyClassName?: string;
+  /**
+   * Phone caption measure and mark→caption gap, in px, off the slide's own frame. Per-slide
+   * and so not fixable here: the two dividers that use this component are drawn to different
+   * measures — 355.41 for «BEARS vs Bulls», 341.34 for «CRISIS Curve» — and the measure is
+   * what decides where each caption breaks. Passed as CSS variables rather than class strings
+   * because two conflicting arbitrary utilities would be resolved by Tailwind's own output
+   * order, not by which one the caller handed in.
+   */
+  phoneMeasure?: number;
+  phoneGap?: number;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
@@ -66,15 +78,27 @@ export function BreakReveal({
   }, []);
 
   return (
-    <section ref={sectionRef} className="relative h-[160vh] w-full bg-black">
-      <div className="sticky top-0 h-[100dvh] flex items-center justify-center px-6">
+    <section
+      ref={sectionRef}
+      className="relative h-[160vh] w-full bg-black"
+      style={{
+        ...(phoneMeasure != null ? { '--br-measure': phoneMeasure + 'px' } : {}),
+        ...(phoneGap != null ? { '--br-gap': phoneGap + 'px' } : {}),
+      } as React.CSSProperties}
+    >
+      {/* px-5 on the phone: the design gutters are 20-23, and 24 would squeeze the fixed
+          caption measure below its own width. */}
+      <div className="sticky top-0 h-[100dvh] flex items-center justify-center px-5 sm:px-6">
         {/* wide enough for the desktop wordmark (1211px at the 1440px design width) */}
         <div className="text-center max-w-[1215px]">
           <div
             ref={titleRef}
             style={{ opacity: 0 }}
-            /* 72px below the mark at 1440 — the Figma slide's logo→caption gap */
-            className={`mb-[min(72px,5vw)] max-sm:mb-7 ${titleClassName}`}
+            /* 72px below the mark at 1440 — the Figma slide's logo→caption gap. On the phone
+               frame that gap is 29.5px measured INK to ink; a CSS margin joins boxes, and the
+               caption's line box carries ~7px of ascent above its glyphs, so the margin that
+               produces it is 22px. */
+            className={`mb-[min(72px,5vw)] max-sm:mb-[var(--br-gap,22px)] ${titleClassName}`}
           >
             {titleNode ?? (
               <span
@@ -85,12 +109,13 @@ export function BreakReveal({
               </span>
             )}
           </div>
-          {/* Desktop: design 34/40 @ 1440, centred block. Mobile: fixed 17px Struve,
-              no scale/shrink — width so lines wrap like the mockup, stays centred. */}
+          {/* Desktop: design 34/40 @ 1440, centred block. Phone: 24/32 Struve off
+              «iPhone 17 - 38» (402×874) with a 341.34 measure — the design's own ink width,
+              which is what makes it break into the same three lines. Fixed, not scaled. */}
           <p
             ref={bodyRef}
             style={{ fontFamily: 'var(--font-struve)', opacity: 1 }}
-            className={`mx-auto text-center text-fg max-w-[23.33em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:w-[min(300px,calc(100vw-40px))] max-sm:max-w-[300px] max-sm:text-[17px] max-sm:leading-[1.33] ${bodyClassName}`}
+            className={`mx-auto text-center text-fg max-w-[23.33em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:w-[var(--br-measure,341.34px)] max-sm:max-w-[var(--br-measure,341.34px)] max-sm:text-[24px] max-sm:leading-[32px] ${bodyClassName}`}
           >
             {body}
           </p>

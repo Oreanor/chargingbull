@@ -127,7 +127,7 @@ export default function ModelChapter({
   vignette?: boolean;
   /** Model placement (mesh models). `recenter:false` + `scale` keeps an authored
    *  transform so cartesian-derived camera poses stay valid (e.g. stages.json). */
-  placement?: { scale?: number; recenter?: boolean };
+  placement?: { scale?: number; recenter?: boolean; dropFrac?: number; dropFracPhone?: number; pitchDeg?: number; pitchDegPhone?: number };
   /** Secondary models shown during their `at` window (e.g. a Checker cab beside
    *  the bull for scale on one stage). Mesh models only. */
   extras?: ChapterExtra[];
@@ -273,7 +273,7 @@ function ModelScene({
   background: [number, number, number, number];
   vignette?: boolean;
   autoFrame: boolean;
-  placement?: { scale?: number; recenter?: boolean };
+  placement?: { scale?: number; recenter?: boolean; dropFrac?: number; dropFracPhone?: number; pitchDeg?: number; pitchDegPhone?: number };
   extras?: ChapterExtra[];
   rotate?: boolean;
   pan?: boolean;

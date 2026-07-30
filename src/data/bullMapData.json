@@ -61,7 +61,11 @@
       "visibleOnSteps": [
         0,
         1
-      ]
+      ],
+      "pillSide": "left",
+      "narrow": {
+        "pillSide": "right"
+      }
     },
     {
       "id": "foundry",
@@ -77,7 +81,14 @@
       "offset": [
         0,
         58
-      ]
+      ],
+      "narrow": {
+        "pillSide": "left",
+        "offset": [
+          0,
+          58
+        ]
+      }
     },
     {
       "id": "nyse",
@@ -92,7 +103,14 @@
       "offset": [
         -44,
         12
-      ]
+      ],
+      "narrow": {
+        "pillSide": "left",
+        "offset": [
+          30,
+          12
+        ]
+      }
     },
     {
       "id": "impound",
@@ -106,7 +124,14 @@
       "offset": [
         0,
         58
-      ]
+      ],
+      "narrow": {
+        "pillSide": "left",
+        "offset": [
+          0,
+          58
+        ]
+      }
     },
     {
       "id": "park",
@@ -120,7 +145,14 @@
       "offset": [
         42,
         -55
-      ]
+      ],
+      "narrow": {
+        "pillSide": "left",
+        "offset": [
+          0,
+          58
+        ]
+      }
     }
   ],
   "mapConfig": {
@@ -235,6 +267,55 @@
         21,
         null,
         19
+      ]
+    },
+    "mobile": {
+      "cameras": [
+        {
+          "center": [
+            -73.9863,
+            40.7187
+          ],
+          "zoom": 12.16,
+          "pitch": 53,
+          "bearing": 13
+        },
+        {
+          "center": [
+            -73.97,
+            40.7295
+          ],
+          "zoom": 12,
+          "pitch": 55,
+          "bearing": -22
+        },
+        {
+          "center": [
+            -74.01217,
+            40.70657
+          ],
+          "zoom": 15.91,
+          "pitch": 46,
+          "bearing": -9
+        },
+        {
+          "center": [
+            -73.9601,
+            40.7161
+          ],
+          "zoom": 11.45,
+          "pitch": 61,
+          "bearing": 68
+        },
+        {
+          "center": [
+            -74.01482,
+            40.70621
+          ],
+          "zoom": 15.32,
+          "pitch": 39,
+          "bearing": 19
+        }
       ]
     }
   }

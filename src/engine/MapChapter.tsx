@@ -4,13 +4,16 @@ import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
 import { glQuality, glWindow, noteGlLive, onGlEvict, requestGl, withCappedDpr } from './deviceBudget';
 import { markGl } from './glDiag';
+import { bullSizeTrim, isNarrowViewport } from './mapViewport';
 import bullMapData from '../data/bullMapData.json';
 import './MapChapter.css';
 // Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
 // Desktop: the designer's one-line "The Bull's ROUTE" lockup, outlined straight from
 // the Figma intro slide (docs/intros/Desktop - 46.svg).
 import THE_BULLS_ROUTE_DESKTOP from '../assets/logos/the-bulls-route-desktop.svg?url';
-// Mobile keeps the STACKED lockup (the wide one is unreadable on a phone).
+// Mobile keeps the STACKED lockup (the wide one is unreadable on a phone). Its viewBox is
+// cropped to the ink of «iPhone 17 - 24», so the drawn width IS the design width — there is
+// no padding inside the asset to discount.
 import THE_BULLS_ROUTE from '../assets/logos/the-bulls-route.svg?url';
 
 // POI badges — inlined as raw SVG so the icon draws as vector inside the marker
@@ -25,9 +28,9 @@ import BADGE_PARK from '../assets/map/badge-park.svg?raw';
 // every load and builds this string at runtime; the shape never changes, so it is baked.
 import LOCATOR_MANHATTAN from '../assets/map/locator-manhattan.txt?raw';
 
-// id → badge markup + which side of the anchor the text pill sits on.
-// Studio's pill hangs to the LEFT (it lives at the top-left of the route); the
-// rest read left-to-right with the badge first.
+// id → badge markup. WHERE the text pill sits relative to this badge is per-landmark and
+// per-breakpoint, and lives in the landmark data (`pillSide` / `narrow`) rather than in a
+// second map keyed by the same ids — the seat and the nudge belong next to each other.
 const POI_BADGE: Record<string, string> = {
   studio: BADGE_STUDIO,
   foundry: BADGE_FOUNDRY,
@@ -35,7 +38,6 @@ const POI_BADGE: Record<string, string> = {
   impound: BADGE_NYPD,
   park: BADGE_PARK,
 };
-const POI_PILL_SIDE: Record<string, 'left' | 'right'> = { studio: 'left' };
 
 type Landmark = {
   id: string;
@@ -44,6 +46,14 @@ type Landmark = {
   lng: number;
   lat: number;
   visibleOnSteps: number[];
+  /** Which side of the badge the text pill hangs on. Default 'right' (badge first, then the
+   *  text, reading left-to-right); 'left' for a label that would otherwise run off the edge
+   *  or off the frame — the studio sits at the top-left of the route and needs it. */
+  pillSide?: 'left' | 'right';
+  /** Phone seat: whichever of `offset`/`pillSide` it sets replaces the wide one below 720.
+   *  A label that clears the badge comfortably on a 1440 map can run off a 393 one, and the
+   *  fix is a different seat, not a scaled one — so it is stated, not derived. */
+  narrow?: { offset?: [number, number]; pillSide?: 'left' | 'right' };
   /** Optional screen-space nudge [dx, dy] in px, applied AFTER projection — lets a
    *  label step off its anchor without moving the real lng/lat.
    *
@@ -215,6 +225,13 @@ const TRAIL_ALPHA_DONE = 102; // 50% of full opacity — completed legs
  */
 const BULL_FADE_IN = 0.04;
 
+/** The author's on-screen clamps for the figure, before the size trim (see mapViewport). */
+const BULL_PX_MIN = 40;
+const BULL_PX_MAX = 105;
+
+/** Fraction of a flight over which `follow` ramps from 0 to its authored strength. */
+const FOLLOW_RAMP = 0.2;
+
 /** deck.gl layers: stop dots · trail · bull head (3D model). */
 function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: number; lat: number }[], routes: LngLat[][], headings: (number | null)[] = [], bullScale = 1.3): Layer[] {
   const { ScatterplotLayer, PathLayer, ScenegraphLayer } = DL;
@@ -264,10 +281,14 @@ function buildMarkerLayers(DL: DeckLayers, progress: number, steps: { lng: numbe
     const appear = smoothstep(clamp(progress / BULL_FADE_IN, 0, 1));
     if (appear > 0.004) {
       const bullAlpha = Math.round(255 * appear);
+      const trim = bullSizeTrim();
+      const s = bullScale * trim;
       layers.push(new ScenegraphLayer({
         id: 'bull-3d', data: [{ position: head, heading }], scenegraph: BULL_3D_MODEL_URL,
-        getPosition: (d) => d.position, getOrientation: (d) => [0, -d.heading + 180, 90], getScale: [bullScale, bullScale, bullScale],
-        getColor: [251, 199, 95, bullAlpha], sizeScale: 1, sizeMinPixels: 40, sizeMaxPixels: 105, _lighting: 'flat',
+        getPosition: (d) => d.position, getOrientation: (d) => [0, -d.heading + 180, 90], getScale: [s, s, s],
+        getColor: [251, 199, 95, bullAlpha], sizeScale: 1,
+        sizeMinPixels: BULL_PX_MIN * trim, sizeMaxPixels: BULL_PX_MAX * trim,
+        _lighting: 'flat',
         parameters: NO_DEPTH, updateTriggers: { getPosition: head, getOrientation: heading, getColor: bullAlpha },
       }));
     }
@@ -449,13 +470,6 @@ const smoothstep = (t: number) => { const x = clamp(t, 0, 1); return x * x * (3 
  *  every framing authored around the centre was shoved toward (and past) the right edge.
  *  That is why the bull was on screen less than in his. Restore by putting that expression
  *  back as `left`. */
-/** Phone breakpoint for map FRAMING — the authoring engine's own number, and strictly
- *  "less than": exactly 720 is desktop. Distinct from the project-wide 800px CSS
- *  breakpoint, so it is spelled out here rather than borrowed. */
-const MAP_MOBILE_MAX = 720;
-/** Fraction of a flight over which `follow` ramps from 0 to its authored strength. */
-const FOLLOW_RAMP = 0.2;
-const isNarrowViewport = () => typeof window !== 'undefined' && window.innerWidth < MAP_MOBILE_MAX;
 
 const JOURNEY_PAD = { top: 80, right: 60, bottom: 80, left: 60 };
 const JOURNEY_PAD_NARROW = { top: 60, right: 30, bottom: 40, left: 30 };
@@ -1283,9 +1297,8 @@ export default function MapChapter({
     const items = landmarks
       .filter((lm) => POI_BADGE[lm.id])
       .map((lm) => {
-        const side = POI_PILL_SIDE[lm.id] ?? 'right';
         const el = document.createElement('div');
-        el.className = `mc-poi mc-poi--${side}`;
+        el.className = 'mc-poi';
 
         const badge = document.createElement('span');
         badge.className = 'mc-poi-badge';
@@ -1319,9 +1332,15 @@ export default function MapChapter({
       // last stop during the dive, which otherwise pins them at full opacity).
       const diveFade = 1 - smoothstep(clamp(diveOf(playhead.get(), pacingRef.current) / 0.25, 0, 1));
       const W = host.clientWidth, H = host.clientHeight;
+      // Seat is per-breakpoint and read every frame, so crossing 720 re-places the labels
+      // without rebuilding the layer. The side is a class; only written when it changes.
+      const narrow = isNarrowViewport();
       for (const { lm, el } of items) {
+        const seat = narrow && lm.narrow ? { ...lm, ...lm.narrow } : lm;
+        const sideClass = `mc-poi mc-poi--${seat.pillSide ?? 'right'}`;
+        if (el.className !== sideClass) el.className = sideClass;
         const p = map.project([lm.lng, lm.lat]);
-        const ox = lm.offset?.[0] ?? 0, oy = lm.offset?.[1] ?? 0;
+        const ox = seat.offset?.[0] ?? 0, oy = seat.offset?.[1] ?? 0;
         const cx = p.x + ox, cy = p.y + oy;
         el.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px) translate(-50%, -50%)`;
         let vis = 0;
@@ -1887,16 +1906,19 @@ export default function MapChapter({
         {introTitle ? (
           <div
             ref={introRef}
-            className="absolute inset-0 z-30 bg-black flex items-center justify-center px-6 pointer-events-none"
+            className="absolute inset-0 z-30 bg-black flex items-center justify-center px-5 sm:px-6 pointer-events-none"
             style={{ opacity: 1 }}
           >
             {/* wide enough for the desktop wordmark (1177px at the 1440px design width) */}
             <div className="max-w-[1180px] max-sm:w-full max-sm:flex max-sm:flex-col max-sm:items-center">
-              {/* mobile: stacked lockup — fill the phone width (20px gutters) so the mark reads big */}
+              {/* Phone: the stacked lockup at the design's own 321.99 — 1:1 off «iPhone 17 - 24»
+                  (402×874), fixed rather than a share of the viewport. It used to be
+                  (100vw−40)×0.68, which on that frame is 246px — a quarter under the mark the
+                  design draws. */}
               <img
                 src={THE_BULLS_ROUTE}
                 alt="The Bull's Route"
-                className="hidden max-sm:block mb-8 w-[calc((100vw-40px)*0.68)] max-w-none h-auto"
+                className="hidden max-sm:block mb-[46px] w-[321.99px] max-w-none h-auto"
               />
               {/* desktop: the designer's one-line lockup, outlined from the Figma slide.
                   Width + gap are the design's share of its 1440px frame (1177/1440 = 81.77vw,
@@ -1908,11 +1930,12 @@ export default function MapChapter({
               >
                 <img src={THE_BULLS_ROUTE_DESKTOP} alt="The Bull's Route" className="block w-full h-auto" />
               </div>
-              {/* Desktop: design 34/40 @ 1440 — do not squeeze. Mobile: wrap after «three tonnes». */}
+              {/* Desktop: design 34/40 @ 1440 — do not squeeze. Phone: 24/32 Struve on a 358.71
+                  measure, both off the same frame, so it breaks into the design's five lines. */}
               <p
                 ref={introBodyRef}
                 style={{ fontFamily: 'var(--font-struve)', color: '#FBC75F' }}
-                className="mx-auto text-center max-w-[24em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:mx-0 max-sm:max-w-[248px] max-sm:w-[min(248px,calc(100vw-40px))] max-sm:text-[17px] max-sm:leading-[1.33]"
+                className="mx-auto text-center max-w-[24em] text-[clamp(16px,2.361vw,34px)] leading-[1.176] max-sm:max-w-[358.71px] max-sm:w-[358.71px] max-sm:text-[24px] max-sm:leading-[32px]"
               />
             </div>
           </div>

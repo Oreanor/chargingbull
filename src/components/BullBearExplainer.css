@@ -20,11 +20,16 @@
 .xpl-pill-bull { background: #61e26b; }
 .xpl-pill-bear { background: #f14268; }
 
-/* Mobile (stacked): the first column (aside) is a smaller note, pushed to the RIGHT
-   (wide left margin, 20px right); the second column (main) takes the full width with
-   a 20px margin each side and its normal font. */
+/* Mobile (stacked): the second column (main) takes the full width with a 20px margin each
+   side and its normal font.
+   The first column is a smaller note pushed to the RIGHT — but only in the EXPLAINER, which
+   is what that treatment was designed for. It is opt-in via .xpl-aside--note rather than
+   living on .xpl-aside, because the closing slide borrows the same class for its portrait +
+   quote, where the design puts them side by side at the left gutter; inheriting the note
+   treatment there shoved the disc into the middle of the screen and squeezed the quote to a
+   third of its measure. */
 @media (max-width: 1023px) {
-  .xpl-aside {
+  .xpl-aside--note {
     margin: 0 20px 0 auto;
     max-width: min(68%, 270px);
     font-size: 12.5px;

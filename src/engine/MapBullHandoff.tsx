@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type ComponentProps } from 'react';
 import MapChapter from './MapChapter';
+import { bullSizeTrim, isNarrowViewport } from './mapViewport';
 import DatumSplat, { type DatumSplatHandle } from '../components/DatumSplat';
 import { useInViewMount } from './useInViewMount';
 import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotate» hint (text is HTML)
@@ -14,7 +15,7 @@ import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotat
  *     fully transparent with a tiny circular clip, so the map shows through;
  *   • across the back of the dive the bull unfolds: a circle iris grows from a
  *     small disc and opens past the corners, the camera dollies in from
- *     DIST_START_MUL× out, and it fades from transparent to 100% — over the map;
+ *     distStartMul()× out, and it fades from transparent to 100% — over the map;
  *   • from there the reader just keeps scrolling (plain 1:1, no snapping): the
  *     sticky bull slides up and away while the next chapter divider
  *     (<BreakReveal>) scrolls in and plays its reveal.
@@ -39,18 +40,63 @@ const START_SCALE = 1.02; // model is 2% bigger under the mask at the reveal STA
 // Reveal START pose, as an offset from the resting (nose-to-us) pose — tuned so the splat
 // bull enters roughly matching the MAP bull (small, seen from above, backed to us) for a
 // seamless swap, then orbits down-and-around to rest. Knobs to eyeball the match:
-// Start angle: a half-turn, then 25° back CCW (−187 → −162). Less negative = CCW here, the
-// same axis the old −184→−187 nudge moved along, only the other way. The map's DIVE_BEARING
+// Start angle: a half-turn, then 22° back CCW (−187 → −165; the last 3° of that on request).
+// Less negative = CCW here — the same axis the old −184→−187 nudge moved along, only the
+// other way. The map's DIVE_BEARING
 // stays at 184: it and this have been allowed to differ by a few degrees since that nudge,
 // and the lockstep the reader sees is the ~half-turn, not the last degrees of it.
-const AZ_START = -162;
+const AZ_START = -165;
 const POLAR_START = -50;   // starts looking almost straight down at it…
-const DIST_START_MUL = 6;   // …from far out (small, ≈ the map bull's on-screen size), zooming to full
-// The map bull is projected from its GROUND coord, which lands at its feet — nudge the iris
-// up (vh) so it sits low on the bull's body, and horizontally so the disc lands right on it.
-// Negative LEFT_VW = a touch to the RIGHT.
-const GLUE_UP_VH = 2.25; // lift onto the bull's body at the reveal start (lowered ~3–4px from 2.7)
-const GLUE_LEFT_VW = 0;
+/**
+ * How much SMALLER than the map figurine the splat enters, on top of whatever size that
+ * figurine is drawn at. Separate from the map's own trim on purpose: that one is "how big we
+ * draw the map bull", this is "how the swap is judged against it". The iris keeps tracking the
+ * figurine, so the splat comes up just INSIDE the disc rather than filling it to the edge.
+ */
+const SPLAT_ENTRY_TRIM = 0.9025; // two 5% steps below the figurine's own size
+/**
+ * All three of these mean "as big as the MAP figurine", so all three read its live size
+ * instead of restating it. That size is trimmed on a phone and authored-size on a wide map
+ * (see bullSizeTrim), and the swap has to be invisible on both — which is why they are
+ * evaluated per frame and not frozen at module load.
+ *
+ *  · start distance — apparent size goes as 1/distance, so a figurine drawn at `trim` of the
+ *    authored size needs the camera that much further back. Authored at 6 against a full bull.
+ *  · iris radius, as a fraction of half-height — sized to sit ON the figurine, so a disc
+ *    authored for a full-size bull would read as a halo around a trimmed one.
+ *  · vertical lift — the map bull is projected from its GROUND coord, which lands at its feet,
+ *    so the disc is lifted onto its body by a fraction of the figurine's height.
+ */
+const distStartMul = () => 6 / (bullSizeTrim() * SPLAT_ENTRY_TRIM);
+const irisStartFrac = () => 0.045 * bullSizeTrim();
+const glueUpVh = () => 2.25 * bullSizeTrim();
+/** Horizontal glue nudge at the reveal start, in PX — it moves the mask and the bull inside
+ *  it TOGETHER (both live on clipRef), so the disc lands on the map figurine rather than
+ *  beside it. Positive = right. Authored in px because that is the unit this seat is judged
+ *  in; it used to be a vw knob sitting at 0, which would have made a 3px nudge a different
+ *  nudge on every viewport. Eases out with posF, like the vertical lift. */
+const GLUE_RIGHT_PX = 3;
+/**
+ * PHONE only: nudge the whole scene right so the bull sits centred.
+ *
+ * The pose is authored against a wide crop, and on a portrait viewport that same camera puts
+ * the bull's mass — and with it the axis it appears to orbit around — left of centre. Re-aiming
+ * the camera is not the lever here: those coordinates are captured in the FPS editor, not
+ * typed by hand.
+ *
+ * Done by WIDENING the layer rather than translating it. A translate would slide the left edge
+ * inward and show a black strip there — which is exactly why the old BULL_LEFT_VW nudge was
+ * zeroed. A layer 2× this wider still starts flush at the left, and its centre — so the whole
+ * scene, photo included — lands this much to the right, with the surplus clipped on the right.
+ *
+ * The widening goes on clipRef, the layer the iris mask is on, NOT on the bull layer inside it:
+ * the mask is a gradient at the layer's own 50%, so sharing one box is what keeps the disc
+ * centred on the bull. Widen only the inner layer and the two centres drift apart by this
+ * much — invisible at a few px, but it means the reveal opens beside the bull once the value
+ * grows. Costs a little canvas: 10vw on a 393 phone is ~39px of extra width.
+ */
+const BULL_SHIFT_RIGHT_VW = 10;
+const phoneShiftVw = () => (isNarrowViewport() ? BULL_SHIFT_RIGHT_VW : 0);
 // The splat bull renders a head too low in its own framing. Lift ONLY the bull layer
 // (scaleRef, inside the mask) up by ~a head — the mask sits on the parent clipRef, so it
 // stays exactly put while the bull rises through it.
@@ -63,7 +109,7 @@ const BULL_START_UP_PX = 3;   // px up at the start
 // viewport HEIGHT (diameter = height, so it never gets wider-than-tall while round);
 // (2) it then opens past the corners, so the rectangle "spreads out". The radius is
 // driven linearly so the round phase is clearly visible (scale/opacity stay sharp).
-const IRIS_START_FRAC = 0.045; // disc radius at reveal start, as a fraction of half-height (2× smaller than before)
+// The disc's starting radius is irisStartFrac() up top — it tracks the figurine's live size.
 const IRIS_SPLIT = 0.42;      // portion of the reveal spent on the round (disc) phase — lower = opens to full screen more assertively
 const IRIS_OVERSHOOT = 1.03;  // ×corner distance at the end (clears the corners)
 
@@ -101,6 +147,14 @@ export default function MapBullHandoff({
     // "leaving" = the sticky bull has begun sliding up off the top of the viewport.
     const leaving = ov ? ov.getBoundingClientRect().top < -8 : false;
     el.style.opacity = revealedRef.current && !rotatedRef.current && !leaving ? '1' : '0';
+    // Dead centre of the viewport on a phone — and it does NOT trail the scene's widening
+    // shift: that shift exists to bring the bull to centre, so following it would push the
+    // hint back off centre by the same amount. On a wide screen the authored −30px stands;
+    // there it found the bull's visual centre in that crop. Written here rather than in the
+    // style attribute so a resize across the breakpoint re-seats it.
+    el.style.transform = isNarrowViewport()
+      ? 'translate(-50%, 26px)'
+      : `translate(calc(-50% - ${BULL_LEFT_VW}vw - 30px), 26px)`;
   }, []);
 
   // Mount the bull splat only as this section approaches — NOT during the opener.
@@ -128,11 +182,17 @@ export default function MapBullHandoff({
     const posF = 1 - smoothstep(clamp01((raw - 0.38) / 0.2));
     if (clipRef.current) {
       const halfH = window.innerHeight / 2;
-      const cornerPx = Math.hypot(window.innerWidth, window.innerHeight) / 2;
+      // Distance from the layer's centre to the FARTHEST viewport corner. The layer is
+      // 2×shift wider than the viewport and flush left, so its centre sits `shift` right of
+      // the viewport's and the two left corners are that much farther out than a plain
+      // half-diagonal — without this the mask stops short of them at full open.
+      const shiftPx = (phoneShiftVw() / 100) * window.innerWidth;
+      const cornerPx = Math.hypot(window.innerWidth / 2 + shiftPx, window.innerHeight / 2);
+      const irisStart = irisStartFrac();
       // radius accelerates: disc → half-height (round phase), then → past corners
       const r =
         i <= IRIS_SPLIT
-          ? halfH * (IRIS_START_FRAC + (1 - IRIS_START_FRAC) * (i / IRIS_SPLIT))
+          ? halfH * (irisStart + (1 - irisStart) * (i / IRIS_SPLIT))
           : halfH + (cornerPx * IRIS_OVERSHOOT - halfH) * ((i - IRIS_SPLIT) / (1 - IRIS_SPLIT));
       const mask = circleMask(r * 1.35); // radius 35% larger
       clipRef.current.style.webkitMaskImage = mask;
@@ -143,9 +203,12 @@ export default function MapBullHandoff({
       // with the map pan. The offset MUST be gone before the iris grows past its disc phase
       // (~raw 0.61): while the container is still shifted up, a large circle spills past its
       // (now off-centre) bottom edge and shows the map. So settle it to centre by ~0.58.
-      const upPx = (GLUE_UP_VH / 100) * window.innerHeight; // lift onto the bull's body (proj lands at its feet)
-      const leftPx = (GLUE_LEFT_VW / 100) * window.innerWidth; // nudge left so the body sits over the map bull, not right of it
-      const ox = ((bullOffset?.x ?? 0) - leftPx) * posF;
+      const upPx = (glueUpVh() / 100) * window.innerHeight; // lift onto the bull's body (proj lands at its feet)
+      // bullOffset is measured from the VIEWPORT's centre, but this layer's centre — where the
+      // mask's 50% and the splat bull both sit — is shiftPx right of it, so the shift comes back
+      // out here. Both ends then land where they should: on the map figurine at posF 1, and on
+      // the splat bull (offset gone) at rest.
+      const ox = ((bullOffset?.x ?? 0) + GLUE_RIGHT_PX - shiftPx) * posF;
       const oy = ((bullOffset?.y ?? 0) - upPx) * posF;
       clipRef.current.style.transform = `translate(${ox.toFixed(1)}px, ${oy.toFixed(1)}px)`;
     }
@@ -163,7 +226,7 @@ export default function MapBullHandoff({
       // stays VISIBLE — it no longer races to rest while the bull is still transparent (which
       // made a full 180° read as ~90°). k: 1 at reveal start → 0 at the resting pose.
       const k = 1 - easeInOutCubic(raw);
-      bullRef.current?.setCameraOffset(AZ_START * k, POLAR_START * k, 1 + (DIST_START_MUL - 1) * k);
+      bullRef.current?.setCameraOffset(AZ_START * k, POLAR_START * k, 1 + (distStartMul() - 1) * k);
     }
     // Orbit (free drag-rotate) only AFTER the scripted transition finishes — during
     // the handoff the camera is on rails, so the page stays scrollable and the script
@@ -198,11 +261,14 @@ export default function MapBullHandoff({
           pointer-events:auto only once settled (see onDive), so the hand shows exactly when
           the bull is orbitable; while it's still pointer-events:none the cursor is moot. */}
       <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none cursor-grab active:cursor-grabbing">
-        <div ref={clipRef} className="h-full w-full" style={{ opacity: 0 }}>
+        {/* WIDTH overshoots on the phone: the layer stays flush at the left, so its centre —
+            the iris mask's 50% AND the scene inside — moves right by half the surplus, which is
+            the shift (see BULL_SHIFT_RIGHT_VW). Zero on a wide screen, i.e. 100%. */}
+        <div ref={clipRef} className="h-full" style={{ opacity: 0, width: `calc(100% + ${2 * phoneShiftVw()}vw)` }}>
           {/* Height overshoots by the raise so translating the layer UP (to lift the bull's
               head into frame) doesn't uncover a strip at the bottom — the scene still fills
               to 100vh. overlayRef's overflow-hidden clips the extra at the top. */}
-          <div ref={scaleRef} className="w-full will-change-transform" style={{ height: `calc(100% + ${BULL_RAISE_VH}vh)`, transform: `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}vh) scale(${START_SCALE})` }}>
+          <div ref={scaleRef} className="will-change-transform w-full" style={{ height: `calc(100% + ${BULL_RAISE_VH}vh)`, transform: `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}vh) scale(${START_SCALE})` }}>
             {armed ? <DatumSplat ref={bullRef} {...splatProps} /> : null}
           </div>
         </div>

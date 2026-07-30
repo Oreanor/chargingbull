@@ -121,6 +121,15 @@ const SPAN_PAD = 0.08;
 
 const LAND_FRAME = { w: 1440, h: 800 } as const;
 const PORT_FRAME = { w: 393, h: 852 } as const;
+/**
+ * The HERO's own portrait frame. It fits independently of the chart (two stages, two
+ * fits — see the fit effect), so it gets the frame it was actually drawn on: the
+ * designer's 402×874 phone («iPhone 17 - 4»), not the chart's reference 393×852. Keeping
+ * them separate is the point — every hero coordinate in CandleIntro.css is then the
+ * mockup's own number, diffable against Figma, with no conversion factor in between, and
+ * the candle half keeps the frame its plates were authored against.
+ */
+const PORT_FRAME_HERO = { w: 402, h: 874 } as const;
 // Portrait frame below the project-wide phone breakpoint (deviceBudget.MOBILE_MAX).
 
 function CandleScene({ progress, span }: { progress: MotionValue<number>; span: [number, number] }) {
@@ -238,7 +247,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
 
       const heroStage = heroStageRef.current;
       if (heroStage) {
-        const f = portrait ? PORT_FRAME : LAND_FRAME;
+        const f = portrait ? PORT_FRAME_HERO : LAND_FRAME;
         // Contain-fit so the title never clips. Portrait also caps at 1:1 (same
         // fit-height idea as the chart — phone chrome shortens the visible vh).
         const kc = portrait
@@ -401,8 +410,11 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       subtitleRef.current.textContent = '';
       SUB.forEach((line) => {
         const lineEl = document.createElement('span');
-        lineEl.style.display = 'block';
-        lineEl.textContent = line;
+        // display lives in CSS (.ci-subtitle > span) — an inline style here would beat the
+        // portrait rule that flows these together. Trailing space so that when they DO flow
+        // inline the two lines don't fuse into "IPO:why"; at the end of a block line it
+        // collapses, so landscape is unaffected.
+        lineEl.textContent = line + ' ';
         subtitleRef.current!.appendChild(lineEl);
       });
     }
@@ -638,13 +650,14 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         }
         if (subtitleRef.current) {
           subtitleRef.current.style.opacity = fadeOut(STAG).toFixed(3);
+          // Portrait passes NO base: the phone frame's coordinates live in
+          // CandleIntro.css and this would write over them from a second place.
           applyHeroTune(subtitleRef.current, 'opener.hero.subtitle',
-            port ? 'translate(-5.2px, 47.7px)' : 'translate(-14.6px, 10px)');
+            port ? '' : 'translate(-14.6px, 10px)');
         }
         if (coordsRef.current) {
           coordsRef.current.style.opacity = fadeOut(2 * STAG).toFixed(3);
-          applyHeroTune(coordsRef.current, 'opener.hero.coords',
-            port ? 'translate(-4.2px, 96.4px)' : '');
+          applyHeroTune(coordsRef.current, 'opener.hero.coords');
         }
       }
 

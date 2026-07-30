@@ -5,13 +5,18 @@ import './BullBearExplainer.css';
  * a narrow struve aside (the $7.6T AI build-out figure) + a wider Martina-Plantijn
  * serif body on how crises actually play out and "what can we do — hold on". Same
  * two-column layout/styling as <BullBearExplainer>.
+ *
+ * PHONE geometry is 1:1 off «iPhone 17 - 25» (402×1257): prose Martina 24/32 at +0.01em with
+ * 20px gutters, and the aside is Struve 18/28 INDENTED from the left (x=92, 20px from the
+ * right). It does not take the explainer's phone treatment — that one shrinks the aside to
+ * 12.5px and pushes it right, which is the explainer's own idea, not this slide's.
  */
 export function CrisisDynamics() {
   return (
     <section className="lg:px-6 py-24 md:py-32 bg-black">
       <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start gap-y-14 gap-x-[clamp(40px,8vw,130px)]">
         <aside
-          className="xpl-aside lg:w-[348px] lg:shrink-0 text-[clamp(14px,1.25vw,18px)] leading-[1.333]"
+          className="xpl-aside ml-[92px] mr-5 text-[18px] leading-[28px] lg:ml-0 lg:mr-0 lg:w-[348px] lg:shrink-0 lg:text-[clamp(14px,1.25vw,18px)] lg:leading-[1.333]"
           style={{ fontFamily: 'var(--font-struve)' }}
         >
           Building the next generation of AI could cost about $7.6&nbsp;trillion between
@@ -19,7 +24,7 @@ export function CrisisDynamics() {
           counted.
         </aside>
         <div
-          className="xpl-main lg:flex-1 lg:max-w-[760px] text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white space-y-7"
+          className="xpl-main lg:flex-1 lg:max-w-[760px] text-[24px] leading-[32px] tracking-[0.01em] lg:text-[clamp(17px,1.5vw,24px)] lg:leading-[1.34] lg:tracking-normal text-white space-y-7"
           style={{ fontFamily: 'var(--font-martina)' }}
         >
           <p>

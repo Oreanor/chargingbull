@@ -12,7 +12,6 @@
 
 /* narrative plaque, bottom-left — desktop 672; mobile ≤1023: 362 + left gutter. */
 .so-text {
-  --so-plaque-gap: 20px;
   position: absolute; left: 56px; bottom: 9%; opacity: 0;
   width: min(672px, calc(100vw - 64px));
   background: rgba(37, 34, 30, 0.85);
@@ -46,11 +45,17 @@
 }
 
 @media (max-width: 1023px) {
+  /* Phone card spec — one place, see the --card-* block in fonts.css. */
   .so-text {
-    padding: 28px 28px 32px; border-radius: 22px;
-    font-size: 17px;
+    padding: var(--card-pad); border-radius: var(--card-radius);
+    font-size: var(--card-body);
+    line-height: var(--card-body-lh);
+    letter-spacing: var(--card-body-ls);
   }
-  .so-text .so-eyebrow { font-size: 28px; }
+  .so-text .so-eyebrow {
+    font-size: var(--card-title);
+    margin-bottom: var(--card-title-gap);
+  }
 }
 
 
@@ -68,8 +73,8 @@
 @media (max-width: 1023px) {
   /* Mobile only: 362 max, left gutter — no centering. Desktop stays 672. */
   .so-text {
-    left: var(--so-plaque-gap); right: auto;
-    width: min(362px, calc(100vw - 2 * var(--so-plaque-gap)));
-    max-width: 362px; margin: 0;
+    left: var(--card-gap); right: auto;
+    width: var(--card-w);
+    max-width: var(--card-w); margin: 0;
   }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import copy from '../content/copy.json';
+import { isMobileViewport } from '../engine/deviceBudget';
 import './BullBearExplainer.css';
 
 /**
@@ -36,6 +37,21 @@ export function BullBearExplainer() {
       const p = clamp01(total > 0 ? -top / total : 0);
       // read the section first, expand the panel over the back half, then hand off
       const e = smoothstep(clamp01((p - 0.42) / 0.5));
+      // PHONE: no growing chip — the panel is the screen from the start and simply fades up,
+      // so the hand-off reads as the background going black → pink. The chip is a desktop
+      // idea: it grows out of the «bear market» pill, and in a narrow single column that pill
+      // sits mid-sentence, so the box travelled across the very text it was highlighting.
+      if (isMobileViewport()) {
+        panel.style.top = '0px';
+        panel.style.left = '0px';
+        panel.style.right = '0px';
+        panel.style.bottom = '0px';
+        panel.style.borderRadius = '0px';
+        panel.style.opacity = e.toFixed(3);
+        content.style.opacity = (1 - smoothstep(clamp01((p - 0.74) / 0.22))).toFixed(3);
+        return;
+      }
+      panel.style.opacity = '1';
       const sr = sticky.getBoundingClientRect();
       // Rest the panel EXACTLY over the «bear market» pill — its own size, centre and
       // radius — so at rest (e=0) it hides perfectly behind the pink highlight (same
@@ -77,7 +93,7 @@ export function BullBearExplainer() {
               as FutureSlide + SummaryBlock so the second column lands on one vertical. */}
           <div className="mx-auto max-w-[1160px] w-full flex flex-col lg:flex-row lg:items-start gap-y-10 gap-x-[clamp(40px,8vw,130px)]">
             <aside
-              className="xpl-aside lg:w-[348px] lg:shrink-0 text-[clamp(14px,1.25vw,18px)] leading-[1.333] max-w-[329px]"
+              className="xpl-aside xpl-aside--note lg:w-[348px] lg:shrink-0 text-[clamp(14px,1.25vw,18px)] leading-[1.333] max-w-[329px]"
               style={{ fontFamily: 'var(--font-struve)' }}
               dangerouslySetInnerHTML={{ __html: copy.explainer.aside }}
             />

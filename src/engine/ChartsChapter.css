@@ -64,7 +64,6 @@
 .cc-cards { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
 .cc-card {
   pointer-events: auto;
-  --cc-plaque-gap: 20px;
   position: absolute; top: 50%; left: clamp(24px, 4vw, 56px);
   transform: translateY(-50%);
   /* desktop 672; mobile: 362 + left gutter (matches .so-text / .mc-card) */
@@ -98,14 +97,20 @@
 .cc-card--bull .cc-comment b { color: #000; }
 
 @media (max-width: 720px) {
+  /* Phone card spec — one place, see the --card-* block in fonts.css. */
   .cc-card {
-    left: var(--cc-plaque-gap);
-    padding: 28px 28px 32px;
-    width: min(362px, calc(100vw - 2 * var(--cc-plaque-gap)));
-    max-width: 362px;
+    left: var(--card-gap);
+    padding: var(--card-pad);
+    width: var(--card-w);
+    max-width: var(--card-w);
+    border-radius: var(--card-radius);
   }
-  .cc-title { font-size: 28px; }
-  .cc-comment { font-size: 17px; }
+  .cc-title { font-size: var(--card-title); margin-bottom: var(--card-title-gap); }
+  .cc-comment {
+    font-size: var(--card-body);
+    line-height: var(--card-body-lh);
+    letter-spacing: var(--card-body-ls);
+  }
   .cc-topbar { padding: 14px 18px; }
   /* Credits, per the designer's portrait export (docs/3/Yahoo F.svg): Struve 16/24 at
      50% ink. Fixed size, not the desktop's vw-scaled clamp. It spans the FULL plot

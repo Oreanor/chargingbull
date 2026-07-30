@@ -19,7 +19,6 @@
    green Struve title, white struve body with underlined links. No image/number. */
 .mc-card {
   /* desktop 672; mobile ≤1023: 362 + left gutter (matches .so-text / .cc-card) */
-  --mc-plaque-gap: 20px;
   width: min(672px, calc(100vw - 64px));
   margin-left: clamp(24px, 5vw, 80px);
   background: rgba(44, 45, 57, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -36,17 +35,20 @@
 .mc-comment a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 @media (max-width: 1023px) {
+  /* Phone card spec — one place, see the --card-* block in fonts.css. */
   .mc-card {
-    margin: 0 0 0 var(--mc-plaque-gap);
-    padding: 28px 28px 32px;
-    width: min(362px, calc(100vw - 2 * var(--mc-plaque-gap)));
-    max-width: 362px;
-    border-radius: 22px;
-    font-size: 17px;
+    margin: 0 0 0 var(--card-gap);
+    padding: var(--card-pad);
+    width: var(--card-w);
+    max-width: var(--card-w);
+    border-radius: var(--card-radius);
+    font-size: var(--card-body);
+    line-height: var(--card-body-lh);
+    letter-spacing: var(--card-body-ls);
   }
   .mc-date { font-size: 19px; }
   .mc-loc { font-size: 14px; }
-  .mc-title { font-size: 28px; }
+  .mc-title { font-size: var(--card-title); margin-bottom: var(--card-title-gap); }
 }
 
 /* ---------------------------------------------------------------- POI markers --- */
@@ -110,7 +112,10 @@
   right: 24px;
   width: 260px;
   height: 300px;
-  z-index: 15;
+  /* Between the POI markers (5) and the step cards (10): the locator is map chrome, so it
+     sits over the pins, but a card must never be cut into by it. It used to be 15 and won
+     against the cards. */
+  z-index: 8;
   pointer-events: none;
   overflow: visible;
 }

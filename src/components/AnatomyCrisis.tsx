@@ -9,9 +9,12 @@ import copy from '../content/copy.json';
 export function AnatomyCrisis() {
   return (
     <div className="relative z-30">
+      {/* Phone measure + mark→caption gap off «iPhone 17 - 38» (402×874). */}
       <BreakReveal
         titleNode={<CrisisCurveTitle />}
         body={copy.crisisCurve.body}
+        phoneMeasure={341.34}
+        phoneGap={22}
       />
     </div>
   );

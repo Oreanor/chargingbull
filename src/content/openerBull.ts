@@ -10,7 +10,17 @@ import type { ChapterExtra } from '../engine/ModelChapter';
 
 export const OPENER_MODEL = '/chapters/splash/models/Bullforweb2-butcher4.glb';
 export const OPENER_FRAMES = 14;
-export const OPENER_PLACEMENT = { scale: 0.3593, recenter: false } as const;
+// Phone-only seating of the figure: it sits 9% of its own height lower than the captured
+// poses put it, with the muzzle tipped 6° down so the head reads the way it does in the wide
+// crop. Both move the MODEL — the only lever that disturbs neither the camera track (poses
+// are captured in the editor, not typed) nor the frame's edges. Wide screens set neither, so
+// the desktop opener is untouched.
+export const OPENER_PLACEMENT = {
+  scale: 0.3593,
+  recenter: false,
+  dropFracPhone: 0.09,
+  pitchDegPhone: 4,
+} as const;
 
 export const OPENER_EXTRAS: ChapterExtra[] = [
   {

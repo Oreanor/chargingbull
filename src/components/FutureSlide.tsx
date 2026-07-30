@@ -5,6 +5,11 @@ import './BullBearExplainer.css';
  * + his "you must be strong" quote (struve). Right main: the AI / SpaceX / "the bull
  * came later" closing prose (Martina-Plantijn serif). Same two-column layout as the
  * other editorial slides. Portrait served from /public.
+ *
+ * PHONE geometry is 1:1 off «iPhone 17 - 37» (402 wide): 20px gutters, prose Martina 24/32 at
+ * +0.01em, quote and name Struve 18/24. The portrait and the quote sit SIDE BY SIDE there —
+ * the 136px disc at x=20 and the quote column from x=180 — not stacked as they were here;
+ * everything else in the column is one flow. Sizes are the design's own, not scaled.
  */
 export function FutureSlide() {
   // The opening AI/SpaceX lede. On desktop it heads the right column; on mobile it
@@ -28,35 +33,35 @@ export function FutureSlide() {
         {/* MOBILE-only: the AI lede sits above the portrait (hidden on desktop, where it
             heads the right column instead). Serif styling matches the main column. */}
         <p
-          className="lg:hidden text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white"
+          className="lg:hidden text-[24px] leading-[32px] tracking-[0.01em] text-white"
           style={{ fontFamily: 'var(--font-martina)' }}
         >
           {aiLede}
         </p>
-        <aside className="xpl-aside lg:w-[348px] lg:shrink-0 lg:translate-x-[-3.29vh] lg:translate-y-[1.7vh]" style={{ fontFamily: 'var(--font-struve)' }}>
+        <aside className="xpl-aside flex items-start gap-x-6 lg:block lg:w-[348px] lg:shrink-0 lg:translate-x-[-3.29vh] lg:translate-y-[1.7vh]" style={{ fontFamily: 'var(--font-struve)' }}>
           <img
             src="/chapters/closing/dimodica.png"
             alt="Arturo Di Modica"
-            className="w-[136px] h-[136px] rounded-full object-cover mb-7 lg:w-[96px] lg:h-[96px] lg:translate-x-[6.92vh] lg:translate-y-[3.3vh] lg:scale-[1.876]"
+            className="w-[136px] h-[136px] shrink-0 rounded-full object-cover lg:mb-7 lg:w-[96px] lg:h-[96px] lg:translate-x-[6.92vh] lg:translate-y-[3.3vh] lg:scale-[1.876]"
             style={{ background: 'var(--color-grays-800, #292929)' }}
           />
           {/* Quote + name ride ONE baked translate together, so the name always sits
               below the quote — one 24px baseline-step down (Frame 66), never overlapping.
               lg: ONLY — these offsets were authored for the two-column desktop layout, and
               below it the aside is just the next block in a single column. */}
-          <div className="lg:translate-x-[1.75vh] lg:translate-y-[8.48vh]">
-            <blockquote className="text-[clamp(14px,1.25vw,18px)] leading-[1.333]">
+          <div className="min-w-0 lg:translate-x-[1.75vh] lg:translate-y-[8.48vh]">
+            <blockquote className="text-[18px] leading-[24px] lg:text-[clamp(14px,1.25vw,18px)] lg:leading-[1.333]">
               &ldquo;My point was to show people that if you want to do something in a moment
               things are very bad, you can do it. You can do it by yourself. My point was
               that you must be strong.&rdquo;
             </blockquote>
-            <div className="font-bold text-white text-[clamp(14px,1.25vw,18px)] leading-[1.333]">
+            <div className="font-bold text-white text-[18px] leading-[24px] lg:text-[clamp(14px,1.25vw,18px)] lg:leading-[1.333]">
               Arturo Di&nbsp;Modica
             </div>
           </div>
         </aside>
         <div
-          className="xpl-main lg:flex-1 lg:max-w-[760px] text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white space-y-7"
+          className="xpl-main lg:flex-1 lg:max-w-[760px] text-[24px] leading-[32px] tracking-[0.01em] lg:text-[clamp(17px,1.5vw,24px)] lg:leading-[1.34] lg:tracking-normal text-white space-y-7"
           style={{ fontFamily: 'var(--font-martina)' }}
         >
           {/* DESKTOP-only: same lede, hidden on mobile where it's shown above the portrait. */}

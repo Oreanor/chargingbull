@@ -64,9 +64,14 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
 
 {/* ===================== II · Bulls, Bears & Crises ====================== */}
 
+{/* Phone measure + mark→caption gap off «iPhone 17 - 23» (402×874): the caption's ink is
+    355.41 wide and starts 60.7 under the lockup's — 53 as a box margin, since the line box
+    carries ~7 of ascent above its glyphs. */}
 <BreakReveal
   titleNode={<BearsBullsTitle />}
   body={copy.bearsBulls.body}
+  phoneMeasure={355.41}
+  phoneGap={53}
 />
 
 {/* ===================== EXPLAINER — bull / bear market ================== */}

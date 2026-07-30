@@ -15,7 +15,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CameraSpherical } from './DatumScene';
-import { disposeMaterialTextures, glQuality, releaseRenderer } from './deviceBudget';
+import { disposeMaterialTextures, glQuality, isMobileViewport, releaseRenderer } from './deviceBudget';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -35,8 +35,18 @@ export interface GlbSceneOptions {
    *    (sensible default for a bare model).
    *  - `recenter: false`: keep the model's authored transform (apply `scale`,
    *    leave position/rotation at 0, NO recenter) so cartesian camera poses from
-   *    an external tool (e.g. stages.json, scale 0.3593) stay valid. */
-  placement?: { scale?: number; recenter?: boolean };
+   *    an external tool (e.g. stages.json, scale 0.3593) stay valid.
+   *  - `dropFrac` / `dropFracPhone`: sink the FIGURE by this fraction of its own height
+   *    (0.05 = 5%), the phone value taking over below the project's phone breakpoint.
+   *    Lowering it in the composition is a move of the model, not of the canvas: a CSS
+   *    translate on the host slides the canvas' top edge down and leaves a strip of page
+   *    behind it, and growing the host widens the camera's frustum, which scales the
+   *    figure instead of moving it. The camera track is untouched. Applies to the
+   *    `recenter: false` placement, the one with an authored transform to offset.
+   *  - `pitchDeg` / `pitchDegPhone`: tip the figure's FRONT (the muzzle) down by this many
+   *    degrees, about its own bounding-box centre. Same reason it is not a camera change:
+   *    the poses are captured in the editor, not typed. */
+  placement?: { scale?: number; recenter?: boolean; dropFrac?: number; dropFracPhone?: number; pitchDeg?: number; pitchDegPhone?: number };
   /** Secondary models placed in the SAME scene/camera space as the main model
    *  (e.g. a Checker cab beside the bull for scale). Each has its own transform
    *  and starts hidden; ModelChapter toggles visibility per scroll window via
@@ -88,6 +98,11 @@ const SPREAD_FALLOFF = 3;
  *  back-to-front — the axis is found from the bounding box, its direction is not knowable
  *  from geometry alone. */
 const FRONT_IS_AXIS_MAX = true;
+/** Where `pitchDeg` turns the figure, as a fraction of the half-length from its centre
+ *  toward the front: 0 = the body's centre, 1 = the tip of the muzzle. ~0.8 lands on the
+ *  head/neck, which is what makes the pitch read as the muzzle dipping rather than as the
+ *  whole animal tipping over. */
+const PITCH_PIVOT = 0.8;
 
 export class GlbScene {
   private readonly options: GlbSceneOptions;
@@ -117,6 +132,13 @@ export class GlbScene {
   private readonly extraShells: (THREE.Mesh[] | null)[] = [];
   /** Main model + its home position, for the forward push/lunge. */
   private mainModel: THREE.Object3D | null = null;
+  /** World-space height of the main model + its y before any drop — the two numbers
+   *  `dropFrac` needs, kept so a breakpoint change can re-seat it without a reload. */
+  private modelHeight = 0;
+  private modelBaseY = 0;
+  /** Pitch/drop currently seated, so a resize only re-seats when the breakpoint changed. */
+  private seatedPitch = NaN;
+  private seatedDrop = NaN;
   private readonly modelHome = new THREE.Vector3();
   private pushAmount = 0;
   /** The authored (keyframe) vertical fov — what the camera uses at/above the reference
@@ -256,6 +278,11 @@ export class GlbScene {
           model.rotation.set(0, 0, 0);
           scene.add(model);
 
+          // Pitch + sink the figure before anything is measured off it, so the fallback
+          // framing below still centres on where the model actually ended up.
+          this.mainModel = model;
+          this.seatFigure();
+
           const box = new THREE.Box3().setFromObject(model);
           const size = box.getSize(new THREE.Vector3());
           const center = box.getCenter(new THREE.Vector3());
@@ -288,8 +315,11 @@ export class GlbScene {
 
         // Capture per-mesh explode anchors now that the model is placed, then
         // apply any explode/push requested before load finished.
+        // mainModel is already set on the recenter:false path, where seatFigure needs it and
+        // has also set modelHome. NaN seatedDrop = that never ran, i.e. the recentred path,
+        // whose home is simply where the centring left the model.
         this.mainModel = model;
-        this.modelHome.copy(model.position);
+        if (Number.isNaN(this.seatedDrop)) this.modelHome.copy(model.position);
         this.captureMeshHomes(model);
         if (this.explodeAmount !== 0) this.applyExplode();
         if (this.pushAmount !== 0) this.applyPush();
@@ -310,6 +340,7 @@ export class GlbScene {
       if (!W || !H) return;
       renderer.setSize(W, H, false); // buffer only; CSS keeps the canvas full-bleed
       camera.aspect = W / H;
+      this.seatFigure(); // the phone composition sinks + tips the figure — see *Phone
       // Re-apply last track pose so FOV fit + mobile frame nudge stay consistent.
       if (this.lastSpherical) this.setCameraSpherical(this.lastSpherical);
       else {
@@ -549,6 +580,62 @@ export class GlbScene {
     if (amount === this.pushAmount) return;
     this.pushAmount = amount;
     this.applyPush();
+  }
+
+  /** Per-breakpoint placement value: the phone one wins below MOBILE_MAX. */
+  private placementAt(wide?: number, phone?: number): number {
+    return (isMobileViewport() ? phone : undefined) ?? wide ?? 0;
+  }
+
+  /**
+   * Apply the breakpoint's pitch + drop to the figure, from scratch each time (reset →
+   * pitch → re-anchor → sink), so crossing MOBILE_MAX re-seats it without reloading the
+   * model. Idempotent; runs once after load and again on every resize.
+   *
+   * The pitch turns about the figure's own bounding-box CENTRE, not its origin: the origin
+   * is wherever the author left it, so rotating about it would swing the head across the
+   * frame as well as tip it. Long axis, and which end of it the head is on, come from the
+   * bounding box exactly as the explode finds them (see FRONT_IS_AXIS_MAX).
+   */
+  private seatFigure(): void {
+    const m = this.mainModel;
+    const p = this.options.placement;
+    if (!m || !p) return;
+    const pitch = this.placementAt(p.pitchDeg, p.pitchDegPhone);
+    const drop = this.placementAt(p.dropFrac, p.dropFracPhone);
+    if (this.seatedPitch === pitch && this.seatedDrop === drop) return;
+    this.seatedPitch = pitch;
+    this.seatedDrop = drop;
+
+    m.rotation.set(0, 0, 0);
+    m.position.set(0, 0, 0);
+    const b0 = new THREE.Box3().setFromObject(m);
+    const c0 = b0.getCenter(new THREE.Vector3());
+    const s0 = b0.getSize(new THREE.Vector3());
+    if (pitch) {
+      const front = s0.x >= s0.z ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+      if (!FRONT_IS_AXIS_MAX) front.negate();
+      // up × front: turning about it by a POSITIVE angle sends the front end downward.
+      const lateral = new THREE.Vector3(0, 1, 0).cross(front).normalize();
+      const ang = pitch * DEG2RAD;
+      // Turn about the HEAD, not the body's centre. About the centre the muzzle is half a
+      // body-length out on the lever, so it swings down and away instead of tipping — the
+      // head shrinks and you end up looking over the top of it. PITCH_PIVOT keeps the head
+      // roughly where it is and changes only what it points at.
+      const pivot = c0.clone().addScaledVector(front, (s0[s0.x >= s0.z ? 'x' : 'z'] / 2) * PITCH_PIVOT);
+      // Rotate about a world point: turn the object, then move its origin to where that
+      // rotation would have carried it (P' = V + R(P − V) for every point, origin included).
+      // Into a temp, not in place: copying onto m.position first would make the term read
+      // back the value just written and collapse to the pivot itself.
+      const origin = m.position.clone().sub(pivot).applyAxisAngle(lateral, ang).add(pivot);
+      m.position.copy(origin);
+      m.rotateOnWorldAxis(lateral, ang);
+    }
+    this.modelHeight = s0.y;
+    this.modelBaseY = m.position.y;
+    this.modelHome.copy(m.position);
+    this.modelHome.y = this.modelBaseY - drop * this.modelHeight;
+    this.applyPush(); // seats the model at modelHome (+ any active push)
   }
 
   private applyPush(): void {
