@@ -3,7 +3,6 @@ import { type MotionValue } from 'motion/react';
 import { DatumScene, type CameraSpherical } from './DatumScene';
 import { GlbScene, type ExtraModelSpec } from './GlbScene';
 import { useInViewMount } from './useInViewMount';
-import { isMobileViewport } from './deviceBudget';
 import { ChapterScrollContext } from './chapterScroll';
 import { useSmoothProgress } from './smoothScroll';
 import './ModelChapter.css';
@@ -16,7 +15,7 @@ import {
 import { stagesToTrack, type StagesFile } from './stagesToTrack';
 import { bullEditStore } from './editStore';
 import { tuneStore } from './tuneEditor';
-import { mobileProfileDistScale, mobileProfileShiftX } from './overlayFit';
+import { mobileProfileDistScale, mobileFrameNudge } from './overlayFit';
 
 /** What ModelChapter needs from a renderer. Both DatumScene (splats) and
  *  GlbScene (three.js meshes) satisfy it, so the editor/runtime are renderer-
@@ -82,12 +81,6 @@ const isMeshModel = (src: string) => /\.(glb|gltf)$/i.test(src);
 /** Delay before the bull is revealed from black. The title intro now shows all at
  *  once (no typed reveal), so the bull lifts as soon as it has loaded — no wait. */
 const LOADER_INTRO_MS = 0;
-
-/** Mobile (≤800, see deviceBudget) opener framing: raise the close-up bull so the
- *  muzzle clears the wordmark, then ease back to dead-center once the camera has
- *  pulled away. */
-const MOBILE_HERO_RELEASE_T = 0.05; // matches OPENER_TRACK pull-back key
-const MOBILE_HERO_RAISE = 0.2; // fraction of frame height (+ = subject up) — muzzle clears wordmark
 
 /**
  * ModelChapter — native (no-iframe) scrollytelling chapter for a 3D model:
@@ -400,22 +393,11 @@ function TrackDriver({
         scene.setExtraOpacity?.(i, op);
       });
     };
-    const ss01 = (x: number) => {
-      const u = x < 0 ? 0 : x > 1 ? 1 : x;
-      return u * u * (3 - 2 * u);
-    };
-    /** Mobile-only: lift the hero close-up, then center once the bull pulls back. */
+    /** Phone-only framing — hero lift, broadside pan, Tonnes seating (see overlayFit). */
     const applyMobileFrame = (t: number) => {
       if (!scene.setFrameNudge) return;
-      if (!isMobileViewport()) {
-        scene.setFrameNudge(0, 0);
-        return;
-      }
-      const u = MOBILE_HERO_RELEASE_T > 0 ? Math.min(1, Math.max(0, t / MOBILE_HERO_RELEASE_T)) : 1;
-      const raise = MOBILE_HERO_RAISE * (1 - ss01(u));
-      // …and pan right across the broadside beat so the muzzle (and the cab's front) stay
-      // inside the phone's centre crop — see mobileProfileShiftX.
-      scene.setFrameNudge(mobileProfileShiftX(t), raise);
+      const [nx, ny] = mobileFrameNudge(t);
+      scene.setFrameNudge(nx, ny);
     };
 
     // Initial pose (force, even on a plateau) so the camera starts on the track.

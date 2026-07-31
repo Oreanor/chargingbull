@@ -2,21 +2,31 @@ import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
 import { tuneStore } from './tuneEditor';
 import { tonnesOverlayScale } from './overlayFit';
-// Inlined (not <img>) so the SVG <text> can use the page's @font-face fonts
-// (Space Mono for the m-labels, the display face for the headline). As <img>
-// these would render in an isolated context with no access to our webfonts.
-import HEADLINE from '../assets/tonnes/headline.svg?raw';       // "3.2 TONNES"
-import MEASURE_W from '../assets/tonnes/measure-width.svg?raw';  // "4.9 m" ↔ arrows
-import MEASURE_H from '../assets/tonnes/measure-height.svg?raw'; // "3.4 m" ↕ arrows
-import BASELINE from '../assets/tonnes/baseline.svg?raw';        // dashed ground line
+// Inlined (not <img>) so the SVG <text> can use the page's @font-face fonts (Space Mono
+// for the m-labels). As <img> these would render in an isolated context with no access
+// to our webfonts. The headline is outlines, so it needs no font at all.
+import HEADLINE from '../assets/tonnes/headline.svg?raw';            // "3.2 TONNES"
+import MEASURE_W from '../assets/tonnes/measure-width.svg?raw';       // ← 4.9 m → (desktop)
+import MEASURE_H from '../assets/tonnes/measure-height.svg?raw';      // ↕ 3.4 m (desktop)
+import MEASURE_W_M from '../assets/tonnes/measure-width-mobile.svg?raw';  // ← 4.9 m → (phone)
+import MEASURE_H_M from '../assets/tonnes/measure-height-mobile.svg?raw'; // ↕ 3.4 m (phone)
 
 /**
  * TonnesFrame — the "3.2 TONNES / 4.9 m / 3.4 m" measurement frame over the bull +
- * Checker-cab (~chapter progress 0.6–0.69, the old "4 tons" stage).
+ * Checker cab (~chapter progress 0.67–0.75).
  *
- * Green measures live in ONE wrapper scaled from screen centre (desktop FOV-match
- * x mobile profile-fit). Every piece is data-tune store-mode: editor drags write
- * tuneStore, Save persists to tune-layout.json.
+ * LAYOUT MODEL — one rule, no offset layers. Every piece is authored as a rect in its
+ * breakpoint's own design frame, straight off the Figma export:
+ *
+ *   desktop  Desktop-20.svg     1440 × 800   (1vh = 8px)
+ *   phone    iPhone 17-15.svg    402 × 874   (1vh = 8.74px)
+ *
+ * `f()` turns those design px into vh, so at the mockup's height a piece IS the
+ * mockup's size and sits at the mockup's coordinate — nothing multiplies it. Pieces are
+ * placed by their TOP-LEFT from screen centre (the bull is centred in the frame), and
+ * the whole group takes one scale (overlayFit.tonnesOverlayScale) so it tracks the bull
+ * when the window is not the design aspect. The ✎ editor's vh nudge still rides on top
+ * while authoring; anything it finds belongs baked back into the rects below.
  */
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
@@ -24,19 +34,51 @@ const smoothstep = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); 
 
 const MOBILE_MAX = 800;
 
-/** Mobile caption — line 1 = «Compare it with the Checker Marathon» (no «taxi»). */
-const CAPTION_MOBILE = {
-  x: 0,
-  y: 32.5,
-  s: 1,
-  width: '282px',
-  fontSize: '15px',
-  lineHeight: 1.45,
-} as const;
+/** A piece's box in design px: top-left + width (height follows the asset's aspect). */
+interface Rect { x: number; y: number; w: number }
 
-const CAPTION_DESKTOP = { x: -12.63, y: 34.31, s: 0.801 };
+interface Frame {
+  /** Design frame the rects below are measured in. */
+  px: { w: number; h: number };
+  headline: Rect;
+  measureW: Rect;
+  measureH: Rect;
+  leaderTop: Rect;
+  /** The ground leader runs BEHIND the cab in the mockup; drawn over the canvas it
+   *  would cross the rear wheel instead, so `gap` cuts the wheel's own span out of it.
+   *  Measured off the rendered frame (the cab's silhouette at that row), not off the
+   *  mockup — the mask has to match the wheel we actually draw. */
+  baseline: Rect & { gap: [number, number] };
+  /** Ink opacity of the dashed leaders — 0.5 on desktop, 0.4 on the phone. */
+  leaderInk: number;
+  /** Caption: centred on `cx`, 18px/24px on both. `y` is the block's top edge — the
+   *  mockup's first-line cap top less the 6.2px the 24px line box puts above it. */
+  caption: { cx: number; y: number; w: number; font: number; line: number };
+}
 
-interface Piece { id: string; x: number; y: number; s: number; ref: React.RefObject<HTMLDivElement | null> }
+const DESKTOP: Frame = {
+  px: { w: 1440, h: 800 },
+  headline:  { x: 294.4, y: 72.5, w: 810 },
+  measureW:  { x: 281, y: 248, w: 830 },
+  measureH:  { x: 1179.2, y: 73, w: 22 },
+  leaderTop: { x: 930, y: 72, w: 333 },
+  baseline:  { x: 810, y: 599, w: 453, gap: [0.143, 0.419] },
+  leaderInk: 0.5,
+  caption:   { cx: 710, y: 642.95, w: 640, font: 18, line: 24 },
+};
+
+const MOBILE: Frame = {
+  px: { w: 402, h: 874 },
+  headline:  { x: 14.69, y: 143.64, w: 371.90 },
+  measureW:  { x: 20.97, y: 345.76, w: 378 },
+  measureH:  { x: 316.55, y: 250.61, w: 68.74 },
+  leaderTop: { x: 240, y: 289, w: 141 },
+  baseline:  { x: 240, y: 501, w: 141, gap: [0.291, 0.624] },
+  leaderInk: 0.4,
+  caption:   { cx: 201, y: 555.95, w: 340, font: 18, line: 24 },
+};
+
+const GREEN = '#61E26B';
 
 export default function TonnesFrame() {
   const progress = useChapterProgress();
@@ -49,6 +91,10 @@ export default function TonnesFrame() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  const F = isMobile ? MOBILE : DESKTOP;
+  /** design px → vh in that frame */
+  const f = (px: number) => `${((px * 100) / F.px.h).toFixed(4)}vh`;
+
   const rootRef = useRef<HTMLDivElement>(null);
   const greenRef = useRef<HTMLDivElement>(null);
   const headlineRef = useRef<HTMLDivElement>(null);
@@ -58,52 +104,39 @@ export default function TonnesFrame() {
   const leaderTopRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
 
-  const greenPieces: Piece[] = [
-    { id: 'tonnes.headline', x: -25.81, y: -32.65, s: 0.696, ref: headlineRef },
-    { id: 'tonnes.measureW', x: -6.55, y: -15.95, s: 0.964, ref: measureWRef },
-    // x re-seated with the frame's new size (see MOBILE_PROFILE_DIST_MUL): these offsets are
-    // multiplied by the group scale, so growing the composition threw this one clean off the
-    // right edge of a phone. 41.5vh puts its centre 138px right of centre, where «iPhone 17 -
-    // 15» has it — just inside the bull's rump instead of past it.
-    { id: 'tonnes.measureH', x: 41.5, y: -8.88, s: 0.94, ref: measureHRef },
-    { id: 'tonnes.baseline', x: 41.02, y: 25.41, s: 1, ref: baselineRef },
-    { id: 'tonnes.leaderTop', x: 50.11, y: -39, s: 1, ref: leaderTopRef },
-  ];
-
   useEffect(() => {
     if (!progress) return;
     const root = rootRef.current;
     const green = greenRef.current;
     if (!root || !green) return;
 
+    const frame = window.innerWidth <= MOBILE_MAX ? MOBILE : DESKTOP;
+    const vh = frame.px.h / 100; // design px per vh in this frame
+    const pieces: [string, React.RefObject<HTMLDivElement | null>, { x: number; y: number }][] = [
+      ['tonnes.headline', headlineRef, frame.headline],
+      ['tonnes.measureW', measureWRef, frame.measureW],
+      ['tonnes.measureH', measureHRef, frame.measureH],
+      ['tonnes.baseline', baselineRef, frame.baseline],
+      ['tonnes.leaderTop', leaderTopRef, frame.leaderTop],
+      ['tonnes.caption', captionRef, {
+        x: frame.caption.cx - frame.caption.w / 2,
+        y: frame.caption.y,
+      }],
+    ];
+
+    // Top-left from screen centre, in vh — the piece's own width/height come from the
+    // rect too, so a piece never needs a scale of its own.
     const applyPieces = () => {
-      const mobile = window.innerWidth <= MOBILE_MAX;
-      for (const pc of greenPieces) {
-        const el = pc.ref.current;
+      for (const [id, ref, rect] of pieces) {
+        const el = ref.current;
         if (!el) continue;
-        const [ox, oy] = tuneStore.get(pc.id);
-        const ts = tuneStore.getScale(pc.id);
+        const [ox, oy] = tuneStore.get(id);
+        const ts = tuneStore.getScale(id);
+        const dx = (rect.x - frame.px.w / 2) / vh + ox;
+        const dy = (rect.y - frame.px.h / 2) / vh + oy;
         el.style.transform =
-          `translate(${(pc.x + ox).toFixed(2)}vh, ${(pc.y + oy).toFixed(2)}vh) ` +
-          `scale(${(pc.s * ts).toFixed(4)}) translate(-50%, -50%)`;
-      }
-      const cap = captionRef.current;
-      if (cap) {
-        const base = mobile ? CAPTION_MOBILE : CAPTION_DESKTOP;
-        const [ox, oy] = tuneStore.get('tonnes.caption');
-        const ts = tuneStore.getScale('tonnes.caption');
-        if (mobile) {
-          cap.style.width = CAPTION_MOBILE.width;
-          cap.style.fontSize = CAPTION_MOBILE.fontSize;
-          cap.style.lineHeight = String(CAPTION_MOBILE.lineHeight);
-        } else {
-          cap.style.width = '100vh';
-          cap.style.fontSize = '2.8vh';
-          cap.style.lineHeight = '1.333';
-        }
-        cap.style.transform =
-          `translate(${(base.x + ox).toFixed(2)}vh, ${(base.y + oy).toFixed(2)}vh) ` +
-          `scale(${(base.s * ts).toFixed(4)}) translate(-50%, -50%)`;
+          `translate(${dx.toFixed(3)}vh, ${dy.toFixed(3)}vh)` +
+          (Math.abs(ts - 1) < 1e-4 ? '' : ` scale(${ts.toFixed(4)})`);
       }
       const k = tonnesOverlayScale(progress.get());
       green.style.transform = Math.abs(k - 1) < 1e-4 ? '' : `scale(${k.toFixed(4)})`;
@@ -145,62 +178,63 @@ export default function TonnesFrame() {
       unsubEdit();
       stopRaf();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, isMobile]);
 
-  const anchor = { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' } as const;
+  /** Every piece hangs off screen centre; the transform above carries it to its rect. */
+  const at = { position: 'absolute', left: '50%', top: '50%' } as const;
+  const svgFit = '[&>svg]:block [&>svg]:w-full [&>svg]:h-auto';
+
+  /** A dashed leader: 1.5px rule, 4.13px dashes — the mockup's, scaled with the frame. */
+  const leader = (r: Rect) => ({
+    ...at,
+    width: f(r.w),
+    height: f(1.5),
+    opacity: F.leaderInk,
+    backgroundImage:
+      `repeating-linear-gradient(90deg, ${GREEN} 0 ${f(4.13)}, transparent ${f(4.13)} ${f(8.26)})`,
+  });
+  const [g0, g1] = F.baseline.gap.map((v) => `${(v * 100).toFixed(1)}%`);
+  const wheelCut = `linear-gradient(90deg, #000 0 ${g0}, transparent ${g0} ${g1}, #000 ${g1})`;
 
   return (
     <div ref={rootRef} className="absolute inset-0 pointer-events-none" style={{ opacity: 0 }}>
-      <div
-        ref={greenRef}
-        className="absolute inset-0"
-        style={{ transformOrigin: '50% 50%' }}
-      >
+      <div ref={greenRef} className="absolute inset-0" style={{ transformOrigin: '50% 50%' }}>
         <div
           ref={headlineRef}
           data-tune="tonnes.headline"
           data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: '140vh' }}
+          className={svgFit}
+          style={{ ...at, width: f(F.headline.w) }}
           dangerouslySetInnerHTML={{ __html: HEADLINE }}
         />
         <div
           ref={measureWRef}
           data-tune="tonnes.measureW"
           data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: '108vh' }}
-          dangerouslySetInnerHTML={{ __html: MEASURE_W }}
+          className={svgFit}
+          style={{ ...at, width: f(F.measureW.w) }}
+          dangerouslySetInnerHTML={{ __html: isMobile ? MEASURE_W_M : MEASURE_W }}
         />
         <div
           ref={measureHRef}
           data-tune="tonnes.measureH"
           data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:h-full [&>svg]:w-auto"
-          style={{ ...anchor, height: '68vh' }}
-          dangerouslySetInnerHTML={{ __html: MEASURE_H }}
+          className={svgFit}
+          style={{ ...at, width: f(F.measureH.w) }}
+          dangerouslySetInnerHTML={{ __html: isMobile ? MEASURE_H_M : MEASURE_H }}
         />
+        {/* Drawn behind the cab in the mockup; over the canvas we cut the cab's shape out. */}
         <div
           ref={baselineRef}
           data-tune="tonnes.baseline"
           data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{
-            ...anchor,
-            width: '66vh',
-            maskImage: 'linear-gradient(90deg, #000 0 19.5%, transparent 19.5% 39%, #000 39%)',
-            WebkitMaskImage: 'linear-gradient(90deg, #000 0 19.5%, transparent 19.5% 39%, #000 39%)',
-          }}
-          dangerouslySetInnerHTML={{ __html: BASELINE }}
+          style={{ ...leader(F.baseline), maskImage: wheelCut, WebkitMaskImage: wheelCut }}
         />
         <div
           ref={leaderTopRef}
           data-tune="tonnes.leaderTop"
           data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: '50vh' }}
-          dangerouslySetInnerHTML={{ __html: BASELINE }}
+          style={leader(F.leaderTop)}
         />
       </div>
 
@@ -210,13 +244,13 @@ export default function TonnesFrame() {
         data-tune-mode="store"
         className="absolute text-center"
         style={{
-          ...anchor,
-          width: isMobile ? CAPTION_MOBILE.width : '100vh',
+          ...at,
+          width: f(F.caption.w),
           color: '#FDBA31',
           fontFamily: 'var(--font-struve)',
           fontWeight: 400,
-          fontSize: isMobile ? CAPTION_MOBILE.fontSize : '2.8vh',
-          lineHeight: isMobile ? CAPTION_MOBILE.lineHeight : 1.333,
+          fontSize: f(F.caption.font),
+          lineHeight: F.caption.line / F.caption.font,
         }}
       >
         Compare it with the Checker Marathon taxi. When the sculpture appeared in New
