@@ -41,32 +41,48 @@ const smoothstep = (t: number) => {
   return t * t * (3 - 2 * t);
 };
 
+/** The height the phone composition is laid out against (iPhone 17 mockups, 402×874). */
+const PHONE_DESIGN_H = 874;
+
+/**
+ * PHONE PIXEL LOCK — the factor that stops everything vh-based from sliding off the bull
+ * when the window's HEIGHT changes. 1 on the desktop, where it does not apply.
+ *
+ * Below MOBILE_MAX the GL host is frozen at 800px wide (ModelChapter.css) and effectiveFov
+ * holds the HORIZONTAL fov fixed, so pixels-per-world-unit comes out as
+ *
+ *     800 / (2·dist·REF·tan(fov/2))
+ *
+ * with no window height in it at all: the bull is the same number of CSS pixels tall on a
+ * short phone as on a tall one. Everything authored against it is in vh and therefore grows
+ * with the height — at 993px tall a vh overlay is 13% bigger than at the mockup's 874 while
+ * the bull has not moved a pixel. Dividing the height back out pins those to pixels too, and
+ * is exactly 1 at the mockup's own height, so the authored layout is untouched where it was
+ * drawn.
+ *
+ * It has to go on BOTH ends of that conversion — the overlays' scale AND the frame nudge
+ * that seats the bull (see mobileFrameNudge). The nudge lands as `nx · H` pixels, so pinning
+ * only the overlay would fix the sizes and leave the two sliding apart in position instead.
+ */
+function phonePxLock(): number {
+  if (typeof window === 'undefined') return 1;
+  if (window.innerWidth > MOBILE_MAX) return 1;
+  return PHONE_DESIGN_H / (window.innerHeight || PHONE_DESIGN_H);
+}
+
 /**
  * What a vh-authored overlay must be scaled by to stay locked to the bull.
  *
  * DESKTOP — the aspect match: 1 at/above the design aspect, shrinking with the window below
  * it, because there the bull is framed by width once effectiveFov starts widening.
  *
- * PHONE — NOT 1, which is what this used to return on the grounds that "the bull is
- * height-framed there so vh already tracks it". It is the opposite: below MOBILE_MAX the
- * host is frozen at 800px wide (ModelChapter.css) and effectiveFov holds the HORIZONTAL fov
- * fixed, so pixels-per-world-unit works out to 800 / (2·dist·REF·tan(fov/2)) — the window
- * height cancels, and the bull's on-screen size in CSS pixels is the same on a short phone
- * as on a tall one. A vh overlay, meanwhile, grows with the height: at 993px tall it is 13%
- * larger than at the mockup's 874 while the bull has not moved. That is the drift. Dividing
- * the height back out pins the overlay to pixels the way the bull is pinned, and is exactly
- * 1 at the mockup's own height, so the authored layout is unchanged where it was drawn.
- *
- * REVERTED to 1 for now (874 / innerHeight is the fix): it could not be checked at a real
- * 402px-wide window, and every screenshot it was judged on was 518-751px wide — inside the
- * band where the phone layout is shown in a frame up to twice the 402 it is drawn for, which
- * moves things around far more than this scale does. Put it back once that is settled.
+ * PHONE — the pixel lock above.
  */
 export function bullMatchScale(): number {
   if (typeof window === 'undefined') return 1;
   const W = window.innerWidth;
   const H = window.innerHeight || 1;
-  if (W <= MOBILE_MAX) return 1; // FIXME: see the note above — the px-lock is right but unverified
+  if (W <= MOBILE_MAX) return phonePxLock();
   const aspect = W / H;
   return aspect >= REF_ASPECT ? 1 : aspect / REF_ASPECT;
 }
@@ -150,9 +166,13 @@ export function mobileFrameNudge(t: number): [number, number] {
   const blow =
     smoothstep(clamp01((t - BLOWUP_IN0) / (BLOWUP_IN1 - BLOWUP_IN0))) *
     (1 - smoothstep(clamp01((t - BLOWUP_OUT0) / (BLOWUP_OUT1 - BLOWUP_OUT0))));
+  // Every seat below is authored at the mockup's height and lands as `nx · H` pixels, so it
+  // carries the same pixel lock the overlays do — otherwise the bull, whose SIZE does not
+  // follow the window height, would still slide against them as the height changes.
+  const k = phonePxLock();
   return [
-    (APPROACH_X * approach * (1 - blow) + BLOWUP_X * blow) * (1 - fit) + BEAT_X * fit,
-    HERO_RAISE * hero + BEAT_Y * fit,
+    ((APPROACH_X * approach * (1 - blow) + BLOWUP_X * blow) * (1 - fit) + BEAT_X * fit) * k,
+    (HERO_RAISE * hero + BEAT_Y * fit) * k,
   ];
 }
 
