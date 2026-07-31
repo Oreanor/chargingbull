@@ -127,7 +127,7 @@ export default function PoseProbe({
         (pose.push ? `, push: ${r2(pose.push)}` : '') +
         (pose.explode ? `, explode: ${r2(pose.explode)}` : '') +
         (pose.weights.front !== pose.weights.rear
-          ? `, weights: { front: ${r2(pose.weights.front)}, rear: ${r2(pose.weights.rear)}, bias: ${r2(pose.weights.bias)}, sharpness: ${r2(pose.weights.sharpness)} }`
+          ? `, weights: { front: ${r2(pose.weights.front)}, rear: ${r2(pose.weights.rear)}, bias: ${r2(pose.weights.bias)}, sharpness: ${r2(pose.weights.sharpness)}${pose.weights.rise != null && pose.weights.rise !== 1 ? `, rise: ${r2(pose.weights.rise)}` : ''} }`
           : '') +
         (pose.fog ? `, fog: { color: '${pose.fog.color}', near: ${r2(pose.fog.near)}, far: ${r2(pose.fog.far)} }` : '') +
         `, fov: ${r1(pose.fov)}, target: [${pose.target.map(r2).join(', ')}] }`;

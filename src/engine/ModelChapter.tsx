@@ -441,8 +441,6 @@ function TrackDriver({
       const pose = sampleTrack(track, t, keys);
       if (fadeRef.current) fadeRef.current.style.opacity = String(pose.opacity);
       scene.setExplode?.(pose.explode);
-    scene.setExplodeWeights?.(pose.weights);
-    scene.setFog?.(pose.fog);
       scene.setExplodeWeights?.(pose.weights);
       scene.setFog?.(pose.fog);
       scene.setModelPush?.(pose.push);
@@ -557,6 +555,8 @@ function KeyframeEditor({
     const pose = sampleTrack(liveTrack, scrub);
     scene.setCameraSpherical(pose);
     scene.setExplode?.(pose.explode);
+    scene.setExplodeWeights?.(pose.weights);
+    scene.setFog?.(pose.fog);
     scene.setModelPush?.(pose.push);
     // In the editor keep a visibility floor so a dissolved/transparent keyframe
     // can still be seen and posed (the slider shows the real value; runtime uses it).
@@ -1090,7 +1090,7 @@ function buildMdx(src: string, frames: number, track: CameraTrack): string {
     if (k.target) parts.push(`target: [${k.target.join(', ')}]`);
     if (k.weights) {
       const w = k.weights;
-      parts.push(`weights: { front: ${w.front}, rear: ${w.rear}, bias: ${w.bias}, sharpness: ${w.sharpness} }`);
+      parts.push(`weights: { front: ${w.front}, rear: ${w.rear}, bias: ${w.bias}, sharpness: ${w.sharpness}${w.rise != null && w.rise !== 1 ? `, rise: ${w.rise}` : ''} }`);
     }
     if (k.fog) parts.push(`fog: { color: '${k.fog.color}', near: ${k.fog.near}, far: ${k.fog.far} }`);
     // The editor edits the WIDE pose (it never resolves phone variants), so a key's phone

@@ -69,26 +69,29 @@ export const OPENER_TRACK: CameraTrack = {
     // MODEL to [-0.0953, -0.0016, -0.0898]; that shift is folded into the target here
     // instead of moving the bull, because the bull's origin is shared — every other key's
     // target and the cab's hand-placed seat are measured against it.
+    // The two angles were then turned by hand on the live page (az 27.9 → 31.8, polar
+    // 102.2 → 99): the capture is framed against the tool's own viewport, this one has a
+    // «30 separate parts» block sitting to the right of the figure to clear.
     // Not taken from that capture: its exposure (asked for) and its pushZ, which was 0.
-    // Three numbers ARE off the capture, and each one has a reason the capture couldn't know:
-    //
-    //   explode 1.8, not 0.44 — the capture's weights multiply the throw, they don't add to
-    //     it: at the nose w=1.37, so 0.44 threw the horns 0.6 where the previous uniform 1.09
-    //     threw them 1.09. Read as "barely came apart". 1.8 puts the horns at 2.5 — better
-    //     than twice the old reach, which is the point of this stage.
-    //   rear 0.35, not 0 — rear 0 nails the hindquarters to the body, so everything behind
-    //     the shoulder stayed assembled and the figure read as collapsed, not exploded.
-    //   fog near/far 3.5/6.5, not 2.5/3.7, and black instead of #2c2c30 — fog is measured
-    //     from the CAMERA, and a horn thrown 2.5 out sits ~4.6 away, i.e. past the captured
-    //     far plane: the разлёт flew straight into the fog and vanished. The colour follows
-    //     the chapter's backdrop; the capture's grey belonged to the tool's grey viewport,
-    //     and over this black frame it read as a second, ghostly bull hanging in the middle.
-    { at: 0.8, az: 27.9, polar: 102.2, dist: 2.16, explode: 1.8, fov: 45, target: [0.07, 0.42, 0.93],
-      weights: { front: 1.69, rear: 0.35, bias: 0.74, sharpness: 1 },
-      fog: { color: '#0c0d10', near: 3.5, far: 6.5 } },
-    { at: 0.85, az: 27.9, polar: 102.2, dist: 2.16, explode: 1.8, fov: 45, target: [0.07, 0.42, 0.93],
-      weights: { front: 1.69, rear: 0.35, bias: 0.74, sharpness: 1 },
-      fog: { color: '#0c0d10', near: 3.5, far: 6.5 } },
+    // Two numbers are refitted rather than copied, because this ramp is a straight line where
+    // the tool's is a smoothstep over a bias remap: bias 0.61 / sharpness 1.56 is the pair
+    // that reproduces the tool's own layout of all 55 sections to within 0.06 model units.
+    // `explode` is the capture's 0.44 divided by EXPLODE_SPREAD (= 0.733, where the tool
+    // keeps that same factor), then ×1.475 by eye: the horns wanted to reach further than
+    // the capture put them. Amplitude only — the weights are the capture's shape untouched,
+    // and with rear 0 the hindquarters stay exactly where they are however big this gets.
+    // Fog is the capture's own near/far. Only the colour is ours: over this chapter's black
+    // frame the captured #2c2c30 belongs to the tool's grey viewport and reads as a second,
+    // ghostly bull. Note it mixes BEFORE tone mapping (ACES at 1.05), so the hex is matched
+    // to the vignette by eye, not by equality with it.
+    { at: 0.8, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.07, 0.42, 0.93],
+      phone: { az: 34.9, polar: 102.9 },
+      weights: { front: 1.69, rear: 0, bias: 0.61, sharpness: 1.56, rise: 1.4 },
+      fog: { color: '#0c0d10', near: 2.5, far: 3.7 } },
+    { at: 0.85, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.07, 0.42, 0.93],
+      phone: { az: 34.9, polar: 102.9 },
+      weights: { front: 1.69, rear: 0, bias: 0.61, sharpness: 1.56, rise: 1.4 },
+      fog: { color: '#0c0d10', near: 2.5, far: 3.7 } },
     { at: 0.92, az: 143.9, polar: 117, dist: 1.86, fov: 40, target: [-0.23, 0.72, -0.05] },
     { at: 1, az: 143.9, polar: 117, dist: 1.86, fov: 40, target: [-0.23, 0.72, -0.05] },
   ],

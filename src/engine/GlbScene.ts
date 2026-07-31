@@ -84,19 +84,29 @@ export interface ExtraModelSpec {
 }
 
 /**
- * Per-unit outward push of each section along its home→centroid direction. The keyframe's
- * explode value scales on top of it, so `explode: 1.09` here throws exactly as far as
- * `explode: 1.09` does in the 3D Scrollytell Tool (wallst-rodeo/bull/index.html):
+ * Scale on the outward push of each section. The keyframe's explode value multiplies it:
  *
- *     mesh.position.copy(home.origin).addScaledVector(home.dir, ex * 0.6)
+ *     mesh.position.copy(home.origin).addScaledVector(home.offset, ex * 0.6)
  *
- * Uniform by default, deliberately: a hard-wired front/rear weighting used to live here
+ * where `offset` is the section's full vector out of the model centroid, NOT a unit
+ * direction: the throw grows with how far out the section already sits. That length is the
+ * whole difference between a blow-apart and an even puff, and it is the capture tool's base
+ * too — normalise it and a captured number stops transferring, which is exactly what
+ * happened to the butcher4 preset.
+ *
+ * Unweighted by default, deliberately: a hard-wired front/rear weighting used to live here
  * (rear 0.4 → front 2.6 on a cubed ramp) and it made the tool's numbers untransferable —
  * the same `explode` meant a different picture in each place, so a captured pose had to be
  * re-tuned by eye. What was wrong with it was that it was INVISIBLE and fixed, not that
  * sections should throw equally. A key can now carry its own `weights` (CamKey.weights),
- * which is the same shape the capture tool exports; keys without them stay uniform, so
+ * which is the same shape the capture tool exports; keys without them stay unweighted, so
  * every untouched number still means what it meant.
+ *
+ * Still not a byte-for-byte port of the tool's ramp: it shapes the weight with a
+ * smoothstep over a bias remap, this uses a straight line (see applyExplode). Over
+ * butcher4's 55 sections the two land within an RMS of 0.06 model units once bias and
+ * sharpness are refitted, which is why the preset carries refitted numbers rather than
+ * the tool's raw ones.
  */
 const EXPLODE_SPREAD = 0.6;
 /** Which end of the model's long axis the head is on. Flip if the scatter comes out
@@ -119,9 +129,10 @@ export class GlbScene {
   private raf = 0;
   private ro: ResizeObserver | null = null;
   private destroyed = false;
-  /** Per-mesh explode anchors: local home position + outward unit direction from
-   *  the model centroid. Captured once after load; drives setExplode(). */
-  private readonly meshHomes = new Map<THREE.Object3D, { origin: THREE.Vector3; dir: THREE.Vector3; fwd: number }>();
+  /** Per-mesh explode anchors: local home position, the outward OFFSET from the model
+   *  centroid (kept at full length — see captureMeshHomes), and how far forward the section
+   *  sits. Captured once after load; drives setExplode(). */
+  private readonly meshHomes = new Map<THREE.Object3D, { origin: THREE.Vector3; offset: THREE.Vector3; fwd: number }>();
   private explodeAmount = 0;
   private explodeWeights: ExplodeWeights = { ...UNIFORM_WEIGHTS };
   /** Loaded secondary models (index-aligned with options.extras); null until loaded. */
@@ -544,13 +555,15 @@ export class GlbScene {
 
   private applyExplode(): void {
     const ex = this.explodeAmount;
-    const { front, rear, bias, sharpness } = this.explodeWeights;
+    const { front, rear, bias, sharpness, rise = 1 } = this.explodeWeights;
     for (const [mesh, home] of this.meshHomes) {
       // Ramp from rear to front across the body: half strength at `bias`, `sharpness` sets
       // how quickly it gets there. front === rear (the default) makes this a no-op.
       const s = front === rear ? 0 : clamp01(0.5 + (home.fwd - bias) * sharpness);
-      const w = rear + (front - rear) * s;
-      mesh.position.copy(home.origin).addScaledVector(home.dir, ex * w * EXPLODE_SPREAD);
+      const k = ex * (rear + (front - rear) * s) * EXPLODE_SPREAD;
+      mesh.position.copy(home.origin).addScaledVector(home.offset, k);
+      // Vertical stretch, above the centre line only (see ExplodeWeights.rise).
+      if (rise !== 1 && home.offset.y > 0) mesh.position.y += home.offset.y * k * (rise - 1);
     }
   }
 
@@ -906,12 +919,25 @@ export class GlbScene {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const meshCentre = new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3());
+      // NOT normalised: the vector's LENGTH is the section's distance from the centroid, and
+      // that length is what turns a uniform push into a stretch — a horn far out travels far
+      // while a shoulder barely leaves the body. Normalising it (as this did) moved every
+      // section by the same amount, which is an even puff instead of a blow-apart, and it is
+      // also the capture tool's base, so a captured `explode` only transfers with the length
+      // kept. A section sitting exactly on the centroid gets a nominal 1cm up.
       const dir = meshCentre.clone().sub(centre);
-      if (dir.lengthSq() < 1e-8) dir.set(0, 1, 0);
-      else dir.normalize();
+      if (dir.lengthSq() < 1e-8) dir.set(0, 0.01, 0);
+      // Box3 measures in WORLD space; the offset is then added to mesh.position, which is in
+      // the mesh's PARENT space. The model root carries the placement scale (0.3593 for the
+      // bull), so leaving the vector in world units divided every throw by that scale — the
+      // explode came out ~2.8× short of the number that was asked for, which is what made it
+      // read as "tight". Convert the direction into parent space so the two agree.
+      const parent = mesh.parent ?? model;
+      dir.applyQuaternion(parent.getWorldQuaternion(new THREE.Quaternion()).invert())
+        .divide(parent.getWorldScale(new THREE.Vector3()));
       const along = (meshCentre[axis] - box.min[axis]) / span; // 0 at axis-min, 1 at axis-max
       const fwd = FRONT_IS_AXIS_MAX ? along : 1 - along;
-      this.meshHomes.set(mesh, { origin: mesh.position.clone(), dir, fwd });
+      this.meshHomes.set(mesh, { origin: mesh.position.clone(), offset: dir, fwd });
     });
   }
 

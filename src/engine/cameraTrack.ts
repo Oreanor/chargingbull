@@ -39,9 +39,16 @@ export interface ExplodeWeights {
   bias: number;
   /** Slope of the ramp. 1 = spread over the body; higher = a tighter transition. */
   sharpness: number;
+  /** Vertical stretch of the throw, applied to sections sitting ABOVE the centroid only:
+   *  1 = straight radial (default), 1.4 = the crest of the back, the withers and the horns
+   *  ride 40% higher while everything at or below the centre line is untouched. Upward only
+   *  because the ask is a mane lifting off the neck, not a figure pulled apart top and
+   *  bottom — and it stays continuous, since the factor rides a Y offset that is already 0
+   *  at the centre line. */
+  rise?: number;
 }
 
-export const UNIFORM_WEIGHTS: ExplodeWeights = { front: 1, rear: 1, bias: 0.5, sharpness: 1 };
+export const UNIFORM_WEIGHTS: ExplodeWeights = { front: 1, rear: 1, bias: 0.5, sharpness: 1, rise: 1 };
 
 /** Linear distance fog. `color` is a #rrggbb string — the same one the capture tool uses. */
 export interface FogSpec {
@@ -152,6 +159,7 @@ function blendWeights(a: CamKey, b: CamKey, t: number): ExplodeWeights {
     rear: lerp(x.rear, y.rear, t),
     bias: lerp(x.bias, y.bias, t),
     sharpness: lerp(x.sharpness, y.sharpness, t),
+    rise: lerp(x.rise ?? 1, y.rise ?? 1, t),
   };
 }
 

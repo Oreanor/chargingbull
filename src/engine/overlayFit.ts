@@ -42,15 +42,31 @@ const smoothstep = (t: number) => {
 };
 
 /**
- * Desktop aspect match: 1 at/above the design aspect, shrinking with the window
- * below it. Mobile is 1 — there the host is frozen at 800px (ModelChapter.css),
- * so the bull is height-framed and vh overlays already track it.
+ * What a vh-authored overlay must be scaled by to stay locked to the bull.
+ *
+ * DESKTOP — the aspect match: 1 at/above the design aspect, shrinking with the window below
+ * it, because there the bull is framed by width once effectiveFov starts widening.
+ *
+ * PHONE — NOT 1, which is what this used to return on the grounds that "the bull is
+ * height-framed there so vh already tracks it". It is the opposite: below MOBILE_MAX the
+ * host is frozen at 800px wide (ModelChapter.css) and effectiveFov holds the HORIZONTAL fov
+ * fixed, so pixels-per-world-unit works out to 800 / (2·dist·REF·tan(fov/2)) — the window
+ * height cancels, and the bull's on-screen size in CSS pixels is the same on a short phone
+ * as on a tall one. A vh overlay, meanwhile, grows with the height: at 993px tall it is 13%
+ * larger than at the mockup's 874 while the bull has not moved. That is the drift. Dividing
+ * the height back out pins the overlay to pixels the way the bull is pinned, and is exactly
+ * 1 at the mockup's own height, so the authored layout is unchanged where it was drawn.
+ *
+ * REVERTED to 1 for now (874 / innerHeight is the fix): it could not be checked at a real
+ * 402px-wide window, and every screenshot it was judged on was 518-751px wide — inside the
+ * band where the phone layout is shown in a frame up to twice the 402 it is drawn for, which
+ * moves things around far more than this scale does. Put it back once that is settled.
  */
 export function bullMatchScale(): number {
   if (typeof window === 'undefined') return 1;
   const W = window.innerWidth;
   const H = window.innerHeight || 1;
-  if (W <= MOBILE_MAX) return 1;
+  if (W <= MOBILE_MAX) return 1; // FIXME: see the note above — the px-lock is right but unverified
   const aspect = W / H;
   return aspect >= REF_ASPECT ? 1 : aspect / REF_ASPECT;
 }
@@ -83,6 +99,9 @@ export function mobileProfileDistScale(t: number): number {
    arriving on the right, loses its tail. Answered with a pan, not more pull-back: the
    pair is meant to read big here.
 
+   РАЗЛЁТ (0.75 → 0.90) — the exploded figure steps left so the thrown horns clear the
+   «30 separate parts» block; see BLOWUP_* below.
+
    BEAT — where «iPhone 17-15» seats the pair once the pull is full. The mockup's
    bull+cab box is centred 17px right of and 10px above the 402×874 frame's centre;
    without this the cab's front bumper is clipped by the left edge. It crossfades with
@@ -96,6 +115,31 @@ const HERO_RAISE = 0.2;
 const APPROACH_X = 0.08;
 const BEAT_X = 0.019;
 const BEAT_Y = 0.012;
+/* РАЗЛЁТ (0.75 → 0.90) — a fourth seat, for the stretch where the figure is blown apart.
+   The approach seat leaves it 8% of a frame height right of centre, which is right for a
+   whole bull but not for one whose horns are thrown outward: on the phone they collide with
+   the «30 separate parts» block. So the разлёт owns its own x, 15% of the VISIBLE width to
+   the left of the approach seat, and crossfades with it the way BEAT does — the seat that
+   is in force is always exactly one of them, never one stacked on the other.
+
+   The shift was asked for as "15% of the width", and it is written here as a CONSTANT in
+   frame heights rather than recomputed from the live window: 15% of the 402×874 mockup is
+   0.069 frame heights, and the seat has to be the same number at every window size or it
+   stops agreeing with the overlay. That is not a simplification, it is the whole point —
+   the overlay is laid out in vh and the nudge is in frame heights, so both scale with the
+   window HEIGHT and neither with its width. Deriving this from innerWidth (as it did for a
+   day) makes the bull slide further left the wider the window gets while the overlay stays
+   put: right at 430, and off by half the shift again by 800. */
+const BLOWUP_IN0 = 0.75;
+const BLOWUP_IN1 = 0.80;
+const BLOWUP_OUT0 = 0.85;
+const BLOWUP_OUT1 = 0.90;
+/** Absolute seat during the разлёт, in frame heights: the approach seat's 0.08 less the 0.069
+ *  that was asked for, then 0.02 further left so the thrown horns land ON the two green dots
+ *  rather than just inside them. Read off the 637×985 frame, where the tips sat ~20px right
+ *  of the dots — and 20px is the same fraction of the frame at every window size, since both
+ *  the dots (vh) and this (frame heights) key off the height alone. */
+const BLOWUP_X = -0.009;
 
 /** Frame nudge for the phone, as [right, up] in frame heights. Desktop always [0, 0]. */
 export function mobileFrameNudge(t: number): [number, number] {
@@ -103,8 +147,11 @@ export function mobileFrameNudge(t: number): [number, number] {
   const fit = mobileProfileFitAmount(t);
   const approach = smoothstep(clamp01((t - APPROACH_IN0) / (APPROACH_IN1 - APPROACH_IN0)));
   const hero = 1 - smoothstep(clamp01(t / HERO_RELEASE_T));
+  const blow =
+    smoothstep(clamp01((t - BLOWUP_IN0) / (BLOWUP_IN1 - BLOWUP_IN0))) *
+    (1 - smoothstep(clamp01((t - BLOWUP_OUT0) / (BLOWUP_OUT1 - BLOWUP_OUT0))));
   return [
-    APPROACH_X * approach * (1 - fit) + BEAT_X * fit,
+    (APPROACH_X * approach * (1 - blow) + BLOWUP_X * blow) * (1 - fit) + BEAT_X * fit,
     HERO_RAISE * hero + BEAT_Y * fit,
   ];
 }
