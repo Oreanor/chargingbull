@@ -357,6 +357,12 @@ export class GlbScene {
       if (!W || !H) return;
       renderer.setSize(W, H, false); // buffer only; CSS keeps the canvas full-bleed
       camera.aspect = W / H;
+      // Rebuild the projection HERE, on the aspect. Nothing downstream is guaranteed to:
+      // setCameraSpherical only rebuilds when the fov actually moved, and at/above the
+      // reference aspect effectiveFov returns the same authored fov at every width — so
+      // widening a window that is already wider than 16:9 left the matrix on the previous
+      // aspect while the canvas took the new one, and the figure rendered stretched.
+      camera.updateProjectionMatrix();
       this.seatFigure(); // the phone composition sinks + tips the figure — see *Phone
       // Re-apply last track pose so FOV fit + mobile frame nudge stay consistent.
       if (this.lastSpherical) this.setCameraSpherical(this.lastSpherical);
