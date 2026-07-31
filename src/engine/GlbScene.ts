@@ -15,9 +15,11 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CameraSpherical } from './DatumScene';
+import { UNIFORM_WEIGHTS, type ExplodeWeights } from './cameraTrack';
 import { disposeMaterialTextures, glQuality, isMobileViewport, releaseRenderer } from './deviceBudget';
 
 const DEG2RAD = Math.PI / 180;
+const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const RAD2DEG = 180 / Math.PI;
 
 export interface GlbSceneOptions {
@@ -82,18 +84,21 @@ export interface ExtraModelSpec {
 }
 
 /**
- * Per-unit outward push of each section along its home→centroid direction, and THE knob for
- * how wide the bull comes apart. It is not uniform: the FRONT (head, horns, ears) throws
- * much further than the body, which is what makes the reference read as an animal being
- * taken apart rather than a uniform starburst — the horns clear the frame while the hind
- * quarters barely separate. The keyframe explode value scales on top of these.
+ * Per-unit outward push of each section along its home→centroid direction. The keyframe's
+ * explode value scales on top of it, so `explode: 1.09` here throws exactly as far as
+ * `explode: 1.09` does in the 3D Scrollytell Tool (wallst-rodeo/bull/index.html):
+ *
+ *     mesh.position.copy(home.origin).addScaledVector(home.dir, ex * 0.6)
+ *
+ * Uniform by default, deliberately: a hard-wired front/rear weighting used to live here
+ * (rear 0.4 → front 2.6 on a cubed ramp) and it made the tool's numbers untransferable —
+ * the same `explode` meant a different picture in each place, so a captured pose had to be
+ * re-tuned by eye. What was wrong with it was that it was INVISIBLE and fixed, not that
+ * sections should throw equally. A key can now carry its own `weights` (CamKey.weights),
+ * which is the same shape the capture tool exports; keys without them stay uniform, so
+ * every untouched number still means what it meant.
  */
-const SPREAD_REAR = 0.4;
-const SPREAD_FRONT = 2.6;
-/** Shape of the ramp between them. Linear threw the whole shoulder and withers nearly as
- *  far as the horns; cubed keeps the big travel for the very front — head, horns, ears —
- *  while everything from the withers back barely separates. */
-const SPREAD_FALLOFF = 3;
+const EXPLODE_SPREAD = 0.6;
 /** Which end of the model's long axis the head is on. Flip if the scatter comes out
  *  back-to-front — the axis is found from the bounding box, its direction is not knowable
  *  from geometry alone. */
@@ -116,8 +121,9 @@ export class GlbScene {
   private destroyed = false;
   /** Per-mesh explode anchors: local home position + outward unit direction from
    *  the model centroid. Captured once after load; drives setExplode(). */
-  private readonly meshHomes = new Map<THREE.Object3D, { origin: THREE.Vector3; dir: THREE.Vector3; front: number }>();
+  private readonly meshHomes = new Map<THREE.Object3D, { origin: THREE.Vector3; dir: THREE.Vector3; fwd: number }>();
   private explodeAmount = 0;
+  private explodeWeights: ExplodeWeights = { ...UNIFORM_WEIGHTS };
   /** Loaded secondary models (index-aligned with options.extras); null until loaded. */
   private readonly extraObjects: (THREE.Object3D | null)[] = [];
   /** Each extra's resting (home) position, so it can be offset for a drive-in. */
@@ -528,17 +534,39 @@ export class GlbScene {
     this.applyExplode();
   }
 
+  /** How the throw is shared along the body (see ExplodeWeights). Uniform by default. */
+  setExplodeWeights(w: ExplodeWeights): void {
+    const c = this.explodeWeights;
+    if (c.front === w.front && c.rear === w.rear && c.bias === w.bias && c.sharpness === w.sharpness) return;
+    this.explodeWeights = { ...w };
+    this.applyExplode();
+  }
+
   private applyExplode(): void {
     const ex = this.explodeAmount;
-    // Per-unit outward push of each section along its home→centroid direction. Raised
-    // 0.6 → 1.1 for a much wider scatter (matching the Figma reference, sections reaching
-    // the frame corners). This is THE scatter-strength knob — the keyframe explode value
-    // (capped at the editor slider max) just scales on top of it.
+    const { front, rear, bias, sharpness } = this.explodeWeights;
     for (const [mesh, home] of this.meshHomes) {
-      const k = Math.pow(home.front, SPREAD_FALLOFF);
-      const spread = SPREAD_REAR + (SPREAD_FRONT - SPREAD_REAR) * k;
-      mesh.position.copy(home.origin).addScaledVector(home.dir, ex * spread);
+      // Ramp from rear to front across the body: half strength at `bias`, `sharpness` sets
+      // how quickly it gets there. front === rear (the default) makes this a no-op.
+      const s = front === rear ? 0 : clamp01(0.5 + (home.fwd - bias) * sharpness);
+      const w = rear + (front - rear) * s;
+      mesh.position.copy(home.origin).addScaledVector(home.dir, ex * w * EXPLODE_SPREAD);
     }
+  }
+
+  /** Linear distance fog, or null for none. Reused in place so a per-frame update from
+   *  the track doesn't allocate a Fog per rAF. */
+  setFog(fog: { color: string; near: number; far: number } | null): void {
+    const scene = this.scene;
+    if (!scene) return;
+    if (!fog) {
+      scene.fog = null;
+      return;
+    }
+    const f = scene.fog instanceof THREE.Fog ? scene.fog : (scene.fog = new THREE.Fog(0, 1, 10));
+    f.color.set(fog.color);
+    f.near = fog.near;
+    f.far = fog.far;
   }
 
   // ───── editor: live "drive" the taxi (extra) into place, seeing the bull ─────
@@ -864,14 +892,15 @@ export class GlbScene {
 
   /** Remember each mesh's home position, its outward unit direction from the model
    *  centroid, and how far FORWARD it sits (0 = tail end, 1 = nose end) — so setExplode()
-   *  can push sections apart along stable directions and throw the front further. */
+   *  can push sections apart along stable directions and, when a key asks for it, throw the
+   *  front further than the back. The long axis and which end the head is on come from the
+   *  bounding box, exactly as the pitch finds them (see FRONT_IS_AXIS_MAX). */
   private captureMeshHomes(model: THREE.Object3D): void {
     this.meshHomes.clear();
     const box = new THREE.Box3().setFromObject(model);
     const centre = box.getCenter(new THREE.Vector3());
-    // The animal's long axis is simply the widest one of its bounding box.
     const size = box.getSize(new THREE.Vector3());
-    const axis: 'x' | 'y' | 'z' = size.x >= size.z ? 'x' : 'z';
+    const axis: 'x' | 'z' = size.x >= size.z ? 'x' : 'z';
     const span = size[axis] || 1;
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -880,9 +909,9 @@ export class GlbScene {
       const dir = meshCentre.clone().sub(centre);
       if (dir.lengthSq() < 1e-8) dir.set(0, 1, 0);
       else dir.normalize();
-      const t = (meshCentre[axis] - box.min[axis]) / span;      // 0…1 along the long axis
-      const front = FRONT_IS_AXIS_MAX ? t : 1 - t;
-      this.meshHomes.set(mesh, { origin: mesh.position.clone(), dir, front });
+      const along = (meshCentre[axis] - box.min[axis]) / span; // 0 at axis-min, 1 at axis-max
+      const fwd = FRONT_IS_AXIS_MAX ? along : 1 - along;
+      this.meshHomes.set(mesh, { origin: mesh.position.clone(), dir, fwd });
     });
   }
 

@@ -37,18 +37,26 @@ const MOBILE_MAX = 800;
 /** A piece's box in design px: top-left + width (height follows the asset's aspect). */
 interface Rect { x: number; y: number; w: number }
 
+/** Thickness of a dashed leader, design px in either frame. */
+const LEADER = 1.5;
+
 interface Frame {
   /** Design frame the rects below are measured in. */
   px: { w: number; h: number };
   headline: Rect;
   measureW: Rect;
   measureH: Rect;
-  leaderTop: Rect;
+  /** The height arrow inside the measureH asset: its svg aspect (h/w) and where the two
+   *  arrowheads point, as fractions of that svg's height. The leaders below take their
+   *  row from these, so a leader can never drift off the tip it belongs to. */
+  arrow: { aspect: number; tips: [number, number] };
+  /** Leaders carry only their span — the row comes from `arrow`. */
+  leaderTop: { x: number; w: number };
   /** The ground leader runs BEHIND the cab in the mockup; drawn over the canvas it
    *  would cross the rear wheel instead, so `gap` cuts the wheel's own span out of it.
    *  Measured off the rendered frame (the cab's silhouette at that row), not off the
    *  mockup — the mask has to match the wheel we actually draw. */
-  baseline: Rect & { gap: [number, number] };
+  baseline: { x: number; w: number; gap: [number, number] };
   /** Ink opacity of the dashed leaders — 0.5 on desktop, 0.4 on the phone. */
   leaderInk: number;
   /** Caption: centred on `cx`, 18px/24px on both. `y` is the block's top edge — the
@@ -61,8 +69,9 @@ const DESKTOP: Frame = {
   headline:  { x: 294.4, y: 72.5, w: 810 },
   measureW:  { x: 281, y: 248, w: 830 },
   measureH:  { x: 1179.2, y: 73, w: 22 },
-  leaderTop: { x: 930, y: 72, w: 333 },
-  baseline:  { x: 810, y: 599, w: 453, gap: [0.143, 0.419] },
+  arrow:     { aspect: 527 / 22, tips: [0.000556, 0.999444] },
+  leaderTop: { x: 930, w: 333 },
+  baseline:  { x: 810, w: 453, gap: [0.143, 0.419] },
   leaderInk: 0.5,
   caption:   { cx: 710, y: 642.95, w: 640, font: 18, line: 24 },
 };
@@ -72,13 +81,25 @@ const MOBILE: Frame = {
   headline:  { x: 14.69, y: 143.64, w: 371.90 },
   measureW:  { x: 20.97, y: 345.76, w: 378 },
   measureH:  { x: 316.55, y: 250.61, w: 68.74 },
-  leaderTop: { x: 240, y: 289, w: 141 },
-  baseline:  { x: 240, y: 501, w: 141, gap: [0.291, 0.624] },
+  arrow:     { aspect: 234.1 / 60.3, tips: [0.103771, 0.998321] },
+  leaderTop: { x: 240, w: 141 },
+  baseline:  { x: 240, w: 141, gap: [0.291, 0.624] },
   leaderInk: 0.4,
   caption:   { cx: 201, y: 555.95, w: 340, font: 18, line: 24 },
 };
 
 const GREEN = '#61E26B';
+
+/** The two leaders as full rects: span from the frame, row from the height arrow's tips
+ *  (less half the rule's thickness, so the rule is centred on the tip). */
+const leaders = (F: Frame): { leaderTop: Rect; baseline: Rect } => {
+  const h = F.measureH.w * F.arrow.aspect;
+  const row = (t: number) => F.measureH.y + t * h - LEADER / 2;
+  return {
+    leaderTop: { ...F.leaderTop, y: row(F.arrow.tips[0]) },
+    baseline: { ...F.baseline, y: row(F.arrow.tips[1]) },
+  };
+};
 
 export default function TonnesFrame() {
   const progress = useChapterProgress();
@@ -112,12 +133,13 @@ export default function TonnesFrame() {
 
     const frame = window.innerWidth <= MOBILE_MAX ? MOBILE : DESKTOP;
     const vh = frame.px.h / 100; // design px per vh in this frame
+    const rules = leaders(frame);
     const pieces: [string, React.RefObject<HTMLDivElement | null>, { x: number; y: number }][] = [
       ['tonnes.headline', headlineRef, frame.headline],
       ['tonnes.measureW', measureWRef, frame.measureW],
       ['tonnes.measureH', measureHRef, frame.measureH],
-      ['tonnes.baseline', baselineRef, frame.baseline],
-      ['tonnes.leaderTop', leaderTopRef, frame.leaderTop],
+      ['tonnes.baseline', baselineRef, rules.baseline],
+      ['tonnes.leaderTop', leaderTopRef, rules.leaderTop],
       ['tonnes.caption', captionRef, {
         x: frame.caption.cx - frame.caption.w / 2,
         y: frame.caption.y,
@@ -184,11 +206,12 @@ export default function TonnesFrame() {
   const at = { position: 'absolute', left: '50%', top: '50%' } as const;
   const svgFit = '[&>svg]:block [&>svg]:w-full [&>svg]:h-auto';
 
-  /** A dashed leader: 1.5px rule, 4.13px dashes — the mockup's, scaled with the frame. */
-  const leader = (r: Rect) => ({
+  /** A dashed leader: 1.5px rule, 4.13px dashes — the mockup's, scaled with the frame.
+   *  Only the span lives here; the row is applied as a transform (see `leaders`). */
+  const leader = (r: { w: number }) => ({
     ...at,
     width: f(r.w),
-    height: f(1.5),
+    height: f(LEADER),
     opacity: F.leaderInk,
     backgroundImage:
       `repeating-linear-gradient(90deg, ${GREEN} 0 ${f(4.13)}, transparent ${f(4.13)} ${f(8.26)})`,

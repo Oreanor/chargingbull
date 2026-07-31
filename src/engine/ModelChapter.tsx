@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { type MotionValue } from 'motion/react';
 import { DatumScene, type CameraSpherical } from './DatumScene';
 import { GlbScene, type ExtraModelSpec } from './GlbScene';
@@ -9,11 +9,16 @@ import './ModelChapter.css';
 import {
   sampleTrack,
   normalizeTrack,
+  resolveTrack,
   type CameraTrack,
   type CamKey,
+  type ExplodeWeights,
+  type FogSpec,
 } from './cameraTrack';
+import { isMobileViewport } from './deviceBudget';
 import { stagesToTrack, type StagesFile } from './stagesToTrack';
 import { bullEditStore } from './editStore';
+import PoseProbe from './PoseProbe';
 import { tuneStore } from './tuneEditor';
 import { mobileProfileDistScale, mobileFrameNudge } from './overlayFit';
 
@@ -27,6 +32,10 @@ export interface ModelSceneHandle {
   /** Push model sections apart (0 = assembled). Optional — only mesh models
    *  (GlbScene) separate; splats (DatumScene) ignore it. */
   setExplode?(amount: number): void;
+  /** How that explode is shared along the body (mesh models only). */
+  setExplodeWeights?(w: ExplodeWeights): void;
+  /** Linear distance fog, or null for none (mesh models only). */
+  setFog?(f: FogSpec | null): void;
   /** Push the whole model toward the camera (a forward "kick"/lunge). 0 = rest. */
   setModelPush?(amount: number): void;
   /** Editor-only: pan the framing in screen space (move camera + target together),
@@ -189,6 +198,18 @@ export default function ModelChapter({
   const autoFrame = track.keys.length === 0;
   const active = editMode || mounted;
 
+  // Per-breakpoint poses: keys carrying a `phone` variant swap to it below MOBILE_MAX,
+  // re-resolving when the window crosses the breakpoint (same rule, and the same 800px,
+  // as the model's own phone seating in GlbScene.placementAt). The EDITOR keeps the
+  // authored track — it must show and export what is written, not the resolved copy.
+  const [phone, setPhone] = useState(isMobileViewport);
+  useEffect(() => {
+    const onResize = () => setPhone(isMobileViewport());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const liveTrack = useMemo(() => resolveTrack(track, phone), [track, phone]);
+
   // The chapter rides the global smoothed scroll (the soft chase) — no stop frames.
   // Camera + overlays read this; in the editor it falls back to raw scroll (the
   // editor drives the scene from the scrub handle, not this value).
@@ -230,7 +251,11 @@ export default function ModelChapter({
           </ChapterScrollContext.Provider>
         ) : null}
         {!editMode && scene ? (
-          <TrackDriver scene={scene} track={track} extras={extras} progress={playhead} fadeRef={fadeRef} />
+          <TrackDriver scene={scene} track={liveTrack} extras={extras} progress={playhead} fadeRef={fadeRef} />
+        ) : null}
+        {/* Dev-only drag-to-turn probe (⟳ in the DevToolbar). Renders nothing until armed. */}
+        {import.meta.env.DEV && !editMode && scene ? (
+          <PoseProbe scene={scene} track={track} phone={phone} progress={playhead} />
         ) : null}
         {editMode ? (
           <KeyframeEditor scene={scene} src={src} frames={frames} track={track} stagesUrl={stagesUrl} fadeRef={fadeRef} playhead={playhead} extras={extras} scrollToProgress={scrollToProgress} />
@@ -405,6 +430,8 @@ function TrackDriver({
     scene.setFitDistMul?.(mobileProfileDistScale(progress.get()));
     scene.setCameraSpherical(first);
     scene.setExplode?.(first.explode);
+    scene.setExplodeWeights?.(first.weights);
+    scene.setFog?.(first.fog);
     scene.setModelPush?.(first.push);
     applyExtras(progress.get());
     applyMobileFrame(progress.get());
@@ -414,6 +441,10 @@ function TrackDriver({
       const pose = sampleTrack(track, t, keys);
       if (fadeRef.current) fadeRef.current.style.opacity = String(pose.opacity);
       scene.setExplode?.(pose.explode);
+    scene.setExplodeWeights?.(pose.weights);
+    scene.setFog?.(pose.fog);
+      scene.setExplodeWeights?.(pose.weights);
+      scene.setFog?.(pose.fog);
       scene.setModelPush?.(pose.push);
       applyExtras(t);
       // Fit pull before pose so a non-holding update already sees the new mul.
@@ -1057,6 +1088,20 @@ function buildMdx(src: string, frames: number, track: CameraTrack): string {
     if (k.opacity != null && k.opacity < 1) parts.push(`opacity: ${r2(k.opacity)}`);
     if (k.fov != null) parts.push(`fov: ${k.fov}`);
     if (k.target) parts.push(`target: [${k.target.join(', ')}]`);
+    if (k.weights) {
+      const w = k.weights;
+      parts.push(`weights: { front: ${w.front}, rear: ${w.rear}, bias: ${w.bias}, sharpness: ${w.sharpness} }`);
+    }
+    if (k.fog) parts.push(`fog: { color: '${k.fog.color}', near: ${k.fog.near}, far: ${k.fog.far} }`);
+    // The editor edits the WIDE pose (it never resolves phone variants), so a key's phone
+    // block has to survive the round-trip verbatim — otherwise exporting from here quietly
+    // deletes the phone framing someone tuned at the other breakpoint.
+    if (k.phone) {
+      const over = Object.entries(k.phone)
+        .filter(([, v]) => v != null)
+        .map(([f, v]) => `${f}: ${Array.isArray(v) ? `[${v.join(', ')}]` : v}`);
+      if (over.length) parts.push(`phone: { ${over.join(', ')} }`);
+    }
     return `    { ${parts.join(', ')} },`;
   };
   const lead: string[] = [];

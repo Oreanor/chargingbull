@@ -42,7 +42,13 @@ export const OPENER_EXTRAS: ChapterExtra[] = [
 export const OPENER_TRACK: CameraTrack = {
   leadIn: 0,
   keys: [
-    { at: 0, az: 17.5, polar: 79.5, dist: 1.47, push: 0.1, fov: 40, target: [0.09, 0.32, 0.39] },
+    // Opening screen. The phone looks DOWN on the head (polar 64.5 vs the wide 79.5): in the
+    // tall crop the muzzle has to tip into frame under the wordmark, where the wide crop can
+    // hold the head at eye level. It also sits ~10% closer — on-screen size goes as 1/dist,
+    // so 1.47 / 1.1 = 1.34 — because the narrow crop has to carry the head on its own, with
+    // no body beside it. fov, target and the lunge are the same pose on both.
+    { at: 0, az: 17.5, polar: 79.5, dist: 1.47, push: 0.1, fov: 40, target: [0.09, 0.32, 0.39],
+      phone: { az: 19.6, polar: 64.5, dist: 1.34 } },
     { at: 0.05, az: 85.3, polar: 86.1, dist: 5.2, opacity: 0, fov: 40, target: [0.27, 0.52, -0.16] },
     { at: 0.3, az: 27.5, polar: 68.8, dist: 5.2, push: 0.6, opacity: 0, fov: 40, target: [0.27, 0.52, -0.16] },
     // The goring: the bull is invisible through 0.3 (opacity 0) and both appears and drives
@@ -58,8 +64,31 @@ export const OPENER_TRACK: CameraTrack = {
     { at: 0.62, az: 41.6, polar: 76.6, dist: 2.13, fov: 46.9, target: [0.42, 0.34, 0.1] },
     { at: 0.67, az: 87.4, polar: 94.4, dist: 2.86, fov: 39.6, target: [0.08, 0.44, -0.07] },
     { at: 0.75, az: 87.4, polar: 94.4, dist: 2.86, fov: 39.6, target: [0.08, 0.44, -0.07] },
-    { at: 0.8, az: 26, polar: 96.2, dist: 2.4, explode: 1.2, fov: 46, target: [0.13, 0.45, 0.59] },
-    { at: 0.85, az: 26, polar: 96.2, dist: 2.4, explode: 1.2, fov: 46, target: [0.13, 0.45, 0.59] },
+    // The разлёт, re-captured in the 3D tool: camera [0.964, -0.034, 2.707] → target
+    // [-0.026, 0.422, 0.837], fov 45, explode 0.44 (55 parts). The tool also nudged the
+    // MODEL to [-0.0953, -0.0016, -0.0898]; that shift is folded into the target here
+    // instead of moving the bull, because the bull's origin is shared — every other key's
+    // target and the cab's hand-placed seat are measured against it.
+    // Not taken from that capture: its exposure (asked for) and its pushZ, which was 0.
+    // Three numbers ARE off the capture, and each one has a reason the capture couldn't know:
+    //
+    //   explode 1.8, not 0.44 — the capture's weights multiply the throw, they don't add to
+    //     it: at the nose w=1.37, so 0.44 threw the horns 0.6 where the previous uniform 1.09
+    //     threw them 1.09. Read as "barely came apart". 1.8 puts the horns at 2.5 — better
+    //     than twice the old reach, which is the point of this stage.
+    //   rear 0.35, not 0 — rear 0 nails the hindquarters to the body, so everything behind
+    //     the shoulder stayed assembled and the figure read as collapsed, not exploded.
+    //   fog near/far 3.5/6.5, not 2.5/3.7, and black instead of #2c2c30 — fog is measured
+    //     from the CAMERA, and a horn thrown 2.5 out sits ~4.6 away, i.e. past the captured
+    //     far plane: the разлёт flew straight into the fog and vanished. The colour follows
+    //     the chapter's backdrop; the capture's grey belonged to the tool's grey viewport,
+    //     and over this black frame it read as a second, ghostly bull hanging in the middle.
+    { at: 0.8, az: 27.9, polar: 102.2, dist: 2.16, explode: 1.8, fov: 45, target: [0.07, 0.42, 0.93],
+      weights: { front: 1.69, rear: 0.35, bias: 0.74, sharpness: 1 },
+      fog: { color: '#0c0d10', near: 3.5, far: 6.5 } },
+    { at: 0.85, az: 27.9, polar: 102.2, dist: 2.16, explode: 1.8, fov: 45, target: [0.07, 0.42, 0.93],
+      weights: { front: 1.69, rear: 0.35, bias: 0.74, sharpness: 1 },
+      fog: { color: '#0c0d10', near: 3.5, far: 6.5 } },
     { at: 0.92, az: 143.9, polar: 117, dist: 1.86, fov: 40, target: [-0.23, 0.72, -0.05] },
     { at: 1, az: 143.9, polar: 117, dist: 1.86, fov: 40, target: [-0.23, 0.72, -0.05] },
   ],
