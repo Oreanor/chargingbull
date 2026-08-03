@@ -26,19 +26,27 @@ export function FutureSlide() {
     </>
   );
   return (
-    <section className="min-h-[100dvh] flex flex-col justify-center px-5 lg:px-6 py-16 md:py-32 bg-black">
+    // No phone padding on the section: the 20px gutter is .xpl-main's, exactly as on the
+    // other editorial slides. It used to be BOTH — px-5 here and .xpl-main's own 20px — so
+    // the prose after the portrait ran on a 322px measure while the lede above it, which
+    // carries no .xpl-main, ran on the frame's 362.
+    <section className="min-h-[100dvh] flex flex-col justify-center lg:px-6 py-16 md:py-32 bg-black">
       {/* Mobile flows as one article (lede → portrait → prose) with modest spacing; the big
           gap-y-32 only applied to the desktop two-column split, so it's lg-only now. */}
-      <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start gap-y-10 lg:gap-y-12 gap-x-[clamp(40px,8vw,130px)]">
+      <div className="mx-auto max-w-[1160px] flex flex-col lg:flex-row lg:items-start lg:gap-y-12 gap-x-[clamp(40px,8vw,130px)]">
         {/* MOBILE-only: the AI lede sits above the portrait (hidden on desktop, where it
             heads the right column instead). Serif styling matches the main column. */}
         <p
-          className="lg:hidden text-[24px] leading-[32px] tracking-[0.01em] text-white"
+          className="xpl-main lg:hidden text-[24px] leading-[32px] tracking-[0.01em] text-white"
           style={{ fontFamily: 'var(--font-martina)' }}
         >
           {aiLede}
         </p>
-        <aside className="xpl-aside flex items-start gap-x-6 lg:block lg:w-[348px] lg:shrink-0 lg:translate-x-[-3.29vh] lg:translate-y-[1.7vh]" style={{ fontFamily: 'var(--font-struve)' }}>
+        {/* Phone gaps ride the aside, and they are not the same number: the frame leaves 63px
+            between the lede's last baseline and the top of the disc, and 87px between the
+            name's baseline and the next paragraph's. One shared column gap can only be one of
+            the two, so the block carries both of its own. */}
+        <aside className="xpl-aside mx-5 mt-[65px] mb-[14px] flex items-start gap-x-6 lg:mx-0 lg:mt-0 lg:mb-0 lg:block lg:w-[348px] lg:shrink-0 lg:translate-x-[-3.29vh] lg:translate-y-[1.7vh]" style={{ fontFamily: 'var(--font-struve)' }}>
           <img
             src="/chapters/closing/dimodica.png"
             alt="Arturo Di Modica"
@@ -61,7 +69,7 @@ export function FutureSlide() {
           </div>
         </aside>
         <div
-          className="xpl-main lg:flex-1 lg:max-w-[760px] text-[24px] leading-[32px] tracking-[0.01em] lg:text-[clamp(17px,1.5vw,24px)] lg:leading-[1.34] lg:tracking-normal text-white space-y-7"
+          className="xpl-main lg:flex-1 lg:max-w-[760px] text-[24px] leading-[32px] tracking-[0.01em] lg:text-[clamp(17px,1.5vw,24px)] lg:leading-[1.34] lg:tracking-normal text-white space-y-[32px] lg:space-y-7"
           style={{ fontFamily: 'var(--font-martina)' }}
         >
           {/* DESKTOP-only: same lede, hidden on mobile where it's shown above the portrait. */}

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { CALC_CPI, CALC_DIV, CALC_PRICE, CALC_T0 } from '../data/sp500Monthly';
 import {
   FILL_MAX, HATCH_ALPHA, hatchArea, inkText,
-  LINE_W_THICK, LINE_W_THIN, HOLD_THIN_ALPHA, END_DOT_R_FOCUS,
+  lineWThick, lineWThin, HOLD_THIN_ALPHA, endDotFocusR,
 } from '../engine/charts/chartInk';
 import { cappedDpr } from '../engine/deviceBudget';
 import './CalculatorSlide.css';
@@ -59,6 +59,15 @@ export function CalculatorSlide() {
     // top edge of the dragger. The dragger sits ON the canvas floor, so the floor IS its
     // height plus its own top gap; nothing here is a nudge on top of anything else.
     const DOT_DY = 14.5, LABEL_DY = 37.3, POLE_END_DY = 11.5;
+    /** The year at the top of a flag pole (phone): Struve 18 bold, and the 9px both the pole
+     *  keeps over the series and the year keeps over the pole (iPhone 36). */
+    const YEAR_FONT = "700 18px 'Struve', system-ui, sans-serif";
+    const YEAR_LIFT = 9;
+    /** Where the hint's arrow stops, LEFT of the pole: on the dragger's near edge, never
+     *  across the pole itself (iPhone 36 lands the tip on 119 against a pole on 147.5). */
+    const ARC_TIP_AT_KNOB = 26;
+    /** Gap the hint plate keeps to the left of the pole (the CSS seat, in one number). */
+    const HINT_GAP = 6;
     const PILL_H = 33, KNOB_D = 48, KNOB_TOP_DY = 6.5;
     const padB = () => (isMobile() ? KNOB_TOP_DY + KNOB_D : POLE_END_DY + PILL_H);
     // Headroom for the year the phone prints ABOVE the endpoint dot (13px type + its
@@ -130,7 +139,7 @@ export function CalculatorSlide() {
       // stepped back to HOLD_THIN_ALPHA either side of it — the run up to the start flag
       // is context, not a different series. It used to be white here, which read as two.
       ctx.save(); ctx.globalAlpha = HOLD_THIN_ALPHA;
-      drawSeg(I0, rows.length - 1, GREEN, LINE_W_THIN);
+      drawSeg(I0, rows.length - 1, GREEN, lineWThin());
       ctx.restore();
       ctx.beginPath(); ctx.moveTo(xOf(rows[i0].t), H - floor);
       for (let i = i0; i <= i1; i++) ctx.lineTo(xOf(rows[i].t), yOf(rows[i].tr));
@@ -144,18 +153,37 @@ export function CalculatorSlide() {
       ctx.save(); ctx.globalAlpha = HATCH_ALPHA;
       hatchArea(ctx, xOf(rows[i0].t), top, xOf(rows[i1].t), ay, GREEN);
       ctx.restore();
-      drawSeg(i0, i1, GREEN, LINE_W_THICK);
+      drawSeg(i0, i1, GREEN, lineWThick());
+      /** Where each pole stops, by flag — the year rides its top (mobile; see below). */
+      const poleTop: number[] = [];
       for (const [i, label] of [[i0, startY], [i1, endY]] as const) {
         const px = xOf(rows[i].t), py = yOf(rows[i].tr);
-        ctx.beginPath(); ctx.arc(px, py, END_DOT_R_FOCUS, 0, 7); ctx.fillStyle = GREEN; ctx.fill();
+        ctx.beginPath(); ctx.arc(px, py, endDotFocusR(), 0, 7); ctx.fillStyle = GREEN; ctx.fill();
         ctx.strokeStyle = '#06210b'; ctx.lineWidth = 1.5; ctx.stroke();
-        // Mobile: year sits above the endpoint (knobs replace the bottom pills). Knocked
-        // out of the ground so it stays readable where it lands on the curve.
+        // Mobile: the year sits at the TOP OF ITS POLE, above the curve (the knobs replace
+        // the bottom pills). The pole is cut to whatever height clears the series across the
+        // label's own width — so the year never crosses the line, on any window the reader
+        // drags to, without anyone authoring a height. Struve 18 bold, knocked out of the
+        // ground, as the export has it (iPhone 36: pole to 445 over a point at 483, year on
+        // 436; and to 109 over a point at 125, year on 100).
         if (mobile) {
+          ctx.font = YEAR_FONT;
+          const half = ctx.measureText(String(label)).width / 2 + 4;
+          let clear = py - endDotFocusR();
+          for (let k = I0; k < rows.length; k++) {
+            const kx = xOf(rows[k].t);
+            if (kx < px - half) continue;
+            if (kx > px + half) break;
+            clear = Math.min(clear, yOf(rows[k].tr));
+          }
+          const topY = Math.max(top - YEAR_LIFT, clear - YEAR_LIFT);
+          poleTop.push(topY);
           ctx.fillStyle = GREEN;
-          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-          inkText(ctx, String(label), px, py - 10, "700 13px 'Space Mono', monospace", GROUND);
-          ctx.textBaseline = 'alphabetic';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+          // Centred on its pole, but never over the edge of the frame — the end year sits
+          // on the last flag, which is as far right as a flag goes.
+          const lx = Math.min(Math.max(px, PAD.l + half), W - PAD.r - half);
+          inkText(ctx, String(label), lx, topY - YEAR_LIFT, YEAR_FONT, GROUND);
         }
       }
 
@@ -166,12 +194,34 @@ export function CalculatorSlide() {
       // The pole stops at the dragger's top edge — it runs THROUGH the axis, as in both
       // mockups. The dragger itself needs no JS seat: the floor is cut to its height, so
       // its CSS bottom:0 already lands it right under the axis.
-      for (const el of [flagA!, flagB!]) {
+      for (const [k, el] of [flagA!, flagB!].entries()) {
         const line = el.querySelector('.line') as HTMLElement | null;
-        if (line) line.style.bottom = (floor - POLE_END_DY) + 'px';
+        if (!line) continue;
+        line.style.bottom = (floor - POLE_END_DY) + 'px';
+        // The pole is only as tall as its year needs (see poleTop); on the wide layout the
+        // year lives in the pill under the axis and the pole runs the full plot.
+        line.style.top = mobile ? `${Math.max(0, poleTop[k] ?? 0)}px` : '0';
       }
-      // Hint is a child of flag A — lift above the axis / knob.
+      // Hint is a child of flag A — lift above the axis / knob. On a phone it rides just
+      // left of the pole like everywhere else, and only STOPS when it reaches the plot's
+      // left edge: the flag then slides over it instead of shoving the plate off-screen.
       hintEl!.style.bottom = (floor + (mobile ? 28 : 13)) + 'px';
+      const hintLeft = Math.max(PAD.l, ax - HINT_GAP - hintEl!.offsetWidth);
+      hintEl!.style.transform = mobile ? `translateX(${hintLeft - ax}px)` : '';
+      // …and once the plate is pinned to the edge, its curved arrow has to travel on its
+      // own: it points AT the dragger, which is on the pole. Left where the CSS parks it —
+      // off the plate's right edge — it drifts away from the knob as the flag moves.
+      const arcEl = hintEl!.querySelector('.arc') as SVGSVGElement | null;
+      if (arcEl) {
+        // Measured with getBoundingClientRect: this is an <svg>, and an SVGElement has no
+        // offsetWidth — reading it gave NaN, the style was dropped and the arrow sat wherever
+        // the CSS had parked it, which is what «стрелка не ездит» was.
+        // Measured against the plate's ACTUAL left edge — it only sits at PAD.l while the
+        // flag has pushed it into the corner; the rest of the time it rides the pole, and
+        // pinning the arrow to PAD.l made it drift out of step with both.
+        const aw = arcEl.getBoundingClientRect().width;
+        arcEl.style.left = mobile ? `${ax - ARC_TIP_AT_KNOB - hintLeft - aw}px` : '';
+      }
 
       const nomMult = rows[i1].tr / rows[i0].tr;
       const realMult = nomMult * (rows[i0].cpi / rows[i1].cpi);
@@ -367,7 +417,9 @@ export function CalculatorSlide() {
                 <span className="cur">$</span>
                 <input ref={amountRef} type="number" min={100} max={1000000} step={100} defaultValue={100} inputMode="numeric" />
               </span>{' '}
-              in the index
+              {/* «in the index» is its own line, as the exports set it — the heading is two
+                  lines whatever the field's width, instead of wrapping wherever it lands. */}
+              <span className="calc-amt-tail">in the index</span>
             </div>
           </div>
           <div ref={resultRef} className="calc-result" />

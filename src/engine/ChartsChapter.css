@@ -6,6 +6,11 @@
    THEME_BEAR.BG and the explainer panel. */
 .cc-section { background: #f14268; color: #f5f3ee; }
 
+/* Side margin of the whole frame — the SAME number the canvas lays its plot out on
+   (chartsEngine SIDE_PAD_F), so the header, the credits and the chart's own left edge are
+   one line. Desktop-36 has it at 10% of the frame; the iPhone export halves it to 20/402. */
+.cc-stage { --cc-side: 10vw; }
+
 .cc-canvas { width: 100%; height: 100%; display: block; }
 
 /* Old left-third dim overlay — removed: it muddied the pink (bear) phase, and the
@@ -15,8 +20,11 @@
 /* Top bar */
 .cc-topbar {
   position: absolute; top: 0; left: 0; width: 100%;
-  /* inset from the edge to line up with the chart's margins (mockup: header at ~10%) */
-  padding: clamp(22px, 3.4vh, 44px) 10vw; z-index: 50; pointer-events: none;
+  /* Inset from the edge to line up with the chart's margins (10% sides, as the canvas).
+     Top band off Desktop-36: «Wall street» sits on baseline 62 at 40px type, i.e. a ~43px
+     band on an 800-tall frame — 5.4vh, where this used to say 3.4 and ran the header
+     tight against the top edge. */
+  padding: clamp(28px, 5.4vh, 56px) var(--cc-side); z-index: 50; pointer-events: none;
 }
 .cc-brand {
   font-family: var(--font-struve); font-weight: 700; color: #fff;
@@ -32,7 +40,7 @@
    in JS (dark on bear, light on bull). Two lines, Struve, like the design. */
 .cc-legend {
   /* Sources sit closer to the chart (mockup: ~48px under the month labels). */
-  position: absolute; left: 10vw; bottom: clamp(20px, 5.4vh, 46px);
+  position: absolute; left: var(--cc-side); bottom: clamp(20px, 5.4vh, 46px);
   z-index: 40; pointer-events: auto;
   font-family: var(--font-struve);
   font-size: clamp(11px, 1.05vw, 16px); line-height: 1.5;
@@ -96,7 +104,13 @@
 .cc-card--bull .cc-comment,
 .cc-card--bull .cc-comment b { color: #000; }
 
-@media (max-width: 720px) {
+/* Phone frame — iPhone 17 export, 402×874. The project-wide 800px breakpoint (see
+   deviceBudget.MOBILE_MAX), which is also the width the CANVAS flips its own margins at:
+   the chart and the HTML chrome around it must never disagree about which frame they are
+   drawing. */
+@media (max-width: 800px) {
+  /* 20px on the 402-wide export — the canvas's own SIDE_PAD_F, stated once. */
+  .cc-stage { --cc-side: 4.98vw; }
   /* Phone card spec — one place, see the --card-* block in fonts.css. */
   .cc-card {
     left: var(--card-gap);
@@ -111,16 +125,21 @@
     line-height: var(--card-body-lh);
     letter-spacing: var(--card-body-ls);
   }
-  .cc-topbar { padding: 14px 18px; }
-  /* Credits, per the designer's portrait export (docs/3/Yahoo F.svg): Struve 16/24 at
-     50% ink. Fixed size, not the desktop's vw-scaled clamp. It spans the FULL plot
-     width and shares the chart's 10vw side margins, so its left edge lines up with the
-     y-axis and its right with the plot's right edge — and it sits below the month
-     labels rather than across them. */
+  /* Header seat off the iPhone export: «Wall street» on baseline 44.6 at 18px, «Bear
+     markets» on 81.56 at 30px — a 27px top band on the 20px side margin the canvas uses. */
+  .cc-topbar { padding: 30px var(--cc-side); }
+  .cc-brand { font-size: 30px; }
+  .cc-brand .cc-small { font-size: 18px; }
+  /* Credits, per the designer's portrait export: Struve 16/24 at 50% ink. Fixed size, not
+     the desktop's vw-scaled clamp. It spans the FULL plot width and shares the chart's side
+     margins, so its left edge lines up with the y-axis and its right with the plot's right
+     edge — and it sits below the month labels rather than across them. On the phone's 20px
+     margins the block reads in FIVE lines, which is the height the canvas reserves for it
+     (setBottomReserve) and therefore where the plot floor lands. */
   .cc-legend {
-    left: 10vw;
-    right: 10vw;
-    bottom: 6px;
+    left: var(--cc-side);
+    right: var(--cc-side);
+    bottom: 14px;
     width: auto;
     max-width: none;
     font-size: 16px;

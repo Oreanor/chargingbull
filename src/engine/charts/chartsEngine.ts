@@ -16,18 +16,32 @@
  */
 import copy from '../../content/copy.json';
 import { CHART_NOM, CHART_REAL, CHART_T0 } from '../../data/sp500Monthly';
-import { BM_GEOM, BM_WICK_OF_BODY } from './blackMondayCandles';
-import { cappedDpr } from '../deviceBudget';
+import { BM_GEOM, BM_BOX_NARROW, BM_WICK_OF_BODY } from './blackMondayCandles';
+import { cappedDpr, isMobileViewport } from '../deviceBudget';
 import {
   GRID_DASH, BASE_LINE_W, TICK_BELOW, TICK_ABOVE, tickAlphaPct, tickAlphaAbs,
   FILL_MAX, HATCH_ALPHA, hatchArea, inkText,
-  LINE_W_THICK, LINE_W_THIN, THIN_ALPHA, HOLD_THIN_ALPHA, END_DOT_R, END_DOT_R_FOCUS,
+  lineWThick, lineWThin, THIN_ALPHA, HOLD_THIN_ALPHA, endDotR, endDotFocusR,
+  xAxisBelow,
 } from './chartInk';
 
 /** Bull-callout circle radius in the 1142-wide design box (Desktop-43). On screen it is
  *  that proportion of the plot width — the mockup's ratio, not a span between two years,
  *  which drifted with the x-domain and read ~3% large. */
 const BULL_CALLOUT_R_DESIGN = 283.5;
+/**
+ * How big the bull MARKER (gold dot · figurine · «1989») is drawn.
+ *
+ * On a wide frame it rides the plot, which is 1:1 with the design box it was drawn in. The
+ * portrait export does not shrink it with the frame: «1989» is Druk 96 against the desktop's
+ * 127, the dot r6 against r8.5, the caption 18 against 24 — a flat 0.75 of the design, where
+ * riding a 325px plot would have given 0.28 and the whole block read as a smudge.
+ */
+const BULL_MARKER_NARROW = 0.75;
+const bullMarkerScale = (plotW: number) =>
+  (isMobileViewport() ? BULL_MARKER_NARROW : plotW / 1142);
+/** Gap between the disc and the caption over it, on the frames that seat it outside. */
+const BULL_CAPTION_OVER = 15;
 import {
   BM_OHLC, BM_AUG_I, BM_CRASH_I, bmPriceSvgY,
   bmDrawdownMonthMarks, bmDrawdownT,
@@ -71,6 +85,11 @@ const FONT_MARK_BOLD = "bold 18px 'Struve', system-ui, sans-serif";
 // Green invest labels (mockups Percent 1–3): both lines Struve 18, 22px baseline step.
 const FONT_INVEST = "18px 'Struve', system-ui, sans-serif";
 const FONT_INVEST_BOLD = "bold 18px 'Struve', system-ui, sans-serif";
+/** Where the «$350K → / October 1987» block sits, as a share of the plot height (iPhone 33). */
+const PURCHASE_LABEL_F = 0.54;
+/** How far the «$4.85M / February 2021» block's LAST line clears the end dot (iPhone 33/34
+ *  set it on 23 and 26; it used to be 6, which had the date all but touching the dot). */
+const COMPARE_LABEL_UP = 23;
 // Clearance above the plot top so "S&P 500 INDEX" sits over the topmost tick label, not on it.
 // ~2× line height: one gap above the top tick label, plus another full caption height.
 const INDEX_ABOVE = 40;
@@ -84,11 +103,38 @@ let BG = '#000000';
 const MINUS_RE = /^[-−–]/;
 const MARK_GAP = 25;
 const MARK_STEP = 20;
+/**
+ * The phone seat for that same marker: BESIDE the point rather than under it.
+ *
+ * On 402×874 the 1987 end point sits ~40px off the plot floor — less than the two lines are
+ * tall — so the export (iPhone 17) sets them to its left instead: «November» on baseline
+ * 636.3 against a dot at cy 638, «1987» 20 under that, the block ending 10px short of the
+ * dot. Same two lines, same fonts; only the seat is the frame's.
+ */
+const MARK_BESIDE_DY = -2;
+const MARK_BESIDE_GAP = 10;
+/** Air a marker keeps to either SIDE of itself when seats are being chosen. */
+const MARK_CLEAR = 6;
+/** The seat a crowded marker is currently holding, by label — see drawMarkerTwoLine. */
+const MARK_SEAT_HELD = new Map<string, string>();
 /** …and 12px tighter for a marker parked ABOVE its point — the crisis percentages (−42%
  *  2000, −51% 2008) sit that much lower, closer to the peak they name. Its own seat rather
  *  than a nudge on MARK_GAP: that one also seats the trough dates BELOW their dot, and
  *  shrinking it would push those the other way. */
 const MARK_GAP_ABOVE = 13;
+
+/**
+ * A centred X label, kept inside the plot.
+ *
+ * The end marks are centred on their dot only as far as the frame allows and then flush to
+ * the edge — which is how Desktop-40 seats «PEAK» (left-aligned on the box edge, its dot
+ * 17px in). Without it the first label hangs off the left of the chart on any frame whose
+ * first mark sits near the edge, which is exactly what the portrait candle frame does.
+ */
+function xLabelSeat(ctx: CanvasRenderingContext2D, text: string, x: number, x0: number, x1: number) {
+  const half = ctx.measureText(text).width / 2;
+  return Math.min(Math.max(x, x0 + half), x1 - half);
+}
 
 /** Shared Y-axis title: right edge at plot right, parked above the top grid. */
 function drawIndexCaption(ctx: CanvasRenderingContext2D, xRight: number, plotTop: number) {
@@ -128,7 +174,6 @@ function drawPctGrid(
     const y = sy(p);
     if (y <= yBottom + 0.5) seats.push({ p, y });
   }
-  const rows = seats.length;
   seats.forEach(({ p, y }, row) => {
     const w = p === 100 ? whiteAlpha : 0;
     if (w < 1) {
@@ -141,7 +186,7 @@ function drawPctGrid(
       ctx.strokeStyle = LINE; ctx.lineWidth = BASE_LINE_W; ctx.setLineDash([]);
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
     }
-    ctx.globalAlpha = a0 * tickAlphaPct(row, rows) * labelAlpha;
+    ctx.globalAlpha = a0 * tickAlphaPct(row, step) * labelAlpha;
     ctx.fillStyle = AXIS;
     if (labelAlpha > 0.004) ctx.fillText(fmtPct(p), x1, y + TICK_BELOW);
     ctx.globalAlpha = a0;
@@ -150,9 +195,6 @@ function drawPctGrid(
   ctx.lineWidth = 1;
 }
 
-/** Seats under the plot line: the tick dot, then its label. */
-const X_DOT_DY = 14;
-const X_LABEL_DY = 28;
 
 /**
  * Year ticks under the plot — a dot per year with its label beneath it.
@@ -167,17 +209,19 @@ function drawYearAxis(
   ctx: CanvasRenderingContext2D,
   sx: (v: number) => number,
   y1: number, xMin: number, xMax: number,
+  x0: number, x1: number,
 ) {
   ctx.font = FONT;
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
+  ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = AXIS;
   const span = xMax - xMin;
   const step = span > 30 ? 10 : span > 10 ? 5 : 1;
+  const below = xAxisBelow();
   for (let yr = Math.ceil(xMin / step) * step; yr <= xMax; yr += step) {
-    const x = sx(yr);
-    ctx.beginPath(); ctx.arc(x, y1 + X_DOT_DY, 3, 0, 2 * Math.PI); ctx.fill();
-    ctx.fillText(String(yr), x, y1 + X_LABEL_DY);
+    const x = sx(yr), label = String(yr);
+    ctx.beginPath(); ctx.arc(x, y1 + below.dot, 3, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillText(label, xLabelSeat(ctx, label, x, x0, x1), y1 + below.label);
   }
 }
 
@@ -235,12 +279,16 @@ function drawMarkerTwoLine(
   ctx: CanvasRenderingContext2D,
   line1: string, line2: string, px: number, py: number,
   font1: string, font2: string,
-  maxRight?: number,
+  /** Where the block may sit: the data's right edge alone, or the whole plot rect. */
+  bounds?: number | { l: number; r: number; t: number; b: number },
   above = false,
   shiftDigits = 0,
   /** Colour to knock the label out of. Empty ⇒ no halo — pass that wherever the ground
    *  under the marker is NOT the flat theme background (see the call sites). */
   ground: string = BG,
+  /** Boxes already taken this frame. A beside seat that would land on one moves along the
+   *  candidate list; the seat it ends up in is appended. Omit on frames with one marker. */
+  placed?: { l: number; t: number; r: number; b: number }[],
 ) {
   ctx.font = font2;
   const w2 = ctx.measureText(line2).width;
@@ -259,9 +307,110 @@ function drawMarkerTwoLine(
   const signW = sign ? ctx.measureText(sign).width : 0;
   const w = Math.max(ctx.measureText(body1).width, w2);
   // Short line 2 (nothing to anchor on) falls back to centring the block.
-  let left = (line2.length >= 2 ? px - (lead + second / 2) : px - w / 2) - shift;
+  const plot = typeof bounds === 'object' ? bounds : null;
+  const maxRight: number | null = plot ? plot.r : (typeof bounds === 'number' ? bounds : null);
+  /** The block's own seat under the point: the dot over the second glyph of the year. */
+  const anchored = (line2.length >= 2 ? px - (lead + second / 2) : px - w / 2) - shift;
+  let left = anchored;
+  let base = above ? py - MARK_GAP_ABOVE - MARK_STEP : py + MARK_GAP;
+  // Every crowded marker hunts for a free seat — the crisis percentages ABOVE their point
+  // and the trough dates BELOW theirs, each from its own candidate list (see `seats`).
+  //
+  // The dates used to be excluded here, on the reasoning that one fixed seat under the point
+  // is worth more than dodging a neighbour because it never moves on resize or scroll. It
+  // does not survive the data: «March 2009» and «December 1974» bottom out within a few
+  // pixels of each other, so the fixed seat printed one date over the other on the two
+  // frames where both curves are drawn. The seat is sticky and prefers the natural one, so
+  // an uncrowded date still never moves.
+  if (plot) {
+    // Seats, in the order the exports use them: UNDER the point (the default everywhere
+    // there is room for it), then level beside it left or right — which is what the 402
+    // frames fall back to when the point is too near the floor — then over it, then a line
+    // lower on either side. The first one that stays inside the plot and clears every
+    // marker already placed wins. One fixed seat for all of them printed «March 2009» and
+    // «September 1974» on top of each other (their troughs are 3px apart on a phone), and
+    // crowded every date onto the same side of its dot; the exports stagger them by hand,
+    // which a morph cannot.
+    const hi = MARK_STEP + 18; // the block: two baselines plus the type's own height
+    const below = py + MARK_GAP, over = py - MARK_GAP_ABOVE - MARK_STEP;
+    /** Left edges for a block tucked clear of whatever already sits at this height, nearer
+     *  side first — the export's own move for the pairs that crowd («−42% 2000» against
+     *  «−51% 2008», «March 2009» against «September 1974»): it slides the second block
+     *  sideways, keeping it on the same line as its neighbour, rather than lifting it off
+     *  its own point. Which side matters — tucking a 2007 label LEFT of the 2000 one puts
+     *  the two crises in the wrong order along the axis. */
+    const tuckAt = (b: number): number[] => {
+      const t = b - 14, bot = b + hi - 14;
+      const hit = (placed ?? []).filter((p) => t < p.b && bot > p.t);
+      if (!hit.length) return [px - MARK_BESIDE_GAP - w];
+      const l = Math.min(...hit.map((p) => p.l)) - w - MARK_CLEAR;
+      const r = Math.max(...hit.map((p) => p.r)) + MARK_CLEAR;
+      const near = (x: number) => Math.abs(x + w / 2 - px);
+      return near(l) <= near(r) ? [l, r] : [r, l];
+    };
+    const tuckSeats = (b: number, k: string) =>
+      tuckAt(b).map((l, i) => ({ k: `${k}${i}`, l, b }));
+    const seat_ = (k: string, l: number, b: number) => ({ k, l, b });
+    // A marker parked ABOVE its point stays above it; one that hangs below stays below,
+    // and only takes to the air when nothing down there is free.
+    const seats = above ? [
+      seat_('over', anchored, over),
+      // Level beside the point, for a marker whose seat above it is taken by something wide
+      // — on the Charging Bull frame that is the disc's own caption, and the export moves
+      // the «−26% 1987» block down beside the peak exactly like this.
+      seat_('level-r', px + MARK_BESIDE_GAP, py),
+      seat_('level-l', px - MARK_BESIDE_GAP - w, py),
+      ...tuckSeats(over, 'over-tuck'),
+      seat_('over2', anchored, over - hi),
+      ...tuckSeats(over - hi, 'over2-tuck'),
+    ] : [
+      seat_('under', anchored, below),
+      // A date that has to give way keeps its distance UNDER the point and slides sideways
+      // along that line first — dropping a whole block leaves it 60px adrift of the dot it
+      // names, and stepping up level with the dot reads as a different seat from every
+      // other date on the frame. Only when nothing on that line is free does it drop.
+      ...tuckSeats(below, 'under-tuck'),
+      seat_('under2', anchored, below + hi),
+      seat_('level-l', px - MARK_BESIDE_GAP - w, py + MARK_BESIDE_DY),
+      seat_('level-r', px + MARK_BESIDE_GAP, py + MARK_BESIDE_DY),
+      seat_('below-l', px - MARK_BESIDE_GAP - w, below),
+      seat_('below-r', px + MARK_BESIDE_GAP, below),
+      ...tuckSeats(py + MARK_BESIDE_DY, 'level-tuck'),
+      // Only once nothing below or beside will do does a date go ABOVE its point.
+      seat_('over', anchored, over),
+      seat_('over-l', px - MARK_BESIDE_GAP - w, over),
+      seat_('over2', anchored, over - hi),
+    ];
+    // The block, with air on the SIDES only: two blocks abreast need a gap to read as two,
+    // but two stacked under each other are already separated by their own leading — padding
+    // that seam too would push a date off its natural seat for the sake of a pixel.
+    const box = (l: number, b: number) => ({
+      l: l - MARK_CLEAR, t: b - 14,
+      r: l + w + MARK_CLEAR, b: b + hi - 14,
+    });
+    const fits = (s: { l: number; b: number }) => {
+      const k = box(s.l, s.b);
+      if (k.l < plot.l || k.r > plot.r || k.t < plot.t || k.b > plot.b) return false;
+      return !(placed ?? []).some((p) => k.l < p.r && k.r > p.l && k.t < p.b && k.b > p.t);
+    };
+    // The seat is STICKY. Scroll moves every point continuously, so re-picking the best free
+    // seat each frame let a crowded date flick between two of them mid-morph. It goes back to
+    // its natural seat the moment that one is free, keeps the seat it took while it is not,
+    // and only looks for a new one when the seat it is in stops fitting. Held by NAME, so
+    // what is remembered is «which side of its own point», not a stale pair of coordinates.
+    const key = `${line1}|${line2}|${above}`;
+    let seat = seats[0];
+    if (!fits(seat)) {
+      const held = seats.find((s) => s.k === MARK_SEAT_HELD.get(key));
+      seat = (held && fits(held) ? held : seats.find(fits)) ?? seats[0];
+      MARK_SEAT_HELD.set(key, seat.k);
+    } else {
+      MARK_SEAT_HELD.delete(key);
+    }
+    left = seat.l; base = seat.b;
+    placed?.push(box(left, base));
+  }
   if (maxRight != null && left + w > maxRight) left = maxRight - w;
-  const base = above ? py - MARK_GAP_ABOVE - MARK_STEP : py + MARK_GAP;
   ctx.fillStyle = CRISIS;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -303,12 +452,19 @@ const ymToIdx = (xs: number[], ym: YM) => Math.round((ymToX(ym) - xs[0]) * 12);
 const fmtPct = (p: number) =>
   p === 100 ? '0%' : (p > 100 ? '+' + Math.round(p - 100) : '−' + Math.round(100 - p)) + '%';
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-/** Side gutter on the X domain so edge ticks/labels aren’t flush with the axis ends
- *  (~2% each side ≈ a few days on month slides, ~1 year on 1970–2026). */
-const X_EDGE_PAD = 0.02;
+/**
+ * Side gutter on the X domain so edge ticks/labels aren't flush with the axis ends.
+ *
+ * On a phone it has to be wide enough for the END TICK'S LABEL to sit CENTRED on its dot
+ * instead of being shoved inside the frame: «1970» is 34px of Space Mono, so its dot needs
+ * ~17px of the 325px plot — 5.2% of the range, which is this 5.8% of the domain. (The
+ * exports agree: iPhone 30 puts the 1970 dot on x 37.5 against a plot edge of 20.) The wide
+ * frames have room to spare and keep the ~2% they were drawn with.
+ */
+const xEdgePad = () => (isMobileViewport() ? 0.058 : 0.02);
 function makeSx(xMin: number, xMax: number, x0: number, x1: number) {
   const span = Math.max(1e-9, xMax - xMin);
-  const pad = span * X_EDGE_PAD;
+  const pad = span * xEdgePad();
   const d0 = xMin - pad, d1 = xMax + pad;
   return (v: number) => x0 + (v - d0) / (d1 - d0) * (x1 - x0);
 }
@@ -432,7 +588,9 @@ function viewConfig(key: string): Cfg {
   }
   if (key === '1b') {
     return { kind: 'state2', mode: 'nominal', modeBlend: 0,
-      xMin: 1986, xMax: 1991, yClip: 540,
+      // The top tick IS the plot ceiling on this frame (iPhone 32 puts the 500 line on the
+      // very top of the rect); the window peaks at ~380, so there is nothing to clip.
+      xMin: 1986, xMax: 1991, yClip: 500,
       visibleYears: [1987], showCrisisSegments: true,
       bullAlpha: 1, investAlpha: 0 };
   }
@@ -498,15 +656,31 @@ function dimIn(crisis: Crisis, cfg: Cfg) {
   // visibleYears is the reveal order, so distance from its END is the crisis's age.
   return DIM_LADDER[Math.min(years.length - 1 - i, DIM_LADDER.length - 1)];
 }
+/**
+ * Plot margins, baked per breakpoint straight off the exports — the phone frame is NOT the
+ * desktop one scaled down, the designer re-cut it, so there is nothing in between to
+ * interpolate and both are stated as the fraction of the frame they measure:
+ *   · wide   — Desktop-36, 1440×800: box x 149…1291 (10.3%), top 150 (18.75%)
+ *   · narrow — iPhone 17, 402×874:   grid x 20…382  (4.98%), top line 170.5 (19.5%)
+ * The side margins HALVE on the phone: the chart keeps its width when the screen loses it,
+ * which is what pulls the credits back to five lines and the months inside the frame.
+ */
+const SIDE_PAD_F = () => (isMobileViewport() ? 0.0498 : 0.1);
+const TOP_PAD_F = () => (isMobileViewport() ? 0.1287 : 0.18);
+
+
 /** Gap between series/hatch and the right-edge Y labels. Grid still reaches x1.
- *  Sized so trough date labels under the end-dot don’t collide with the % ticks. */
-const PLOT_RIGHT_INSET = 52;
+ *  Sized so trough date labels under the end-dot don’t collide with the % ticks — on the
+ *  phone that is a shorter reach (its widest tick is «−30%» all the same, but the export
+ *  parks the last candle 37px off the edge, ~7px clear of «225»), and the difference is
+ *  the whole «make the chart wider» note on the iPhone frame. */
+const plotRightInset = () => (isMobileViewport() ? 37 : 52);
 /** %-grid spacing. The overview spans 0…−100% and is drawn sparse (Desktop-38: five lines
  *  at 25%); the drawdown slides cover a third of that and step at 10% (Desktop-40/41). */
 const PCT_STEP_WIDE = 25;
 const PCT_STEP_TIGHT = 10;
 function widthIn(crisis: Crisis, cfg: Cfg) {
-  return isFocus(crisis, cfg) ? LINE_W_THICK : LINE_W_THIN;
+  return isFocus(crisis, cfg) ? lineWThick() : lineWThin();
 }
 
 export interface ChartsEngine {
@@ -558,9 +732,14 @@ const BM_NUMS_OUT_1 = 0.30;
 const BM_GRID_SWAP = 0.32;
 const BM_GRID_LAND = 0.88;
 
+/** The candle frame's plot box — the designer's desktop cut, or his phone one (see
+ *  BM_BOX_NARROW). Everything the stage draws (prices, grid, candles) maps through it. */
+const bmBox = () => (isMobileViewport() ? BM_BOX_NARROW : BM_GEOM.box);
+
 /** Top of the candle grid as a fraction of the plot box — its bottom line IS the plot floor,
- *  so this one number is the whole squeeze: the drawdown grid is folded into that band. */
-const BM_GRID_TOP_F = (BM_GEOM.ticks[0].y - BM_GEOM.box.y) / BM_GEOM.box.h;
+ *  so this one number is the whole squeeze: the drawdown grid is folded into that band.
+ *  Zero on the phone box, whose top line already sits at the top of the plot rect. */
+const bmGridTopF = () => { const B = bmBox(); return (BM_GEOM.ticks[0].y - B.y) / B.h; };
 /** …and it holds one line per candle tick, which is what makes the swap land exactly. */
 const BM_WARP_PCT_MIN = 100 - (BM_GEOM.ticks.length - 1) * PCT_STEP_TIGHT;
 
@@ -613,27 +792,37 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     cx: number, cy: number, radius: number,
     dx: number, dy: number, plotW: number,
   ) {
-    const k = radius / BULL_CALLOUT_R_DESIGN;
     ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(k, k);
-    // SVG seat (487.3, 208.4) vs circle centre (593.5, 382), +1 line down.
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = "24px 'Struve', system-ui, sans-serif";
-    ctx.fillText(
-      LBL.finCrisis || 'The financial crisis',
-      487.348 - 593.5,
-      208.448 - 382 + 24,
-    );
+    if (isMobileViewport()) {
+      // Portrait export: the caption clears the disc altogether and sits centred just over
+      // it — Struve 18 at 0.7 ink, against the desktop's 24 at 0.5 parked INSIDE the disc.
+      // Riding the disc's own scale (r90 against the design's 283.5) would have set it at 8px.
+      ctx.font = "18px 'Struve', system-ui, sans-serif";
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.textAlign = 'center';
+      ctx.fillText(LBL.finCrisis || 'The financial crisis', cx, cy - radius - BULL_CAPTION_OVER);
+    } else {
+      const k = radius / BULL_CALLOUT_R_DESIGN;
+      ctx.translate(cx, cy);
+      ctx.scale(k, k);
+      // SVG seat (487.3, 208.4) vs circle centre (593.5, 382), +1 line down.
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.textAlign = 'left';
+      ctx.font = "24px 'Struve', system-ui, sans-serif";
+      ctx.fillText(
+        LBL.finCrisis || 'The financial crisis',
+        487.348 - 593.5,
+        208.448 - 382 + 24,
+      );
+    }
     ctx.restore();
     drawBull(ctx, dx, dy, plotW);
   }
 
   function drawBull(ctx: CanvasRenderingContext2D, dx: number, dy: number, plotW: number) {
     if (!bullPath) bullPath = new Path2D(BULL_PATH);
-    const s = plotW / 1142;
+    const s = bullMarkerScale(plotW);
     ctx.save();
     ctx.translate(dx, dy); ctx.scale(s, s); ctx.translate(-1000.5, -305.5);
     ctx.fillStyle = '#bca371'; ctx.strokeStyle = '#f5f3ee'; ctx.lineWidth = 2; // gold dot + white ring
@@ -740,20 +929,18 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
-    // Generous insets to match the mockup's big margins (≈10% sides, ~18% top/bottom
-    // — the header & footer/legend live in those bands).
-    const padL = Math.round(W * 0.1), padR = Math.round(W * 0.1);
+    const padL = Math.round(W * SIDE_PAD_F()), padR = padL;
     // Extra bottom band so lowered X-axis labels stay above the HTML footer.
     // The bottom band holds the X labels AND the HTML credits that sit under the chart.
     // 20% of the height is the mockup's proportion, but the credits are fixed 16/24 text:
-    // on a narrow phone they wrap to six lines and grow past that band, so the year
-    // labels ended up printed across them. Take whichever is larger — the design band, or
-    // what the page says it actually needs (measured, not a magic breakpoint fraction).
-    const padT = Math.round(H * 0.18);
+    // on a narrow phone they wrap past that band, so the year labels ended up printed
+    // across them. Take whichever is larger — the design band, or what the page says it
+    // actually needs (measured, not a magic breakpoint fraction).
+    const padT = Math.round(H * TOP_PAD_F());
     const padB = Math.max(Math.round(H * 0.20), bottomReserve + X_LABEL_BAND);
     const x1 = W - padR;
     // Series + hatch stop here; Y labels / grid continue to x1.
-    const xData1 = x1 - PLOT_RIGHT_INSET;
+    const xData1 = x1 - plotRightInset();
     return { ctx, W, H, x0: padL, y0: padT, x1, y1: H - padB, xData1 };
   }
 
@@ -821,7 +1008,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // five. It then stretches out to its true self while the series straightens — the −40%
     // row slides under the floor and is dropped.
     const gYMin = lerp(BM_WARP_PCT_MIN, yMin, gridWarp);
-    const gTop = lerp(y0 + BM_GRID_TOP_F * (y1 - y0), y0, gridWarp);
+    const gTop = lerp(y0 + bmGridTopF() * (y1 - y0), y0, gridWarp);
     const syGrid = gridWarp >= 1 ? sy
       : (pct: number) => y1 - (pct - gYMin) / (yMax - gYMin) * (y1 - gTop);
     drawPctGrid(
@@ -870,22 +1057,29 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
           const seatM = lerp(seats[j].t, seats[j + 1].t, u - j) * xMax;
           return sx(lerp(seatM, m, gridWarp));
         };
+      // Same seats as the candle frame's month row (BM_AXIS_BELOW), so the row does not
+      // hop when the grid changes hands mid-morph.
+      const below = xAxisBelow();
+      ctx.textBaseline = 'alphabetic';
       for (let m = 0; m <= SLIDE_XMAX; m += mStep) {
         if (m < xMin - 0.5 || m > xMax + 0.5) continue;
         const x = sxTick(m);
-        ctx.beginPath(); ctx.arc(x, y1 + 14, 3, 0, 2 * Math.PI); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y1 + below.dot, 3, 0, 2 * Math.PI); ctx.fill();
+        // «MOS» on a phone: the unit is spelled out only where the row has the width for
+        // it — on 402 the long form runs under the «−30%» tick that shares the corner.
+        const unit = isMobileViewport() ? LBL.monthsShort : LBL.months;
         const label = m === 0 ? LBL.peak
-          : m === lastTick ? `${m} ${LBL.months}`
+          : m === lastTick ? `${m} ${unit}`
           : String(m);
         if (gridNumAlpha > 0.004) {
           const a = ctx.globalAlpha;
           ctx.globalAlpha = a * gridNumAlpha;
-          ctx.fillText(label, x, y1 + 28);
+          ctx.fillText(label, xLabelSeat(ctx, label, x, x0, x1), y1 + below.label);
           ctx.globalAlpha = a;
         }
       }
     } else {
-      drawYearAxis(ctx, sx, y1, xMin, xMax);
+      drawYearAxis(ctx, sx, y1, xMin, xMax, x0, x1);
     }
     // No white rule along the bottom: on the drawdown scale the solid baseline is 0% at
     // the TOP (drawPctGrid), and the plot floor is just the last dashed Y line.
@@ -893,6 +1087,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     ctx.save();
     // Clip series + hatch short of the Y labels; grids above already span to x1.
     ctx.beginPath(); ctx.rect(x0, y0, xData1 - x0, y1 - y0); ctx.clip();
+    /** End dots, collected inside the clip and painted once it is off (see below). */
+    const endDots: { x: number; y: number; r: number; a: number }[] = [];
 
     // Slide views (single drawdown over months) get an area fill under the focused
     // line, like the multi-line state2 views (mockup frame 41). The state1 '1' view
@@ -972,19 +1168,31 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.strokeStyle = LINE;
       // The line thickens as it settles: the daily curve is a thin trace, the drawdown it
       // becomes is the frame's headline stroke.
-      ctx.lineWidth = morphing ? lerp(LINE_W_THIN, width, morphK) : width;
+      ctx.lineWidth = morphing ? lerp(lineWThin(), width, morphK) : width;
       ctx.beginPath();
       pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
       ctx.stroke();
       const [lastSx, lastSy] = pts[pts.length - 1];
-      ctx.fillStyle = LINE;
-      ctx.beginPath();
-      ctx.arc(lastSx, lastSy, lerp(END_DOT_R, END_DOT_R_FOCUS, focusK) * morphK, 0, 2 * Math.PI);
-      ctx.fill();
+      // The end dot is held back until the clip comes off: a marker is not the series. Its
+      // last point sits within a radius of the clip's right edge, so drawing it in here
+      // sliced the dot flat down one side.
+      endDots.push({
+        x: lastSx, y: lastSy,
+        r: lerp(endDotR(), endDotFocusR(), focusK) * morphK,
+        a: ctx.globalAlpha,
+      });
     }
     ctx.globalAlpha = 1;
     ctx.restore();
+    ctx.fillStyle = LINE;
+    for (const d of endDots) {
+      ctx.globalAlpha = d.a;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 2 * Math.PI); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
+    /** Seats taken by the trough dates on this frame — see drawMarkerTwoLine. */
+    const placedMarks: { l: number; t: number; r: number; b: number }[] = [];
     for (const c of visible) {
       const iP = ymToIdx(xs, c.peak), iT = ymToIdx(xs, c.trough);
       if (iP < 0 || iT < 0) continue;
@@ -1019,7 +1227,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       const markK = morphing ? smoothstep(((bmStraighten as number) - 0.5) / 0.5) : 1;
       ctx.globalAlpha = alpha * markK * lerp(dimIn(c, cfgA), dimIn(c, cfgB), t);
       if (markK > 0.004 && px >= x0 + 30 && px <= x1 + 4 && py >= y0 && py <= y1) {
-        drawMarkerTwoLine(ctx, c.troughMonth, c.troughYear, px, py, FONT, FONT_MARK, xData1);
+        drawMarkerTwoLine(
+          ctx, c.troughMonth, c.troughYear, px, py, FONT, FONT_MARK, { l: x0, r: xData1, t: y0, b: y1 },
+          false, 0, BG, placedMarks,
+        );
       }
     }
     ctx.globalAlpha = 1;
@@ -1059,7 +1270,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     drawIndexCaption(ctx, x1, y0);
 
     // No vertical grid lines in the mockup — a dot under each year label instead.
-    drawYearAxis(ctx, sx, y1, xMin, xMax);
+    drawYearAxis(ctx, sx, y1, xMin, xMax, x0, x1);
     const iPurchase = ymToIdx(xs, PURCHASE_M);
     const iCompare = ymToIdx(xs, COMPARE_M);
     const iStart = Math.max(0, ymToIdx(xs, [Math.floor(xMin), 1]));
@@ -1107,12 +1318,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // Thin = translucent green; thick hold = solid. investAlpha fades the pair in.
       ctx.save();
       ctx.globalAlpha = investAlpha;
-      drawSegment(iStart, iEnd, GROWTH_THIN, LINE_W_THIN);
-      drawSegment(Math.max(iPurchase, iStart), Math.min(iCompare, iEnd), GROWTH, LINE_W_THICK);
+      drawSegment(iStart, iEnd, GROWTH_THIN, lineWThin());
+      drawSegment(Math.max(iPurchase, iStart), Math.min(iCompare, iEnd), GROWTH, lineWThick());
       ctx.restore();
     } else {
       ctx.save(); ctx.globalAlpha = THIN_ALPHA;
-      drawSegment(iStart, iEnd, LINE, LINE_W_THIN);
+      drawSegment(iStart, iEnd, LINE, lineWThin());
       ctx.restore();
     }
 
@@ -1125,12 +1336,24 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.save();
       ctx.globalAlpha *= crisisK;
       ctx.font = FONT;
+      /** Seats taken by the crisis percentages — see drawMarkerTwoLine. The disc's caption
+       *  is booked into it up front (it is painted later, over the series): it sits right
+       *  where the 1987 percentage would otherwise go on the Charging Bull frame. */
+      const placedMarks: { l: number; t: number; r: number; b: number }[] = [];
+      if (bullAlpha > 0.02 && isMobileViewport()) {
+        ctx.save();
+        ctx.font = "18px 'Struve', system-ui, sans-serif";
+        const cw = ctx.measureText(LBL.finCrisis || 'The financial crisis').width;
+        ctx.restore();
+        const cb = bullCy - bullR - BULL_CAPTION_OVER;
+        placedMarks.push({ l: bullCx - cw / 2 - 6, r: bullCx + cw / 2 + 6, t: cb - 20, b: cb + 10 });
+      }
       for (const c of CRISES) {
         const iP = ymToIdx(xs, c.peak), iT = ymToIdx(xs, c.trough);
         if (iP < 0 || iT >= xs.length) continue;
         if (xs[iP] < xMin) continue;
         if (!isFinite(Y[iP]) || !isFinite(Y[iT])) continue;
-        ctx.strokeStyle = LINE; ctx.lineWidth = LINE_W_THICK;
+        ctx.strokeStyle = LINE; ctx.lineWidth = lineWThick();
         ctx.beginPath(); let st = false;
         for (let i = iP; i <= iT; i++) {
           if (!isFinite(Y[i])) continue;
@@ -1141,7 +1364,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         // Dot only at the trough (right end of the segment).
         ctx.fillStyle = LINE;
         ctx.beginPath();
-        ctx.arc(sx(xs[iT]), sy(Y[iT]), END_DOT_R_FOCUS, 0, 2 * Math.PI);
+        ctx.arc(sx(xs[iT]), sy(Y[iT]), endDotFocusR(), 0, 2 * Math.PI);
         ctx.fill();
         // Label above the peak (left of the drop) so it doesn’t cross the line.
         const drop = ((Y[iT] - Y[iP]) / Y[iP]) * 100;
@@ -1151,8 +1374,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         // uses, so the two can never disagree about whether the disc is there.
         drawMarkerTwoLine(
           ctx, `${drop.toFixed(0)}%`, c.label,
-          sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK, xData1, true,
-          c.labelShift ?? 0, bullAlpha > 0.02 ? '' : BG,
+          sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK,
+          { l: x0, r: xData1, t: y0, b: y1 }, true,
+          c.labelShift ?? 0, bullAlpha > 0.02 ? '' : BG, placedMarks,
         );
       }
       ctx.restore();
@@ -1178,7 +1402,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // point, nothing at the purchase). The purchase already has the full-height rule
       // marking it — a dot on top of it was a second marker for the same moment.
       ctx.fillStyle = GROWTH;
-      ctx.beginPath(); ctx.arc(xC, yC, END_DOT_R_FOCUS, 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(xC, yC, endDotFocusR(), 0, 2 * Math.PI); ctx.fill();
       // Labels ride the view itself — no separate gate. They used to be held back, faded out
       // across the morph and slid back in a beat after it, which read as the copy blinking
       // off and on for a change that is only a number. Now the purchase label simply
@@ -1190,7 +1414,11 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.fillStyle = GROWTH;
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       const labelX = xP + 8;
-      const pLabelY = Math.min(y1 - 52, Math.max(y0 + (y1 - y0) * 0.72, yP - 52));
+      // Parked at a fixed height on the rule rather than riding the curve: the exports set
+      // it in clear space well above the point it names (iPhone 33 puts it on 418 of a plot
+      // that runs 112.5…678.5 — 54% down — against a point at 650), and the old seat, which
+      // hugged the point, left it down in the noise at the bottom of the frame.
+      const pLabelY = Math.min(yP - 52, y0 + (y1 - y0) * PURCHASE_LABEL_F);
       // The same knockout the markers carry, in the themed ground — which on the invest
       // views IS black, since themeK tracks investAlpha. These labels sit over the green
       // hatch and, at the compare point, right on the series.
@@ -1218,10 +1446,10 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       // the left edge too, so it slides instead of stepping as the text swaps.
       const endLeft = xC - 10 - lerp(Math.max(wNom, wDate), Math.max(wReal, wDate), mb);
       ctx.font = FONT_INVEST_BOLD;
-      if (mb < 0.999) { ctx.globalAlpha = investAlpha * (1 - mb); inkText(ctx, valNom, endLeft, yC - 28, FONT_INVEST_BOLD, BG); }
-      if (mb > 0.001) { ctx.globalAlpha = investAlpha * mb; inkText(ctx, valReal, endLeft, yC - 28, FONT_INVEST_BOLD, BG); }
+      if (mb < 0.999) { ctx.globalAlpha = investAlpha * (1 - mb); inkText(ctx, valNom, endLeft, yC - COMPARE_LABEL_UP - 22, FONT_INVEST_BOLD, BG); }
+      if (mb > 0.001) { ctx.globalAlpha = investAlpha * mb; inkText(ctx, valReal, endLeft, yC - COMPARE_LABEL_UP - 22, FONT_INVEST_BOLD, BG); }
       ctx.globalAlpha = investAlpha;
-      inkText(ctx, LBL.compareDate, endLeft, yC - 6, FONT_INVEST, BG);
+      inkText(ctx, LBL.compareDate, endLeft, yC - COMPARE_LABEL_UP, FONT_INVEST, BG);
       ctx.restore();
     }
 
@@ -1266,7 +1494,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // '1' marks every crisis as focused, so every dot is the FAT one — and it stays fat
     // through this morph and into '1a', which shows the same five troughs. The small dot
     // is only for the crises standing BEHIND the focused one on the drawdown slides.
-    const dotR = END_DOT_R_FOCUS;
+    const dotR = endDotFocusR();
     const state2Cfg = isAState2 ? cfgA : cfgB;
     const yClip = state2Cfg.yClip as number;
 
@@ -1295,16 +1523,17 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.restore();
     }
 
-    drawYearAxis(ctx, sx, y1, xMin, xMax);
+    drawYearAxis(ctx, sx, y1, xMin, xMax, x0, x1);
 
     ctx.save();
     ctx.beginPath(); ctx.rect(x0, y0, xData1 - x0, y1 - y0); ctx.clip();
+    const endDots: { x: number; y: number; r: number; a: number }[] = [];
 
     if (a2Alpha > 0.02) {
       ctx.save(); ctx.globalAlpha = a2Alpha;
       const iStart = Math.max(0, ymToIdx(xs, [Math.floor(xMin), 1]));
       const iEnd = Math.min(xs.length - 1, ymToIdx(xs, [Math.ceil(xMax), 12]));
-      ctx.strokeStyle = LINE; ctx.lineWidth = LINE_W_THIN;
+      ctx.strokeStyle = LINE; ctx.lineWidth = lineWThin();
       ctx.beginPath(); let st = false;
       for (let i = iStart; i <= iEnd; i++) {
         if (!isFinite(Y[i])) { st = false; continue; }
@@ -1328,7 +1557,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       const peakPrice = Y[iP];
       if (!isFinite(peakPrice)) continue;
 
-      ctx.strokeStyle = LINE; ctx.lineWidth = LINE_W_THICK;
+      ctx.strokeStyle = LINE; ctx.lineWidth = lineWThick();
       ctx.beginPath(); let st = false;
       let lastSx = 0, lastSy = 0;
       for (let i = iP; i <= iT; i++) {
@@ -1341,18 +1570,19 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         if (!st) { ctx.moveTo(px, y); st = true; } else ctx.lineTo(px, y);
       }
       ctx.stroke();
-      ctx.fillStyle = LINE;
-      ctx.beginPath(); ctx.arc(lastSx, lastSy, dotR, 0, 2 * Math.PI); ctx.fill();
-      if (a2Alpha > 0.02) {
-        ctx.save(); ctx.globalAlpha = a2Alpha;
-        const pyA = screenYAt(iP, peakPrice, cfgA.kind);
-        const pyB = screenYAt(iP, peakPrice, cfgB.kind);
-        const py = lerp(pyA, pyB, pieceT);
-        ctx.beginPath(); ctx.arc(sx(xs[iP]), py, dotR, 0, 2 * Math.PI); ctx.fill();
-        ctx.restore();
-      }
+      // Markers wait for the clip to come off — same rule as the slide painter. ONE dot per
+      // crisis, at the trough: the settled frames either side of this morph mark the end of
+      // the drop and nothing else (Desktop-40/43, iPhone 31), and the second dot this used
+      // to add at the PEAK flashed on mid-morph as the drops folded into the price line.
+      endDots.push({ x: lastSx, y: lastSy, r: dotR, a: ctx.globalAlpha });
     }
     ctx.restore();
+    ctx.fillStyle = LINE;
+    for (const d of endDots) {
+      ctx.globalAlpha = d.a;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 2 * Math.PI); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     // The arriving price scale's solid white baseline at 0 (the % scale it replaces carries
     // its baseline at the TOP instead — see drawPctGrid). Painted here, OVER the pieces, so
@@ -1371,6 +1601,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // stays with the thing it names; nothing is held back or blinked.
     if (a1Alpha > 0.02) {
       ctx.save(); ctx.globalAlpha = a1Alpha;
+      /** Seats taken by the trough dates on this frame — see drawMarkerTwoLine. */
+      const placedMarks: { l: number; t: number; r: number; b: number }[] = [];
       for (const c of CRISES) {
         if (!crisesYears.includes(c.peak[0])) continue;
         const iP = ymToIdx(xs, c.peak), iT = ymToIdx(xs, c.trough);
@@ -1379,7 +1611,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         if (!isFinite(peakPrice)) continue;
         const py = lerp(screenYAt(iT, peakPrice, cfgA.kind), screenYAt(iT, peakPrice, cfgB.kind), pieceT);
         drawMarkerTwoLine(
-          ctx, c.troughMonth, c.troughYear, sx(xs[iT]), py, FONT, FONT_MARK, xData1,
+          ctx, c.troughMonth, c.troughYear, sx(xs[iT]), py, FONT, FONT_MARK, { l: x0, r: xData1, t: y0, b: y1 },
+          false, 0, BG, placedMarks,
         );
       }
       ctx.restore();
@@ -1412,14 +1645,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
    * cannot drift apart again.)
    */
   function bmPolyline(straighten: number, x0: number, y0: number, x1: number, y1: number) {
-    const B = BM_GEOM.box;
+    const B = bmBox();
     const mapY = (svgY: number) => y0 + (svgY - B.y) / B.h * (y1 - y0);
     const Yslide = yReal;
     const iPeak = ymToIdx(xs, CRISES[1].peak);
     const iTrough = ymToIdx(xs, CRISES[1].trough);
     const peakPx = (iPeak >= 0 && isFinite(Yslide[iPeak])) ? Yslide[iPeak] : BM_OHLC[BM_AUG_I][4];
     const lastM = Math.max(1, iTrough - iPeak);
-    const sxSlide = makeSx(0, tightXMax(), x0, x1 - PLOT_RIGHT_INSET);
+    const sxSlide = makeSx(0, tightXMax(), x0, x1 - plotRightInset());
     const atT = (t01: number) => lerp(sxSlide(0), sxSlide(lastM), t01);
     const yMinS = SLIDE_DATA['0a'].yMin;
     const sySlide = (pct: number) => y1 - (pct - yMinS) / (100 - yMinS) * (y1 - y0);
@@ -1456,7 +1689,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   const BURN_END = 0.18;
   function drawCandleStage(p: number) {
     const { ctx, x0, y0, x1, y1 } = setupCtx();
-    const B = BM_GEOM.box;
+    const B = bmBox();
     const mapX = (sx: number) => x0 + (sx - B.x) / B.w * (x1 - x0);
     const { pts, atT: candleXAtT, mapY } = bmPolyline(0, x0, y0, x1, y1);
     const gx0 = mapX(B.x), gx1 = mapX(B.x + B.w);
@@ -1493,20 +1726,24 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       });
       if (numAlpha > 0.004) {
         ctx.globalAlpha = cAlpha * entryFade * numAlpha;
-        drawIndexCaption(ctx, gx1, gy0);
+        // Above the TOP GRID LINE, not the box: the box's head-room band is where this
+        // caption lives, so anchoring it to the band's own top parked it a whole band too
+        // high (Desktop-36 sets it on baseline 150.8, i.e. one clear line over «325»).
+        drawIndexCaption(ctx, gx1, mapY(BM_GEOM.ticks[0].y));
         ctx.globalAlpha = cAlpha * entryFade;
       }
-      // Month dots + AUG/SEP/OCT — label baseline pulled up close to the dot (mockup baseline
-      // ≈689, ~9px under the dot) while staying UNDER the white line.
+      // Month dots + AUG/SEP/OCT, hung a fixed distance under the white floor (X_AXIS_BELOW
+      // — fixed type gets a fixed seat, it must not ride the plot's vertical scale).
       ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = AXIS;
       // Month dots strictly data-driven — same inset mapping as the candles, so each dot
-      // sits exactly under its month's candles (axis inset gives AUG its left margin).
+      // sits under the MIDDLE of its month's candles, exactly as the exports have them.
+      const floor = mapY(BM_GEOM.baselineY), below = xAxisBelow();
       for (const mo of bmDrawdownMonthMarks()) {
         const mx = candleXAtT(mo.t);
-        ctx.beginPath(); ctx.arc(mx, mapY(BM_GEOM.dotY), 3, 0, 2 * Math.PI); ctx.fill();
+        ctx.beginPath(); ctx.arc(mx, floor + below.dot, 3, 0, 2 * Math.PI); ctx.fill();
         if (numAlpha > 0.004) {
           ctx.globalAlpha = cAlpha * entryFade * numAlpha;
-          ctx.fillText(mo.l, mx, mapY(BM_GEOM.monthY));
+          ctx.fillText(mo.l, xLabelSeat(ctx, mo.l, mx, gx0, gx1), floor + below.label);
           ctx.globalAlpha = cAlpha * entryFade;
         }
       }
@@ -1576,7 +1813,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       if (lineA > 0.02) {
         ctx.globalAlpha = lineA;
         ctx.strokeStyle = LINE;
-        ctx.lineWidth = LINE_W_THIN;
+        ctx.lineWidth = lineWThin();
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
         ctx.beginPath();
         pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));

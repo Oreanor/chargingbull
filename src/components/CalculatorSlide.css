@@ -111,12 +111,24 @@
 @media (max-width: 800px) {
   .calc-top { align-items: flex-start; }
   .calc-result { text-align: left; }
-  .calc-sticky { padding: clamp(14px, 2.5vh, 24px) 10vw; }
-  .calc-amt { font-size: clamp(20px, 5.4vw, 28px); }
-  .calc-result .big { font-size: clamp(27px, 7.4vw, 40px); }
-  .calc-chart { height: clamp(240px, 42vh, 480px); }
-  .calc-viz { margin: 16px 0 6px; }
-  .calc-note { margin-top: 12px; max-width: none; }
+  /* Phone frame, off the iPhone 36 export: 20px side margins (the same 4.98vw the charts
+     canvas uses), a 27px top band, and type at its stated size rather than vw-scaled —
+     eyebrow 18, «Invested … in the index» 30, the stats line 18, the value 40, sources 16.
+     Everything here was running at roughly two thirds of that. */
+  .calc-sticky { padding: 27px 4.98vw 0; align-items: flex-start; }
+  .calc-eyebrow { font-size: 18px; }
+  .calc-amt { font-size: 30px; line-height: 1.33; margin-top: 12px; }
+  /* Phone only: «in the index» is its own line, as the export sets it — the heading is two
+     lines whatever the field's width, instead of wrapping wherever it lands. The wide
+     layout keeps it inline on one. */
+  .calc-amt-tail { display: block; }
+  .calc-result .sub { font-size: 18px; line-height: 1.28; }
+  .calc-result .big { font-size: 40px; margin-top: 8px; }
+  /* The block owns the screen: the plot takes whatever is left between the value and the
+     sources (≈516px of an 874 frame, where it used to stop at 367). */
+  .calc-chart { height: clamp(300px, 54vh, 560px); }
+  .calc-viz { margin: 20px 0 6px; }
+  .calc-note { margin-top: 16px; max-width: none; font-size: 16px; line-height: 1.5; }
 
   /* Year pills → round green knobs with the ↔ SVG; years move onto the canvas.
      Same seat as the pill: bottom: 0 on a floor cut to the knob's own height. */
@@ -129,6 +141,17 @@
     background: #61E26B; pointer-events: none;
   }
   .calc-flag .knob svg { display: block; width: 22px; height: 12px; fill: #06210b; }
+  /* Hairline pole (the export strokes it at 1), and its top is cut in JS to clear the series. */
+  .calc-flag .line { width: 1px; left: -0.5px; }
+  /* The amount field at the export's 101×44. */
+  .calc-field { padding: 5px 16px 5px 10px; border-radius: 12px; }
+  /* Hint: green type over a black outline, so it stays readable where it crosses the axis
+     and the series (the export sets it with a 2px black stroke and the arrow with 6px). */
+  .calc-hint {
+    width: 210px; font-size: 18px; line-height: 1.33;
+    paint-order: stroke fill; -webkit-text-stroke: 3px #000;
+  }
+  .calc-hint .arc { stroke: #000; stroke-width: 6; paint-order: stroke fill; }
 }
 
 /* The hint switches to the phone layout EARLIER than the rest of the slide: it is parked

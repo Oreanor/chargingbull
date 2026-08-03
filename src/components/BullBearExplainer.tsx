@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import copy from '../content/copy.json';
-import { isMobileViewport } from '../engine/deviceBudget';
 import './BullBearExplainer.css';
 
 /**
@@ -16,11 +15,25 @@ import './BullBearExplainer.css';
 const clamp01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
 const smoothstep = (n: number) => { n = clamp01(n); return n * n * (3 - 2 * n); };
 
+/** The layout's OWN breakpoint — `lg`, i.e. 1024. Not deviceBudget's isMobileViewport (800):
+ *  that one answers "is this a phone's GPU budget", and between 800 and 1024 this slide is
+ *  already in its single-column form while that helper still says desktop. The script and the
+ *  classes have to switch on the same number or the panel is driven for a layout that is not
+ *  on screen. */
+const isDesktop = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+
+/** Body prose — phone is the frame's Martina 24/32 at +0.01em; desktop keeps its fluid size.
+ *  On each paragraph rather than a wrapper: they are grid items now, the aside sits between
+ *  them on the phone. */
+const PROSE =
+  'xpl-main xpl-onpink text-[24px] leading-[32px] tracking-[0.01em] lg:text-[clamp(17px,1.5vw,24px)] lg:leading-[1.34] lg:tracking-normal';
+
 export function BullBearExplainer() {
   const sectionRef = useRef<HTMLElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const mainRef = useRef<HTMLDivElement>(null);
+  // The paragraph that carries the pills — the panel rests on the «bear market» one.
+  const mainRef = useRef<HTMLParagraphElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,14 +54,21 @@ export function BullBearExplainer() {
       // so the hand-off reads as the background going black → pink. The chip is a desktop
       // idea: it grows out of the «bear market» pill, and in a narrow single column that pill
       // sits mid-sentence, so the box travelled across the very text it was highlighting.
-      if (isMobileViewport()) {
+      //
+      // And it is driven by the TEXT, not by the section: the phone column is «iPhone 17 - 25»
+      // tall (1572px against a ~800px screen), so it scrolls, and section progress would have
+      // the ground going pink somewhere in the middle of a sentence. q starts at 0 with the
+      // last line at the bottom edge and reaches 1 a screen later — nothing tints until the
+      // reader is past the end.
+      if (!isDesktop()) {
         panel.style.top = '0px';
         panel.style.left = '0px';
         panel.style.right = '0px';
         panel.style.bottom = '0px';
         panel.style.borderRadius = '0px';
-        panel.style.opacity = e.toFixed(3);
-        content.style.opacity = (1 - smoothstep(clamp01((p - 0.74) / 0.22))).toFixed(3);
+        const q = clamp01((vh - content.getBoundingClientRect().bottom) / vh);
+        panel.style.opacity = smoothstep(q).toFixed(3);
+        content.style.opacity = (1 - smoothstep(clamp01((q - 0.5) / 0.4))).toFixed(3);
         return;
       }
       panel.style.opacity = '1';
@@ -85,27 +105,41 @@ export function BullBearExplainer() {
     // z-10: BELOW the charts that follow (z-20). When this pink fills the screen the
     // charts' own pink backdrop fades in OVER it, so the sticky's unpin/slide-away happens
     // hidden behind the charts — you never see this pink drive off.
-    <section ref={sectionRef} className="relative z-10 h-[210vh] bg-black">
-      <div ref={stickyRef} className="sticky top-0 h-[100dvh] w-full overflow-hidden">
-        <div ref={panelRef} className="absolute inset-0 bg-[#f14268]" style={{ borderRadius: 30 }} />
-        <div ref={contentRef} className="absolute inset-0 flex items-center lg:px-6">
+    // Phone: no pin. The column is taller than the screen, so pinning it inside a 100dvh box
+    // clipped its first lines away; here it is simply an article that scrolls, followed by a
+    // screen of scroll for the pink to come up in. Desktop keeps the 210vh pinned stage.
+    <section ref={sectionRef} className="relative z-10 bg-black max-lg:pb-[100vh] lg:h-[210vh]">
+      <div ref={stickyRef} className="w-full lg:sticky lg:top-0 lg:h-[100dvh] lg:overflow-hidden">
+        {/* Fixed on the phone so the tint is the SCREEN going pink while the text scrolls over
+            it; absolute inside the pinned stage on desktop, where it is the growing chip. */}
+        <div ref={panelRef} className="fixed inset-0 pointer-events-none bg-[#f14268] lg:absolute" style={{ borderRadius: 30 }} />
+        <div ref={contentRef} className="relative py-16 lg:absolute lg:inset-0 lg:flex lg:items-center lg:py-0 lg:px-6">
           {/* Shared editorial grid — identical container / aside width / gap / main measure
-              as FutureSlide + SummaryBlock so the second column lands on one vertical. */}
-          <div className="mx-auto max-w-[1160px] w-full flex flex-col lg:flex-row lg:items-start gap-y-10 gap-x-[clamp(40px,8vw,130px)]">
+              as FutureSlide + SummaryBlock so the second column lands on one vertical.
+              The four blocks are siblings, not an aside beside a body column, because
+              «iPhone 17 - 25» puts the aside BETWEEN the first and second paragraph on the
+              phone while desktop keeps it alongside — one DOM order, two placements.
+              Phone row step 32px = the frame's blank line between paragraphs (baselines
+              1169→1233); the aside's own two gaps differ from it and from each other and are
+              carried on the aside (see there). */}
+          <div
+            className="mx-auto max-w-[1160px] w-full grid gap-y-[32px] text-white lg:grid-cols-[348px_minmax(0,760px)] lg:gap-x-[clamp(40px,8vw,130px)] lg:gap-y-7 lg:items-start"
+            style={{ fontFamily: 'var(--font-martina)' }}
+          >
+            <p
+              ref={mainRef}
+              className={`${PROSE} lg:col-start-2 lg:row-start-1`}
+              dangerouslySetInnerHTML={{ __html: copy.explainer.p1 }}
+            />
+            {/* Frame gaps are baseline-to-baseline — 85.6 above the aside, 86.4 below — and
+                the 32px row step already covers part of each, so these two carry the rest. */}
             <aside
-              className="xpl-aside xpl-aside--note lg:w-[348px] lg:shrink-0 text-[clamp(14px,1.25vw,18px)] leading-[1.333] max-w-[329px]"
+              className="xpl-aside ml-[92px] mr-5 mt-[34px] mb-[18px] text-[18px] leading-[24px] lg:col-start-1 lg:row-start-1 lg:m-0 lg:max-w-[329px] lg:text-[clamp(14px,1.25vw,18px)] lg:leading-[1.333]"
               style={{ fontFamily: 'var(--font-struve)' }}
               dangerouslySetInnerHTML={{ __html: copy.explainer.aside }}
             />
-            <div
-              ref={mainRef}
-              className="xpl-main xpl-onpink lg:flex-1 lg:max-w-[760px] text-[clamp(17px,1.5vw,24px)] leading-[1.34] text-white space-y-7"
-              style={{ fontFamily: 'var(--font-martina)' }}
-            >
-              <p dangerouslySetInnerHTML={{ __html: copy.explainer.p1 }} />
-              <p dangerouslySetInnerHTML={{ __html: copy.explainer.p2 }} />
-              <p dangerouslySetInnerHTML={{ __html: copy.explainer.p3 }} />
-            </div>
+            <p className={`${PROSE} lg:col-start-2 lg:row-start-2`} dangerouslySetInnerHTML={{ __html: copy.explainer.p2 }} />
+            <p className={`${PROSE} lg:col-start-2 lg:row-start-3`} dangerouslySetInnerHTML={{ __html: copy.explainer.p3 }} />
           </div>
         </div>
       </div>

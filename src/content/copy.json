@@ -86,6 +86,7 @@
     "labels": {
       "peak": "PEAK",
       "months": "MONTHS",
+      "monthsShort": "MOS.",
       "investArrow": "$350K → ",
       "buyDate": "October 1987",
       "compareDate": "February 2021",

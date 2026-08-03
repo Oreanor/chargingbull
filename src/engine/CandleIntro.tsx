@@ -692,7 +692,18 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     // wrap fills the ModelChapter container; the stage is a fixed-size design frame
     // width-fit + bottom-aligned inside it (see the fit effect above). Everything
     // below is authored in fixed px against the active frame — no vw/vh/clamp.
-    <div ref={setWrap} className="ci-stagewrap absolute inset-0 overflow-hidden pointer-events-none">
+    // Hidden outright once the scroll is past the opener's span. Everything in here — the
+    // candle stage AND the hero — is faded piece by piece from the GL tick, and that tick
+    // only runs while the scene is live (inSpan). The stage sits in ModelChapter's STICKY
+    // container, so it is on screen for the whole chapter: reload anywhere past the opener
+    // and the tick had never run, leaving the intro painted at full strength over whatever
+    // frame the reader landed on. `inSpan` is seeded from the scroll at mount, so this is
+    // right on the very first paint after a reload.
+    <div
+      ref={setWrap}
+      className="ci-stagewrap absolute inset-0 overflow-hidden pointer-events-none"
+      style={{ visibility: inSpan ? undefined : 'hidden' }}
+    >
       <div ref={stageRef} className="ci-stage" style={{ width: `${LAND_FRAME.w}px`, height: `${LAND_FRAME.h}px` }}>
         {/* grid layer — dashed verticals / price lines / axis labels, BEHIND the
             candles so the opaque candle bodies paint over it (candles on top of grid).

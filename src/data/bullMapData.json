@@ -64,7 +64,11 @@
       ],
       "pillSide": "left",
       "narrow": {
-        "pillSide": "right"
+        "pillSide": "right",
+        "offset": [
+          0,
+          -26
+        ]
       }
     },
     {
@@ -78,15 +82,11 @@
         1,
         2
       ],
-      "offset": [
-        0,
-        58
-      ],
       "narrow": {
         "pillSide": "left",
         "offset": [
           0,
-          58
+          26
         ]
       }
     },
@@ -108,7 +108,7 @@
         "pillSide": "left",
         "offset": [
           30,
-          12
+          -30
         ]
       }
     },
@@ -245,6 +245,9 @@
     "flightEase": [
       null,
       {
+        "s0": 0.1,
+        "s1": 0.2,
+        "slow": 0.1,
         "e0": 0.1,
         "e1": 0.2,
         "slowEnd": 0.1
@@ -252,9 +255,15 @@
       {
         "s0": 0.1,
         "s1": 0.2,
-        "slow": 0.1
+        "slow": 0.1,
+        "e0": 0.1,
+        "e1": 0.2,
+        "slowEnd": 0.1
       },
       {
+        "s0": 0.1,
+        "s1": 0.2,
+        "slow": 0.1,
         "e0": 0.1,
         "e1": 0.2,
         "slowEnd": 0.1

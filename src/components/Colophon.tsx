@@ -7,11 +7,17 @@ import { useState } from 'react';
  * link, source regular). Everything WHITE on the pink ground; only the collapse
  * control is near-black.
  *
- * Sizes are baked per breakpoint off the two frames — «Desktop - 62» (1440×1247) and
- * «iPhone 16 - 15» (402×1794) — which share one rhythm: Martina 24 on a 32px line,
- * uniform from the first entry through the collapse control, with NO extra gap between
- * entries. Both frames are the OPEN state, so that is the default here; the collapsed
- * length (COLLAPSED) was never drawn and is our choice.
+ * Sizes are baked per breakpoint off four frames — open «Desktop - 62» (1440×1247) /
+ * «iPhone 16 - 15» (402×1794) and collapsed «Desktop - 64» (958) / «iPhone 16 - 16» (897) —
+ * which share one rhythm: Martina 24 on a 32px line, uniform from the first entry through
+ * the collapse control, with NO extra gap between entries.
+ *
+ * COLLAPSED is a HEIGHT, not a number of entries. The collapsed frames cut the list in the
+ * MIDDLE of a reference — desktop through ref 7's first line, phone through ref 4's last —
+ * which is the whole point of the state: a clean cut on an entry boundary reads as a short
+ * complete list and gives the reader no reason to press "Show all". Cutting mid-sentence
+ * says there is more. The lengths are the frames' own: 13 line-steps of the list on desktop
+ * (baselines 368→752), 19 on the phone (204→780).
  */
 type Ref = { n: string; authors: string; title: string; source: string; href: string };
 
@@ -32,11 +38,12 @@ const READING: Ref[] = [
 ];
 
 /**
- * Rows shown when collapsed. The design only ever drew the open state, so this is ours:
- * five rows, i.e. the first four numbered refs — 4 keeps its unnumbered second reference,
- * which a cut of four would orphan.
+ * Collapsed length — the frames' own line counts: 19 lines on the phone, 13 on desktop.
+ * A line CLAMP, not a max-height: the clamp is the one mechanism that both stops the list
+ * at the frame's line and sets the ellipsis inline, at the end of that line, where a cut
+ * mid-sentence needs it. A height clip can only put it on a line of its own.
  */
-const COLLAPSED = 5;
+const COLLAPSED = 'line-clamp-[19] lg:line-clamp-[13]';
 
 function LinkIcon() {
   return (
@@ -49,7 +56,8 @@ function LinkIcon() {
 
 export function Colophon() {
   const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState(true);
+  // Collapsed first — «Show all» is the frame the reader lands on.
+  const [open, setOpen] = useState(false);
   const copy = () => {
     navigator.clipboard?.writeText(window.location.href).then(() => {
       setCopied(true);
@@ -59,7 +67,6 @@ export function Colophon() {
 
   const struve = { fontFamily: 'var(--font-struve)', fontWeight: 700 };
   const serif = { fontFamily: 'var(--font-martina)' };
-  const shown = open ? READING : READING.slice(0, COLLAPSED);
 
   return (
     /* Frame paddings, not a centred flex box: on the phone the list is twice the
@@ -104,31 +111,43 @@ export function Colophon() {
               gutter + gap + measure. Desktop fills the column exactly (794 = content box less
               the label column); the phone frame's box stops 7px short of the gutter, and that
               is what reproduces its line breaks — 362 wraps ref 3 a line early. */}
-          <ol className="w-[355px] max-w-full lg:w-auto lg:flex-1" style={serif}>
-            {shown.map((r, i) => (
-              <li key={i} className="flex gap-x-[12px] lg:gap-x-[35px]">
-                <span className="w-[31px] lg:w-[35px] shrink-0 text-right">{r.n ? r.n + '.' : ''}</span>
-                <span>
+          <div className="w-[355px] max-w-full lg:w-auto lg:flex-1">
+            {/* Every reference is always in the DOM — collapsing only clips the column, so the
+                reader (and find-in-page, and a screen reader) still has the whole list. */}
+            <ol className={open ? undefined : COLLAPSED} style={serif}>
+              {READING.map((r, i) => (
+                /* Hanging indent, not a flex row: the number has to sit in the same inline
+                   flow as the text for the clamp to count lines through it — and it still
+                   right-aligns in the gutter, because an inline-block of the gutter's width
+                   aligns its own content. */
+                <li key={i} className="pl-[43px] -indent-[43px] lg:pl-[70px] lg:-indent-[70px]">
+                  <span className="inline-block w-[31px] lg:w-[35px] mr-[12px] lg:mr-[35px] text-right indent-0">{r.n ? r.n + '.' : ''}</span>
                   {r.authors ? <><span className="font-bold">{r.authors}</span>{' '}</> : null}
-                  <a href={r.href} target="_blank" rel="noreferrer" className="italic underline hover:opacity-70">{r.title}</a>. {r.source}
-                </span>
-              </li>
-            ))}
+                  {/* The full stop after the title belongs to the citation, not the title —
+                      ref 2 already ends in a question mark and the frames print «testicles?
+                      Gothamist», not «testicles?.». */}
+                  <a href={r.href} target="_blank" rel="noreferrer" className="italic underline hover:opacity-70">{r.title}</a>
+                  {/[.?!]$/.test(r.title) ? '' : '.'} {r.source}
+                </li>
+              ))}
+            </ol>
             {/* Next line in the same 32px rhythm, but a smaller face — the 2px pad puts its
-                baseline back on the grid the 24px lines set. */}
-            <li className="flex gap-x-[12px] lg:gap-x-[35px] pt-[2px]">
+                baseline back on the grid the 24px lines set. Outside the <ol>: it is the one
+                thing the collapse must never clip. */}
+            <div className="flex gap-x-[12px] lg:gap-x-[35px] pt-[2px]">
               <span className="w-[31px] lg:w-[35px] shrink-0" />
               <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
                 className="inline-flex items-baseline text-[16px] lg:text-[18px] text-[#292929] hover:opacity-70"
                 style={{ fontFamily: 'var(--font-grotesk)' }}
               >
                 <span className="underline">{open ? 'Collapse' : 'Show all'}</span>
                 <span aria-hidden>{open ? '↗' : '↘'}</span>
               </button>
-            </li>
-          </ol>
+            </div>
+          </div>
         </div>
       </div>
     </section>

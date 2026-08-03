@@ -93,7 +93,14 @@ export function bmDrawdownT(i: number): number {
 const MONTH_ABBR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
 /**
- * First trading day of each month in BM_OHLC.slice(start), as t∈[0,1] across that slice.
+ * MIDDLE of each month in BM_OHLC.slice(start), as t∈[0,1] across that slice.
+ *
+ * A month mark names the month it stands under, so it sits at its centre — which is how
+ * both exports have it (Desktop-36: JUN's dot 115px into a 207.5px month band; the iPhone
+ * frame: 5 dots on the 5 even fifths of the data). Seating them on the first trading day
+ * instead pinned AUG to t=0, hard against the left edge, where the label centred on it hung
+ * off the side of the chart.
+ *
  * Labels are read off the dates rather than listed by hand — the old pair of functions
  * hard-coded «AUG, SEP, OCT», so extending the series to November silently dropped the
  * new month from the axis instead of labelling it.
@@ -101,13 +108,18 @@ const MONTH_ABBR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP
 function monthMarksFrom(start: number): { l: string; t: number }[] {
   const n = BM_OHLC.length - start;
   const marks: { l: string; t: number }[] = [];
-  let seen = '';
+  const mark = (ym: string, i0: number, i1: number) => marks.push({
+    l: MONTH_ABBR[+ym.slice(5, 7) - 1],
+    t: n <= 1 ? 0 : ((i0 + i1) / 2 - start) / (n - 1),
+  });
+  let seen = BM_OHLC[start][0].slice(0, 7), first = start;
   for (let i = start; i < BM_OHLC.length; i++) {
     const ym = BM_OHLC[i][0].slice(0, 7);
     if (ym === seen) continue;
-    seen = ym;
-    marks.push({ l: MONTH_ABBR[+ym.slice(5, 7) - 1], t: n <= 1 ? 0 : (i - start) / (n - 1) });
+    mark(seen, first, i - 1);
+    seen = ym; first = i;
   }
+  mark(seen, first, BM_OHLC.length - 1);
   return marks;
 }
 

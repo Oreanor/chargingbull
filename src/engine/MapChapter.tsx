@@ -57,12 +57,15 @@ type Landmark = {
   /** Optional screen-space nudge [dx, dy] in px, applied AFTER projection — lets a
    *  label step off its anchor without moving the real lng/lat.
    *
-   *  Every stop needs one wherever the travelling bull comes to rest, because the
-   *  bull ends its leg ON the stop's coordinate and the label is centred on that
-   *  same point. The default direction is DOWN: the models are drawn standing on
-   *  their ground point and rise above it on a pitched map, so the clear space is
-   *  always directly below. (Foundry and the NYPD lot use exactly that; the park
-   *  and NYSE step sideways instead, where the route itself runs underneath.) */
+   *  A stop needs one wherever the travelling bull comes to REST, because the bull
+   *  ends its leg ON the stop's coordinate and the badge is centred on that same
+   *  point. The default direction is DOWN: the models are drawn standing on their
+   *  ground point and rise above it on a pitched map, so the clear space is always
+   *  directly below. (The NYPD lot uses exactly that; the park and NYSE step
+   *  sideways instead, where the route itself runs underneath.) The Bedi-Makky
+   *  foundry is the one stop with no nudge at all: it is where the journey STARTS,
+   *  the bull fades up from nothing there (see BULL_FADE_IN) and immediately leaves,
+   *  so the badge sits straight on the yellow start dot with nothing to clear. */
   offset?: [number, number];
 };
 
@@ -229,7 +232,10 @@ const BULL_FADE_IN = 0.04;
 const BULL_PX_MIN = 40;
 const BULL_PX_MAX = 105;
 
-/** Fraction of a flight over which `follow` ramps from 0 to its authored strength. */
+/** Fraction of a flight over which `follow` ramps from 0 to its authored strength — and,
+ *  symmetrically, over which it is released back to 0 before the stop. Both halves matter:
+ *  the ramp keeps the dwell BEFORE a leg from pulling at full strength, and the release
+ *  lands the camera ON the authored keyframe instead of being yanked onto it. */
 const FOLLOW_RAMP = 0.2;
 
 /** deck.gl layers: stop dots · trail · bull head (3D model). */
@@ -395,8 +401,20 @@ function normalizeDwellPx(v: unknown, nLoc: number): number[] {
   if (typeof v === 'number') return Array(nLoc).fill(v);
   return Array(nLoc).fill(DEFAULT_DWELL_PX);
 }
-/** A profile with none of the six keys normalises to null (= linear flight). Partial
- *  groups are completed with the authoring tool's own defaults, not with zeros. */
+/**
+ * A profile with none of the six keys normalises to null (= linear flight). Partial
+ * groups are completed with the authoring tool's own defaults, not with zeros.
+ *
+ * An invariant the DATA has to honour, which nothing here can enforce: every leg the BULL
+ * rides needs BOTH halves. A missing end group means it arrives at cruising speed and stops
+ * dead on the hold; a missing start group means it leaves a standstill at cruising speed.
+ * Either way the speed steps, and on screen the bull snaps onto — or bolts out of — the stop.
+ * wallst-rodeo/map ships the halves it happens to have (end-only into NYSE and Bowling Green,
+ * start-only out of NYSE), so re-exporting the config from there brings the snap back with
+ * it; bullMapData.json fills the missing halves in with the same authored numbers.
+ * flightEase[0] is exempt: band 1 is the title→Crosby camera move, and location progress is
+ * pinned at 0 through it, so the bull is parked for the whole band and rides no profile.
+ */
 function normalizeFlightEase(v: unknown): (FlightEase | null)[] {
   if (!Array.isArray(v)) return [];
   return (v as unknown[]).map((f) => {
@@ -1588,16 +1606,24 @@ export default function MapChapter({
       const rotE = easeInOutCubic(clamp((diveOf(sj, pacingRef.current) - REVEAL_DIVE_FROM) / REVEAL_DIVE_SPAN, 0, 1));
       // follow: on the leg INTO a stop, drag the authored framing toward the bull's live
       // trail head. Only `center` is blended — zoom/pitch/bearing keep their keyframes.
-      // Indexed by DESTINATION stop, like subCams. Ramped over the first 20% of the flight
-      // and zero while parked, otherwise the dwell before a leg would already be pulling at
-      // full strength and the camera would jump the moment a head is first published. Off
-      // entirely during the dive, which does its own aiming below. The head is last frame's
-      // — the trail is computed after this — which is what makes follow the one channel a
-      // flightEase profile reaches the camera through.
+      // Indexed by DESTINATION stop, like subCams. Off entirely during the dive, which does
+      // its own aiming below. The head is last frame's — the trail is computed after this —
+      // which is what makes follow the one channel a flightEase profile reaches the camera
+      // through.
+      //
+      // Ramped in AND out over FOLLOW_RAMP of the flight. The release is the half that was
+      // missing: `follow` is zero while parked, so at the end of a flight the drag went from
+      // its full authored strength to nothing between two frames and the whole map snapped
+      // back onto the keyframe — the further the head had pulled it, the bigger the jump
+      // (0.7 into the exchange, 0.4 into the impound: the two stops it was visible at).
+      // Releasing it across the last fifth of the flight lands the camera on the authored
+      // framing under its own power.
       const camProg = camProgress(sj, pacingRef.current);
       const flightFrac = camProg - Math.floor(camProg);
       const seg = clamp(Math.floor(camProg), 0, cfg.follow.length - 1);
-      const followAmt = (cfg.follow[seg] ?? 0) * smoothstep(clamp(flightFrac / FOLLOW_RAMP, 0, 1));
+      const followAmt = (cfg.follow[seg] ?? 0)
+        * smoothstep(clamp(flightFrac / FOLLOW_RAMP, 0, 1))
+        * smoothstep(clamp((1 - flightFrac) / FOLLOW_RAMP, 0, 1));
       const followHead = lastBullHeadRef.current;
       const framed: [number, number] = followAmt > 0 && followHead && diveOf(sj, pacingRef.current) === 0
         ? [lerp(cam.center[0], followHead[0], followAmt), lerp(cam.center[1], followHead[1], followAmt)]
