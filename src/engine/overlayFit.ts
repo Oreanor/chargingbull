@@ -21,6 +21,8 @@
  *    its mockup puts it (hero lift → broadside pan → Tonnes seating).
  */
 
+import { viewportH } from './viewport';
+
 const MOBILE_MAX = 800;
 
 /** Same REF as GlbScene.effectiveFov — bull + overlays shrink together below it. */
@@ -45,8 +47,10 @@ const smoothstep = (t: number) => {
 const PHONE_DESIGN_H = 874;
 
 /**
- * PHONE PIXEL LOCK — the factor that stops everything vh-based from sliding off the bull
- * when the window's HEIGHT changes. 1 on the desktop, where it does not apply.
+ * PHONE PIXEL LOCK — the factor that stops everything svh-based from sliding off the bull
+ * when the window's HEIGHT changes. 1 on the desktop, where it does not apply. (The height
+ * it reads is viewport.viewportH — the stable svh one, never the live innerHeight, or the
+ * URL bar sliding would move every overlay it scales.)
  *
  * Below MOBILE_MAX the GL host is frozen at 800px wide (ModelChapter.css) and effectiveFov
  * holds the HORIZONTAL fov fixed, so pixels-per-world-unit comes out as
@@ -67,7 +71,7 @@ const PHONE_DESIGN_H = 874;
 function phonePxLock(): number {
   if (typeof window === 'undefined') return 1;
   if (window.innerWidth > MOBILE_MAX) return 1;
-  return PHONE_DESIGN_H / (window.innerHeight || PHONE_DESIGN_H);
+  return PHONE_DESIGN_H / (viewportH() || PHONE_DESIGN_H);
 }
 
 /**
@@ -81,7 +85,7 @@ function phonePxLock(): number {
 export function bullMatchScale(): number {
   if (typeof window === 'undefined') return 1;
   const W = window.innerWidth;
-  const H = window.innerHeight || 1;
+  const H = viewportH() || 1;
   if (W <= MOBILE_MAX) return phonePxLock();
   const aspect = W / H;
   return aspect >= REF_ASPECT ? 1 : aspect / REF_ASPECT;

@@ -80,7 +80,7 @@ export function BreakReveal({
   return (
     <section
       ref={sectionRef}
-      className="relative h-[160vh] w-full bg-black"
+      className="relative h-[160svh] w-full bg-black"
       style={{
         ...(phoneMeasure != null ? { '--br-measure': phoneMeasure + 'px' } : {}),
         ...(phoneGap != null ? { '--br-gap': phoneGap + 'px' } : {}),
@@ -88,7 +88,7 @@ export function BreakReveal({
     >
       {/* px-5 on the phone: the design gutters are 20-23, and 24 would squeeze the fixed
           caption measure below its own width. */}
-      <div className="sticky top-0 h-[100dvh] flex items-center justify-center px-5 sm:px-6">
+      <div className="sticky top-0 h-[100svh] flex items-center justify-center px-5 sm:px-6">
         {/* wide enough for the desktop wordmark (1211px at the 1440px design width) */}
         <div className="text-center max-w-[1215px]">
           <div

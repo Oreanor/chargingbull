@@ -38,33 +38,59 @@ const MOBILE_MAX = 800;
 
 interface Piece { id: string; x: number; y: number; ref: React.RefObject<HTMLDivElement> }
 
-// Base offsets = each piece's CENTRE from screen centre, in vh.
-//  desktop: laid out to Desktop-63.svg (design 1440×800 → centre 720,400, 1vh≈8px).
-//  mobile : laid out to iPhone 17-16.svg (design 402×874 → centre 201,437, 1vh≈8.74px).
-// (The ✎ editor's mobile layer nudges these live; these are just the starting points.)
+// Each piece's CENTRE from screen centre, in vh. ONE number per piece per breakpoint:
+// what used to be here were the raw Desktop-63.svg / iPhone 17-16.svg mockup positions
+// with a second, invisible layer of ✎-editor nudges from tune-layout.json sitting on top
+// (up to 23svh of it — the live разлёт framing has drifted a long way from the mockup's
+// capture). Those nudges are folded in below and their tune-layout.json entries deleted:
+// the seat you read here is the seat that ships. The ✎ editor still writes offsets while
+// dragging — bake them back into these numbers rather than leaving them in the json.
+//  desktop: 1440×800 frame → centre 720,400, 1svh = 8px.
+//  mobile : 402×874 frame → centre 201,437, 1svh = 8.74px.
+//
+// DESKTOP x is 21svh left of where it was: the composition (figure + green block) sat that
+// far right of the frame's centre, because the "30 separate parts" block hangs off the
+// right of the figure with nothing to balance it on the left. The camera moved with it —
+// see the разлёт keys' target in openerBull.ts — and since a camera pan parallaxes, the
+// figure swept further left than 21svh; every piece was re-read off the live page after it,
+// which is why the two horn dots below are not just their old seats less 21. The phone
+// keeps its own seat (both here and in the track's `phone` target), where the figure is
+// already framed by overlayFit.mobileFrameNudge.
 const COORDS_DESKTOP: Record<string, [number, number]> = {
-  'parts.title': [58.25, -3.04],
-  'parts.dot': [-34.94, 9.31],
-  'parts.emptyInside': [9.8, 4.38],
-  'parts.measure5cm': [-9.63, -24.88],
-  'parts.horns': [-11.5, -38.56],
-  'parts.hornsDot1': [-46.31, -38.19],
-  'parts.hornsDot2': [37.56, -42.31],
+  'parts.title': [37.86, -7.89],
+  'parts.dot': [-38.76, 0.46],
+  'parts.emptyInside': [2.24, -4.26],
+  'parts.measure5cm': [-8.03, -29.45],
+  'parts.horns': [-13.13, -44.24],
+  // The two horn dots are NOT the mockup's seats. The разлёт throws the horns up and out
+  // of frame, so their tips — what the mockup marks — are cut by the top edge, and the
+  // mockup's own x/y left both dots floating in empty black (the right one a full 90px
+  // clear of its horn, under the note's second line). Each one sits instead on its horn's
+  // VISIBLE end, the hollow cast opening at the bottom of the fragment: the lowest point
+  // that is still unmistakably the horn, and clear of the note above them.
+  'parts.hornsDot1': [-42, -35.8],
+  'parts.hornsDot2': [7.84, -34.45],
 };
 const COORDS_MOBILE: Record<string, [number, number]> = {
-  'parts.title': [-5.4, 27.6],       // "30" + subtitle, bottom-left
-  'parts.dot': [-15.2, 7.4],         // nose / snout tip
-  'parts.emptyInside': [12.2, 3.4],  // right of the head
-  'parts.measure5cm': [1.2, -21.8],  // 5 cm on the withers (холка)
-  'parts.horns': [1.6, -30.7],       // horns note across the top
-  'parts.hornsDot1': [-21.8, -11.5], // tip of the left horn fragment
-  'parts.hornsDot2': [7.2, -26.5],   // tip of the right horn fragment
+  'parts.title': [-5.09, 32.36],      // "30" + subtitle, bottom-left
+  'parts.dot': [-12.66, 6.7],         // nose / snout tip
+  'parts.emptyInside': [9.77, 1.27],  // right of the head
+  'parts.measure5cm': [3.07, -11.88], // 5 cm on the withers (холка)
+  'parts.horns': [5.14, -31.74],      // horns note across the top
+  'parts.hornsDot1': [-15.13, -22.52], // tip of the left horn fragment
+  'parts.hornsDot2': [20.03, -22.76],  // tip of the right horn fragment
 };
 // Desktop sizes are the ASSETS' OWN design sizes, in vh against the 1440×800 frame
-// (1vh = 8px), so each label lands at the mockup's size with nothing multiplying it:
-//   n30.svg 172×149 · empty-inside.svg 181×28 · measure-5cm.svg 74×116 · dot.svg 33×33.
+// (1svh = 8px), so each label lands at the mockup's size with nothing multiplying it:
+//   n30.svg 172×149 · empty-inside.svg 181×28 · measure-5cm.svg 74×116.
 // Both text-bearing assets carry font-size="30" inside a viewBox in those same design
 // px, so drawing them at their own width IS the mockup's 30px type.
+//
+// The marker dots are the exception: dot.svg's viewBox is 33, but the mockup's circles
+// are 57 across (r 27.5 + a 2px stroke of the same green) and that is what they draw at
+// here — DOT_W below, 57 desktop / 40 phone. The measure is likewise
+// drawn at 0.96 of the asset (71.04px): that used to be a `scale` in the ✎ layer, baked
+// into the width so the piece has a size, not a size times a correction.
 //
 // There used to be a per-piece SCALE_DESKTOP layer here (1.185 / 0.706 / 0.751) sitting
 // on top of widths that were already in the right units. It was compensating for a bug,
@@ -75,7 +101,12 @@ const COORDS_MOBILE: Record<string, [number, number]> = {
 // The sizing classes now sit on the element that actually holds the svg, and the scale
 // layer is gone.
 const DESKTOP_PX_PER_VH = 8;
-const px = (n: number) => `${(n / DESKTOP_PX_PER_VH).toFixed(4)}vh`;
+const px = (n: number) => `${(n / DESKTOP_PX_PER_VH).toFixed(4)}svh`;
+/** Phone frame (402×874), for the pieces sized against the iPhone mockup. */
+const MOBILE_PX_PER_VH = 8.74;
+const pxm = (n: number) => `${(n / MOBILE_PX_PER_VH).toFixed(4)}svh`;
+/** Marker-dot diameter, in each breakpoint's own design px: 57 desktop, 40 phone. */
+const DOT_W = { desktop: px(57), mobile: pxm(40) };
 
 export default function PartsFrame() {
   const progress = useChapterProgress();
@@ -125,7 +156,7 @@ export default function PartsFrame() {
         const [ox, oy] = tuneStore.get(pc.id);
         const ts = tuneStore.getScale(pc.id);
         el.style.transform =
-          `translate(${(pc.x + ox).toFixed(2)}vh, ${(pc.y + oy).toFixed(2)}vh) ` +
+          `translate(${(pc.x + ox).toFixed(2)}svh, ${(pc.y + oy).toFixed(2)}svh) ` +
           `scale(${ts.toFixed(4)}) translate(-50%, -50%)`;
       }
       const green = greenRef.current;
@@ -176,7 +207,7 @@ export default function PartsFrame() {
         <div ref={titleRef} data-tune="parts.title" data-tune-mode="store" className="absolute" style={anchor}>
           <div
             className="[&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-            style={{ width: mob('12vh', px(172)) }}
+            style={{ width: mob('12svh', px(172)) }}
             dangerouslySetInnerHTML={{ __html: N30 }}
           />
           {/* The mockup's gap is 27.1px measured INK-to-ink ("30" bottom → the caption's
@@ -184,7 +215,7 @@ export default function PartsFrame() {
               font's own ascent above the glyphs, so the margin that puts the caption's
               baseline on the mockup's 443.56 is 16.3px, not 27.1. */}
           <div
-            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.75vh', px(30)), lineHeight: 1.2, marginTop: mob('0.8vh', px(16.3)) }}
+            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.75svh', px(30)), lineHeight: 1.2, marginTop: mob('0.8svh', px(16.3)) }}
             dangerouslySetInnerHTML={{ __html: copy.parts.subtitle }}
           />
         </div>
@@ -195,7 +226,7 @@ export default function PartsFrame() {
           data-tune="parts.dot"
           data-tune-mode="store"
           className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob('4.6vh', px(33)) }}
+          style={{ ...anchor, width: mob(DOT_W.mobile, DOT_W.desktop) }}
           dangerouslySetInnerHTML={{ __html: DOT }}
         />
 
@@ -205,10 +236,10 @@ export default function PartsFrame() {
           data-tune="parts.emptyInside"
           data-tune-mode="store"
           className="absolute"
-          style={{ ...anchor, width: mob('9vh', px(181)) }}
+          style={{ ...anchor, width: mob('9svh', px(181)) }}
         >
           {isMobile
-            ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75vh', lineHeight: 1.15 }}>{copy.parts.emptyInside}</div>
+            ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75svh', lineHeight: 1.15 }}>{copy.parts.emptyInside}</div>
             : <div className="w-full [&>svg]:block [&>svg]:w-full [&>svg]:h-auto" dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }} />}
         </div>
 
@@ -218,15 +249,15 @@ export default function PartsFrame() {
           data-tune="parts.measure5cm"
           data-tune-mode="store"
           className="absolute"
-          style={{ ...anchor, width: mob('7vh', px(74)) }}
+          style={{ ...anchor, width: mob('7svh', px(71.04)) }}
         >
           {isMobile
             ? (
               <>
-                <div style={{ color: green, fontFamily: 'var(--font-mono)', fontSize: '2.5vh', lineHeight: 1, textAlign: 'center' }}>{copy.parts.measure}</div>
+                <div style={{ color: green, fontFamily: 'var(--font-mono)', fontSize: '2.5svh', lineHeight: 1, textAlign: 'center' }}>{copy.parts.measure}</div>
                 <div
                   className="[&>svg]:block [&>svg]:mx-auto [&>svg]:w-full [&>svg]:h-auto"
-                  style={{ width: '1.9vh', margin: '0.6vh auto 0' }}
+                  style={{ width: '1.9svh', margin: '0.6svh auto 0' }}
                   dangerouslySetInnerHTML={{ __html: MEASURE_ARROW }}
                 />
               </>
@@ -235,14 +266,14 @@ export default function PartsFrame() {
         </div>
 
         {/* horns note — "cast thicker, ~7.5 cm of bronze" (DOM text, both layouts) */}
-        <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: mob('34vh', '57vh') }}>
+        <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: mob('34svh', '57svh') }}>
           <div
-            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06vh', px(18)), lineHeight: mob(1.55, 24 / 18) }}
+            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06svh', px(18)), lineHeight: mob(1.55, 24 / 18) }}
             dangerouslySetInnerHTML={{ __html: copy.parts.horns }}
           />
         </div>
 
-        {/* marker dots — both horn tips + the nose (parts.dot). All three on both
+        {/* marker dots — both horns + the nose (parts.dot). All three on both
             breakpoints: the second used to be desktop-only, with [0,0] standing in for its
             mobile seat, so on a phone the frame showed two dots instead of three. */}
         <div
@@ -250,7 +281,7 @@ export default function PartsFrame() {
           data-tune="parts.hornsDot1"
           data-tune-mode="store"
           className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob('4.6vh', px(33)) }}
+          style={{ ...anchor, width: mob(DOT_W.mobile, DOT_W.desktop) }}
           dangerouslySetInnerHTML={{ __html: DOT }}
         />
         <div
@@ -258,7 +289,7 @@ export default function PartsFrame() {
           data-tune="parts.hornsDot2"
           data-tune-mode="store"
           className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob('4.6vh', px(33)) }}
+          style={{ ...anchor, width: mob(DOT_W.mobile, DOT_W.desktop) }}
           dangerouslySetInnerHTML={{ __html: DOT }}
         />
       </div>

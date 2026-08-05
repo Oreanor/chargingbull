@@ -22,9 +22,9 @@
   position: absolute; top: 0; left: 0; width: 100%;
   /* Inset from the edge to line up with the chart's margins (10% sides, as the canvas).
      Top band off Desktop-36: «Wall street» sits on baseline 62 at 40px type, i.e. a ~43px
-     band on an 800-tall frame — 5.4vh, where this used to say 3.4 and ran the header
+     band on an 800-tall frame — 5.4svh, where this used to say 3.4 and ran the header
      tight against the top edge. */
-  padding: clamp(28px, 5.4vh, 56px) var(--cc-side); z-index: 50; pointer-events: none;
+  padding: clamp(28px, 5.4svh, 56px) var(--cc-side); z-index: 50; pointer-events: none;
 }
 .cc-brand {
   font-family: var(--font-struve); font-weight: 700; color: #fff;
@@ -40,15 +40,15 @@
    in JS (dark on bear, light on bull). Two lines, Struve, like the design. */
 .cc-legend {
   /* Sources sit closer to the chart (mockup: ~48px under the month labels). */
-  position: absolute; left: var(--cc-side); bottom: clamp(20px, 5.4vh, 46px);
+  position: absolute; left: var(--cc-side); bottom: clamp(20px, 5.4svh, 46px);
   z-index: 40; pointer-events: auto;
   font-family: var(--font-struve);
   font-size: clamp(11px, 1.05vw, 16px); line-height: 1.5;
   /* Sources are a footnote, not a rule under the chart. On desktop they break where the
      COPY says — a <br> after the «(Yale University) —» dash — into exactly two lines, each
      ending short of the plot's right edge. The measure only has to be wide enough not to
-     add a wrap of its own; the phone rule below drops the authored break and lets the text
-     flow, since there is no room to indent it there. */
+     add a wrap of its own. (The phone reads a DIFFERENT string, copy.charts.footerPhone,
+     which carries no break at all — see ChartsChapter's `phone` state.) */
   max-width: 80vw; color: rgba(0, 0, 0, 0.5);
 }
 .cc-legend a { color: inherit; text-decoration: underline; }
@@ -133,9 +133,10 @@
   /* Credits, per the designer's portrait export: Struve 16/24 at 50% ink. Fixed size, not
      the desktop's vw-scaled clamp. It spans the FULL plot width and shares the chart's side
      margins, so its left edge lines up with the y-axis and its right with the plot's right
-     edge — and it sits below the month labels rather than across them. On the phone's 20px
-     margins the block reads in FIVE lines, which is the height the canvas reserves for it
-     (setBottomReserve) and therefore where the plot floor lands. */
+     edge — and it sits below the month labels rather than across them. The phone runs the
+     SHORT citation (copy.charts.footerPhone): the full one ran five lines here and took
+     that much off the plot. However many lines it comes to, the canvas reserves exactly
+     that — ChartsChapter measures this block and feeds setBottomReserve. */
   .cc-legend {
     left: var(--cc-side);
     right: var(--cc-side);
@@ -145,6 +146,4 @@
     font-size: 16px;
     line-height: 24px;
   }
-  /* The desktop break lands mid-column on a phone — let the text find its own. */
-  .cc-legend br { display: none; }
 }

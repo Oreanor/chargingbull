@@ -24,6 +24,7 @@
 // Everything here is guarded to dev + client; it never runs in SSR or production.
 
 import layout from './tune-layout.json';
+import { viewportH } from './viewport';
 
 type XY = [number, number];
 // A per-breakpoint vector: [x, y], [x, y, scale], or [x, y, scale, maxW] — offset in
@@ -189,7 +190,7 @@ export function initTuneEditor() {
     if (!baseTransforms.has(el)) baseTransforms.set(el, el.style.transform || '');
     const base = baseTransforms.get(el) || '';
     el.style.transform =
-      (x || y ? `translate(${x}vh, ${y}vh) ` : '') + (s !== 1 ? `scale(${s}) ` : '') + base;
+      (x || y ? `translate(${x}svh, ${y}svh) ` : '') + (s !== 1 ? `scale(${s}) ` : '') + base;
   };
 
   // store-mode elements bake the offset themselves each frame; transform-mode we write.
@@ -365,7 +366,7 @@ export function initTuneEditor() {
     const { id, mode } = idOf(el);
     const [ox, oy] = tuneStore.get(id);
     const sx = e.clientX, sy = e.clientY;
-    const vh = window.innerHeight / 100;
+    const vh = viewportH() / 100;
     const move = (ev: PointerEvent) => {
       tuneStore.set(id, [r2(ox + (ev.clientX - sx) / vh), r2(oy + (ev.clientY - sy) / vh)]);
       apply(el, id, mode);
@@ -720,8 +721,8 @@ export function initTuneEditor() {
     const o = styleOv.get(id) || {};
     const pfx = currentBp() === 'mobile' ? 'max-[800px]:' : '';
     return [
-      x ? `${pfx}translate-x-[${x}vh]` : '',
-      y ? `${pfx}translate-y-[${y}vh]` : '',
+      x ? `${pfx}translate-x-[${x}svh]` : '',
+      y ? `${pfx}translate-y-[${y}svh]` : '',
       s !== 1 ? `${pfx}scale-[${s}]` : '',
       o.align ? `${pfx}${ALIGN_CLS[o.align] ?? ''}` : '',
       o.fontPx != null ? `${pfx}text-[${o.fontPx}px]` : '',
@@ -761,7 +762,7 @@ export function initTuneEditor() {
     if (!selected) return;
     const { id, mode } = idOf(selected);
     const r = selected.getBoundingClientRect();
-    const vh = window.innerHeight / 100;
+    const vh = viewportH() / 100;
     const [ox, oy] = tuneStore.get(id);
     if (axis === 'x') tuneStore.set(id, [r2(ox + (val - r.left) / vh), oy]);
     else tuneStore.set(id, [ox, r2(oy + (val - r.top) / vh)]);
@@ -783,7 +784,7 @@ export function initTuneEditor() {
     applyStyleOv(selected, id); // re-assert live overrides in case the element re-rendered
     const r = selected.getBoundingClientRect();
     const cs = getComputedStyle(selected);
-    const vh = window.innerHeight / 100;
+    const vh = viewportH() / 100;
     const [ox, oy] = tuneStore.get(id);
     const s = tuneStore.getScale(id);
     const o = styleOv.get(id) || {};
@@ -792,7 +793,7 @@ export function initTuneEditor() {
     const inherited = bp === 'mobile' && !!e && !Array.isArray(e) && !e.mobile;
     const active = document.activeElement;
     title.textContent = `${shortId(id)}  ${bp === 'mobile' ? '📱' : '🖥'}${inherited ? '↑ (inherits desktop)' : ''}`;
-    rows.size.textContent = `${Math.round(r.width)}×${Math.round(r.height)}px · ${r2(r.width / vh)}×${r2(r.height / vh)}vh`;
+    rows.size.textContent = `${Math.round(r.width)}×${Math.round(r.height)}px · ${r2(r.width / vh)}×${r2(r.height / vh)}svh`;
     rows.opz.textContent = `${r2(parseFloat(cs.opacity))} · z${cs.zIndex === 'auto' ? '—' : cs.zIndex}`;
     if (active !== posX) posX.value = String(Math.round(r.left));
     if (active !== posY) posY.value = String(Math.round(r.top));

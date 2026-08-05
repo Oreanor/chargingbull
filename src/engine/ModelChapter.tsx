@@ -21,6 +21,7 @@ import { bullEditStore } from './editStore';
 import PoseProbe from './PoseProbe';
 import { tuneStore } from './tuneEditor';
 import { mobileProfileDistScale, mobileFrameNudge } from './overlayFit';
+import { viewportH } from './viewport';
 
 /** What ModelChapter needs from a renderer. Both DatumScene (splats) and
  *  GlbScene (three.js meshes) satisfy it, so the editor/runtime are renderer-
@@ -179,7 +180,7 @@ export default function ModelChapter({
     let topY = 0;
     let n: HTMLElement | null = el;
     while (n) { topY += n.offsetTop; n = n.offsetParent as HTMLElement | null; }
-    const range = Math.max(1, el.offsetHeight - window.innerHeight);
+    const range = Math.max(1, el.offsetHeight - viewportH());
     window.scrollTo({ top: topY + p * range });
   };
   const fadeRef = useRef<HTMLDivElement>(null);
@@ -227,8 +228,8 @@ export default function ModelChapter({
   // (see bullRevealed). Nothing waits on the asset.
 
   return (
-    <section ref={ref} style={{ height: `${frames * 100}dvh` }} className="relative w-full">
-      <div className="sticky top-0 h-[100dvh] w-full overflow-hidden">
+    <section ref={ref} style={{ height: `${frames * 100}svh` }} className="relative w-full">
+      <div className="sticky top-0 h-[100svh] w-full overflow-hidden">
         <div ref={fadeRef} className="absolute inset-0 z-0">
           {active ? (
             <ModelScene

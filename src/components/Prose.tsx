@@ -28,7 +28,7 @@ export function Break({
   children?: ReactNode;
 }) {
   return (
-    <section className="relative min-h-[100dvh] flex items-center justify-center px-6 py-20">
+    <section className="relative min-h-[100svh] flex items-center justify-center px-6 py-20">
       <span className="absolute left-1/2 -translate-x-1/2 top-0 w-px h-16 bg-gradient-to-b from-transparent to-gold/45" />
       <span className="absolute left-1/2 -translate-x-1/2 bottom-0 w-px h-16 bg-gradient-to-t from-transparent to-gold/45" />
       <div className="text-center max-w-[720px]">
@@ -57,7 +57,7 @@ export function Outro({
   credit?: ReactNode;
 }) {
   return (
-    <section className="min-h-[90dvh] flex items-center justify-center px-6 py-20">
+    <section className="min-h-[90svh] flex items-center justify-center px-6 py-20">
       <div className="text-center max-w-[720px]">
         <div className="mx-auto mb-12 h-px w-14 bg-gold" />
         {lines.map((l, i) => (

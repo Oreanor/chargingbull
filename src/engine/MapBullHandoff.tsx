@@ -3,6 +3,7 @@ import MapChapter from './MapChapter';
 import { bullSizeTrim, isNarrowViewport } from './mapViewport';
 import DatumSplat, { type DatumSplatHandle } from '../components/DatumSplat';
 import { useInViewMount } from './useInViewMount';
+import { viewportH } from './viewport';
 import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotate» hint (text is HTML)
 
 /**
@@ -181,13 +182,13 @@ export default function MapBullHandoff({
     // bull's start-only nudge under the mask.
     const posF = 1 - smoothstep(clamp01((raw - 0.38) / 0.2));
     if (clipRef.current) {
-      const halfH = window.innerHeight / 2;
+      const halfH = viewportH() / 2;
       // Distance from the layer's centre to the FARTHEST viewport corner. The layer is
       // 2×shift wider than the viewport and flush left, so its centre sits `shift` right of
       // the viewport's and the two left corners are that much farther out than a plain
       // half-diagonal — without this the mask stops short of them at full open.
       const shiftPx = (phoneShiftVw() / 100) * window.innerWidth;
-      const cornerPx = Math.hypot(window.innerWidth / 2 + shiftPx, window.innerHeight / 2);
+      const cornerPx = Math.hypot(window.innerWidth / 2 + shiftPx, viewportH() / 2);
       const irisStart = irisStartFrac();
       // radius accelerates: disc → half-height (round phase), then → past corners
       const r =
@@ -203,7 +204,7 @@ export default function MapBullHandoff({
       // with the map pan. The offset MUST be gone before the iris grows past its disc phase
       // (~raw 0.61): while the container is still shifted up, a large circle spills past its
       // (now off-centre) bottom edge and shows the map. So settle it to centre by ~0.58.
-      const upPx = (glueUpVh() / 100) * window.innerHeight; // lift onto the bull's body (proj lands at its feet)
+      const upPx = (glueUpVh() / 100) * viewportH(); // lift onto the bull's body (proj lands at its feet)
       // bullOffset is measured from the VIEWPORT's centre, but this layer's centre — where the
       // mask's 50% and the splat bull both sit — is shiftPx right of it, so the shift comes back
       // out here. Both ends then land where they should: on the map figurine at posF 1, and on
@@ -216,7 +217,7 @@ export default function MapBullHandoff({
       // Start-only nudge of the bull UNDER the mask (left/up), easing to 0 by rest via posF.
       const nudgeX = (BULL_START_LEFT_PX * posF).toFixed(1);
       const nudgeY = (BULL_START_UP_PX * posF).toFixed(1);
-      scaleRef.current.style.transform = `translate(calc(-${BULL_LEFT_VW}vw - ${nudgeX}px), calc(-${BULL_RAISE_VH}vh - ${nudgeY}px)) scale(${(START_SCALE + (1 - START_SCALE) * e).toFixed(4)})`;
+      scaleRef.current.style.transform = `translate(calc(-${BULL_LEFT_VW}vw - ${nudgeX}px), calc(-${BULL_RAISE_VH}svh - ${nudgeY}px)) scale(${(START_SCALE + (1 - START_SCALE) * e).toFixed(4)})`;
     }
     // Scripted 2-keyframe handoff: the bull starts turned 90° CW with the camera
     // RAISED above it, and both settle to the resting pose as it scales up. Driven by
@@ -260,15 +261,15 @@ export default function MapBullHandoff({
       {/* grab hand — this is the ONLY bull the reader drag-rotates. The overlay flips to
           pointer-events:auto only once settled (see onDive), so the hand shows exactly when
           the bull is orbitable; while it's still pointer-events:none the cursor is moot. */}
-      <div ref={overlayRef} className="sticky top-0 h-screen w-full overflow-hidden z-20 pointer-events-none cursor-grab active:cursor-grabbing">
+      <div ref={overlayRef} className="sticky top-0 h-[100svh] w-full overflow-hidden z-20 pointer-events-none cursor-grab active:cursor-grabbing">
         {/* WIDTH overshoots on the phone: the layer stays flush at the left, so its centre —
             the iris mask's 50% AND the scene inside — moves right by half the surplus, which is
             the shift (see BULL_SHIFT_RIGHT_VW). Zero on a wide screen, i.e. 100%. */}
         <div ref={clipRef} className="h-full" style={{ opacity: 0, width: `calc(100% + ${2 * phoneShiftVw()}vw)` }}>
           {/* Height overshoots by the raise so translating the layer UP (to lift the bull's
               head into frame) doesn't uncover a strip at the bottom — the scene still fills
-              to 100vh. overlayRef's overflow-hidden clips the extra at the top. */}
-          <div ref={scaleRef} className="will-change-transform w-full" style={{ height: `calc(100% + ${BULL_RAISE_VH}vh)`, transform: `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}vh) scale(${START_SCALE})` }}>
+              to 100svh. overlayRef's overflow-hidden clips the extra at the top. */}
+          <div ref={scaleRef} className="will-change-transform w-full" style={{ height: `calc(100% + ${BULL_RAISE_VH}svh)`, transform: `translate(-${BULL_LEFT_VW}vw, -${BULL_RAISE_VH}svh) scale(${START_SCALE})` }}>
             {armed ? <DatumSplat ref={bullRef} {...splatProps} /> : null}
           </div>
         </div>
@@ -288,10 +289,10 @@ export default function MapBullHandoff({
       </div>
 
       {/* MAP (+ hold) — pulled up under the bull overlay; it zooms in but never melts. */}
-      <div className="relative z-10 -mt-[100vh]">
+      <div className="relative z-10 -mt-[100svh]">
         <MapChapter introTitle={introTitle} introBody={introBody} revealUnderlay onDive={onDive} />
         {/* hold scroll room before the bull slides away. */}
-        <div className="w-full" style={{ height: `${holdVh}vh` }} />
+        <div className="w-full" style={{ height: `${holdVh}svh` }} />
       </div>
     </div>
   );

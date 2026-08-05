@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Map as MapboxMap, FilterSpecification, ExpressionSpecification } from 'mapbox-gl';
 import type { Layer } from '@deck.gl/core';
 import { useSmoothProgress } from './smoothScroll';
+import { viewportH } from './viewport';
 import { glQuality, glWindow, noteGlLive, onGlEvict, requestGl, withCappedDpr } from './deviceBudget';
 import { markGl } from './glDiag';
 import { bullSizeTrim, isNarrowViewport } from './mapViewport';
@@ -526,7 +527,7 @@ const BULL_FOLLOW: { x0: number; x1: number; y0: number; y1: number; on: number;
 const PACE = 2;
 const LEGS_VH = PACE * 630;
 /** Scroll the "Bull's ROUTE" title holds before the journey starts — ours, standing in for
- *  his studio opener, which is why it carries that leg's 170vh (doubled with the rest). */
+ *  his studio opener, which is why it carries that leg's 170svh (doubled with the rest). */
 const TITLE_BAND_VH = PACE * 170;
 /** Scroll a card takes to cross the screen. Held at what it has always been, so the
  *  plaques keep their on-screen speed no matter how the journey underneath is paced —
@@ -540,7 +541,7 @@ const DIVE_VH = 118;
 
 // The chapter's scroll, in vh, and the split between the three things that spend it. All
 // ABSOLUTE, and the sticky screen is added on top — because progress runs over
-// `offsetHeight − innerHeight`, a chapter that is only journey + dive hands the journey
+// `offsetHeight − 100svh`, a chapter that is only journey + dive hands the journey
 // less than it was promised. Paying for the viewport here is what makes each band come out
 // at the vh its weight says. (It used to be `N × (per-leg + dive)` with the dive as a
 // FRACTION of the per-leg budget, so both the dive and the sticky screen were quietly
@@ -794,7 +795,7 @@ function pacingOf(cfg: MapCfg, scrollablePx: number): Pacing {
   // DIVE_VH of viewport height, as a share of the measured scroll — so the dive keeps its
   // authored length whatever the dwells add. Falls back to the design-time constant until
   // the section has a size.
-  const divePx = typeof window !== 'undefined' ? (DIVE_VH / 100) * window.innerHeight : 0;
+  const divePx = typeof window !== 'undefined' ? (DIVE_VH / 100) * viewportH() : 0;
   const diveFrac = scrollablePx > 0 && divePx > 0 ? clamp(divePx / scrollablePx, 0.01, 0.9) : DIVE_FRAC;
   return {
     bands: journeyBands(cfg.weights, cfg.dwellPx, scrollablePx, diveFrac),
@@ -1047,7 +1048,7 @@ export default function MapChapter({
   useEffect(() => {
     const measure = () => {
       const el = sectionRef.current;
-      const px = el ? Math.max(1, el.offsetHeight - window.innerHeight) : 0;
+      const px = el ? Math.max(1, el.offsetHeight - viewportH()) : 0;
       pacingRef.current = pacingOf(cfgRef.current, px);
     };
     measure();
@@ -1675,7 +1676,7 @@ export default function MapChapter({
         : 0;
       if (BULL_FOLLOW && dv < 0.02 && followK > 0.004) {
         const W = window.innerWidth;
-        const H = window.innerHeight;
+        const H = viewportH();
         const loX = W * BULL_FOLLOW.x0;
         const hiX = W * BULL_FOLLOW.x1;
         const loY = H * BULL_FOLLOW.y0;
@@ -1733,7 +1734,7 @@ export default function MapChapter({
       // Only during the dive (the reveal window); the journey doesn't need the projection.
       if (dv > 0) {
         const bp = map.project(bull);
-        onDive?.(dv, { x: bp.x - window.innerWidth / 2, y: bp.y - window.innerHeight / 2 });
+        onDive?.(dv, { x: bp.x - window.innerWidth / 2, y: bp.y - viewportH() / 2 });
       } else {
         onDive?.(dv);
       }
@@ -1741,7 +1742,7 @@ export default function MapChapter({
       // ?bullTrack=1 — publish the JOURNEY bull's screen position for scripts/fix-bull-framing.mjs.
       if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('bullTrack')) {
         const bp = map.project(head);
-        const W = window.innerWidth, H = window.innerHeight;
+        const W = window.innerWidth, H = viewportH();
         (window as unknown as { __mapBullTrack: unknown }).__mapBullTrack = {
           ready: steps.length >= 2,
           prog: locProg,
@@ -1816,7 +1817,7 @@ export default function MapChapter({
       // no scale; opacity is full and only fades right at the off-screen edges). Card
       // i = stop i+1, and `tt` is straight-line in the stop progress: the card never
       // parks — dead centre is a moment it passes through, not a place it sits.
-      const fh = window.innerHeight;
+      const fh = viewportH();
       // Half-window the card travels, in stop-progress. Derived from CARD_TRAVEL_VH so the
       // plaques cross the screen in the same amount of SCROLL whatever the journey pacing
       // underneath does — repacing the bull must not change how fast the text reads.
@@ -1867,9 +1868,9 @@ export default function MapChapter({
     <section
       ref={sectionRef}
       className="mc-section relative w-full bg-black"
-      style={{ height: `calc(${CHAPTER_VH}vh + ${dwellSumPx}px)` }}
+      style={{ height: `calc(${CHAPTER_VH}svh + ${dwellSumPx}px)` }}
     >
-      <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden">
+      <div ref={stickyRef} className="sticky top-0 h-[100svh] w-full overflow-hidden">
         {/* Hidden until the style is recoloured + labels hidden + buildings added
             (mapReady), so the default grey-with-labels style never flashes on load. */}
         <div

@@ -322,7 +322,7 @@ export function CalculatorSlide() {
     sizeInput(); refreshField(); // initial: size to "100", both arrows off (scene inactive)
     const onResize = () => { if (rows.length) render(); };
     window.addEventListener('resize', onResize);
-    // Sticky stage / dvh can reflow without a window resize — keep poles + hint locked.
+    // Sticky stage / svh can reflow without a window resize — keep poles + hint locked.
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
     ro?.observe(canvas);
 
@@ -401,7 +401,7 @@ export function CalculatorSlide() {
   }, []);
 
   return (
-    <section ref={sectionRef} className="calc-section" style={{ height: '150vh' }}>
+    <section ref={sectionRef} className="calc-section" style={{ height: '150svh' }}>
       <div className="calc-sticky">
       <div className="calc-wrap">
         <div className="calc-top">

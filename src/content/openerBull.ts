@@ -84,12 +84,24 @@ export const OPENER_TRACK: CameraTrack = {
     // frame the captured #2c2c30 belongs to the tool's grey viewport and reads as a second,
     // ghostly bull. Note it mixes BEFORE tone mapping (ACES at 1.05), so the hex is matched
     // to the vignette by eye, not by equality with it.
-    { at: 0.8, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.07, 0.42, 0.93],
-      phone: { az: 34.9, polar: 102.9 },
+    // The DESKTOP target is that capture's, panned right so the FIGURE sits left: the
+    // «30 separate parts» block hangs off the right of it with nothing to balance it, and
+    // the composition as a whole read ~21svh right of the frame's centre. This is the pan
+    // itself, not a nudge layer on top of it — camera and target move together, 0.3245
+    // units along the camera's own right vector (cos az, 0, −sin az) = (+0.276, 0, −0.171).
+    // The figure swings further than 0.3245 units of the TARGET plane would suggest (~35svh
+    // against the target's ~18), because it stands well in front of the target and a camera
+    // pan parallaxes: near things sweep more than far ones. So this number was fitted on the
+    // live page against the composition, not solved for — and PartsFrame's desktop seats,
+    // which move with it, were re-read off the same page rather than shifted by a constant.
+    // The PHONE keeps the capture's target: there the figure is already seated by
+    // overlayFit.mobileFrameNudge's own разлёт seat (BLOWUP_X), against the phone mockup.
+    { at: 0.8, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.35, 0.42, 0.76],
+      phone: { az: 34.9, polar: 102.9, target: [0.07, 0.42, 0.93] },
       weights: { front: 1.69, rear: 0, bias: 0.61, sharpness: 1.56, rise: 1.4 },
       fog: { color: '#0c0d10', near: 2.5, far: 3.7 } },
-    { at: 0.85, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.07, 0.42, 0.93],
-      phone: { az: 34.9, polar: 102.9 },
+    { at: 0.85, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.35, 0.42, 0.76],
+      phone: { az: 34.9, polar: 102.9, target: [0.07, 0.42, 0.93] },
       weights: { front: 1.69, rear: 0, bias: 0.61, sharpness: 1.56, rise: 1.4 },
       fog: { color: '#0c0d10', near: 2.5, far: 3.7 } },
     { at: 0.92, az: 143.9, polar: 117, dist: 1.86, fov: 40, target: [-0.23, 0.72, -0.05] },

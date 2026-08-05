@@ -6,6 +6,7 @@ import {
   type RefObject,
 } from 'react';
 import { useMotionValue, type MotionValue } from 'motion/react';
+import { viewportH } from './viewport';
 
 /**
  * smoothScroll — the engine's motion model: NO stop frames. The native scrollbar
@@ -73,7 +74,13 @@ export function useSmoothProgress<T extends HTMLElement>(
       const el = ref.current;
       if (!el) return;
       top = layoutTop(el);
-      range = Math.max(1, el.offsetHeight - window.innerHeight);
+      // Height from viewportH (svh), not innerHeight: the section is `frames · 100svh`,
+      // so this is the section's own unit — and a phone's URL bar sliding in mid-scroll
+      // must not remap progress under a chapter that is already playing. The cost is that
+      // with the bar HIDDEN the scrollport is ~90px taller than svh, so the section unpins
+      // at progress ~0.99 rather than exactly 1 — the tail of every track is a hold, so
+      // nothing is cut; a track that ENDED on a move would have to spend its last frame.
+      range = Math.max(1, el.offsetHeight - viewportH());
     };
     const compute = (v: number) => progress.set(clamp01((v - top) / range));
 

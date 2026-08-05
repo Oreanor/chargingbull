@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import copy from '../content/copy.json';
+import { viewportH } from '../engine/viewport';
 import './BullBearExplainer.css';
 
 /**
@@ -44,7 +45,7 @@ export function BullBearExplainer() {
     const bearPill = main.querySelector('.xpl-pill-bear') as HTMLElement | null;
 
     const update = () => {
-      const vh = window.innerHeight;
+      const vh = viewportH();
       const total = section.offsetHeight - vh;
       const top = section.getBoundingClientRect().top;
       const p = clamp01(total > 0 ? -top / total : 0);
@@ -67,7 +68,17 @@ export function BullBearExplainer() {
         panel.style.bottom = '0px';
         panel.style.borderRadius = '0px';
         const q = clamp01((vh - content.getBoundingClientRect().bottom) / vh);
-        panel.style.opacity = smoothstep(q).toFixed(3);
+        // …and it is DROPPED the moment this section is past. On the phone the panel is
+        // `fixed inset-0` — the whole screen, not a box inside the stage — and q, once the
+        // text has left the top of the viewport, stays at 1 for the rest of the document.
+        // So it stayed up as a full-screen pink sheet over everything that followed: the
+        // charts (z-20) and the AnatomyCrisis slide (z-30) drew over it and hid the fact,
+        // and the chapter after them, which is plain flow, did not — it read as the last
+        // chapter being «hidden under a pink overlay». Handing off is free at exactly this
+        // point: the section's bottom is the charts section's top, and the charts' own pink
+        // is fully opaque by the time it reaches the fold.
+        const done = section.getBoundingClientRect().bottom <= 0;
+        panel.style.opacity = done ? '0' : smoothstep(q).toFixed(3);
         content.style.opacity = (1 - smoothstep(clamp01((q - 0.5) / 0.4))).toFixed(3);
         return;
       }
@@ -105,11 +116,11 @@ export function BullBearExplainer() {
     // z-10: BELOW the charts that follow (z-20). When this pink fills the screen the
     // charts' own pink backdrop fades in OVER it, so the sticky's unpin/slide-away happens
     // hidden behind the charts — you never see this pink drive off.
-    // Phone: no pin. The column is taller than the screen, so pinning it inside a 100dvh box
+    // Phone: no pin. The column is taller than the screen, so pinning it inside a 100svh box
     // clipped its first lines away; here it is simply an article that scrolls, followed by a
-    // screen of scroll for the pink to come up in. Desktop keeps the 210vh pinned stage.
-    <section ref={sectionRef} className="relative z-10 bg-black max-lg:pb-[100vh] lg:h-[210vh]">
-      <div ref={stickyRef} className="w-full lg:sticky lg:top-0 lg:h-[100dvh] lg:overflow-hidden">
+    // screen of scroll for the pink to come up in. Desktop keeps the 210svh pinned stage.
+    <section ref={sectionRef} className="relative z-10 bg-black max-lg:pb-[100svh] lg:h-[210svh]">
+      <div ref={stickyRef} className="w-full lg:sticky lg:top-0 lg:h-[100svh] lg:overflow-hidden">
         {/* Fixed on the phone so the tint is the SCREEN going pink while the text scrolls over
             it; absolute inside the pinned stage on desktop, where it is the growing chip. */}
         <div ref={panelRef} className="fixed inset-0 pointer-events-none bg-[#f14268] lg:absolute" style={{ borderRadius: 30 }} />

@@ -42,6 +42,11 @@ const bullMarkerScale = (plotW: number) =>
   (isMobileViewport() ? BULL_MARKER_NARROW : plotW / 1142);
 /** Gap between the disc and the caption over it, on the frames that seat it outside. */
 const BULL_CAPTION_OVER = 15;
+/** How far «The financial crisis» settles down across the desktop range — 0 at the design
+ *  width, this at the 800 where the phone layout takes over (see drawBullCallout). */
+const CAPTION_SETTLE = 10;
+/** The disc's scale k at that 800 — plot width 0.8·W over the design's 1142. */
+const CAPTION_K_AT_PHONE = (800 * 0.8) / 1142;
 import {
   BM_OHLC, BM_AUG_I, BM_CRASH_I, bmPriceSvgY,
   bmDrawdownMonthMarks, bmDrawdownT,
@@ -73,6 +78,9 @@ let GRID = '#1f1f28';
 let AXIS = 'rgba(245,243,238,0.55)';
 let CRISIS = '#ff6b5c';
 let LINE = '#f5f3ee'; // themed plotted-line color: white on bear (pink), grey on bull
+/** How far the theme has blended: 0 = bear (pink ground), 1 = bull (black). Set by
+ *  applyTheme, for the pieces that change more than a colour across the two grounds. */
+let THEME_K = 0;
 // Match the mockup: axis numbers in Space Mono, value labels in Struve (both loaded
 // via fonts.css). Canvas falls back silently if a face isn't ready yet.
 const FONT = "14px 'Space Mono', ui-monospace, monospace";
@@ -113,6 +121,17 @@ const MARK_STEP = 20;
  */
 const MARK_BESIDE_DY = -2;
 const MARK_BESIDE_GAP = 10;
+/** …and 5px wider for the seat the tight frames ASK for (drawMarkerTwoLine's 'level-l'):
+ *  the export's 10 is measured to the block's box, and at this size the year's own right
+ *  sidebearing reads as part of the gap, so the ink sat closer to the dot than the mockup
+ *  has it. Only that authored seat takes it — the same seat reached as a fallback, when a
+ *  crowded frame pushes a marker sideways, keeps the tighter 10. */
+const MARK_BESIDE_GAP_ASKED = 15;
+/** The PINNED peak seat ('peak-r'), off the peak it names: right by dx, and its first
+ *  baseline dy under the peak's own y — high enough that the block sits ABOVE the line
+ *  falling away from that peak instead of in it. Both read off the phone export. */
+const PEAK_SEAT_DX = 20;
+const PEAK_SEAT_DY = 1;
 /** Air a marker keeps to either SIDE of itself when seats are being chosen. */
 const MARK_CLEAR = 6;
 /** The seat a crowded marker is currently holding, by label — see drawMarkerTwoLine. */
@@ -138,11 +157,18 @@ function xLabelSeat(ctx: CanvasRenderingContext2D, text: string, x: number, x0: 
 
 /** Shared Y-axis title: right edge at plot right, parked above the top grid. */
 function drawIndexCaption(ctx: CanvasRenderingContext2D, xRight: number, plotTop: number) {
+  const a0 = ctx.globalAlpha;
+  // On the BULL ground (green on black) the caption steps back to 30%. It is a unit label,
+  // not a reading, and on the dark frames AXIS is a near-white that reads as loud as the
+  // chart's own type. Carried on the theme's own blend, not on a per-frame flag, so it
+  // fades to 30% exactly as the ground goes black instead of switching under the reader.
+  ctx.globalAlpha = a0 * (1 - 0.7 * THEME_K);
   ctx.fillStyle = AXIS;
   ctx.font = FONT;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'bottom';
   ctx.fillText(LBL.indexLabel || 'S&P 500 INDEX', xRight, plotTop - INDEX_ABOVE);
+  ctx.globalAlpha = a0;
 }
 
 /**
@@ -225,6 +251,18 @@ function drawYearAxis(
   }
 }
 
+/** The ceiling the plotted SERIES is drawn to: the top tick, not the scale's headroom.
+ *  The price scale runs a few percent past the data (PRICE_CLIP) so the peak and its hatch
+ *  are not cut by the plot's own edge — but that left the curve climbing on past the last
+ *  labelled line into blank air, where there is no number to read it against. The ink stops
+ *  at the grid's last line instead: it leaves the chart there and comes back, rather than
+ *  being flattened along it (clamping the VALUES would draw a plateau that is not in the
+ *  data). On frames whose top tick already IS the plot ceiling (1b) this is the plot rect. */
+const seriesTop = (yClip: number, sy: (v: number) => number): number => {
+  const t = absTicks(yClip);
+  return sy(t[t.length - 1]);
+};
+
 /** Price ticks, bottom→top: through nice round tops (5000), not the headroom ceiling (6000). */
 function absTicks(yClip: number): number[] {
   const step = yClip >= 4500 ? 1000 : yClip > 2000 ? 500 : yClip > 400 ? 100 : 50;
@@ -289,6 +327,13 @@ function drawMarkerTwoLine(
   /** Boxes already taken this frame. A beside seat that would land on one moves along the
    *  candidate list; the seat it ends up in is appended. Omit on frames with one marker. */
   placed?: { l: number; t: number; r: number; b: number }[],
+  /** The frame naming the seat it wants, instead of letting the search infer one:
+   *   'level-l'  PREFERRED: beside the point, left, level with it — the export's phone seat
+   *              on the tight drawdown frames. Tried first, still has to fit.
+   *   'peak-r'   PINNED: right of the point, one line under it, no search at all (see the
+   *              branch below). For a marker whose natural seat is permanently taken by
+   *              something else on the frame, where a search has nothing to hold on to. */
+  seatFirst?: 'level-l' | 'peak-r',
 ) {
   ctx.font = font2;
   const w2 = ctx.measureText(line2).width;
@@ -323,6 +368,19 @@ function drawMarkerTwoLine(
   // frames where both curves are drawn. The seat is sticky and prefers the natural one, so
   // an uncrowded date still never moves.
   if (plot) {
+    /** The anchored seat, slid in only as far as the frame forces. A point close to the
+     *  plot's right edge — «September 2002», whose trough is the last to arrive on the
+     *  peak-relative frame, sits 6px short of it — cannot hang its whole block to the
+     *  right of the anchor, and without this the block failed the fit outright and took a
+     *  BESIDE seat instead: parked a clear 10px to the LEFT of the dot it names, on a frame
+     *  where every other date sits under its own. Sliding in keeps it under the point as
+     *  far as there is room, which is what the exports do with a label against the edge.
+     *  The left bound counts the hanging minus (see `sign` above): it is set OUTSIDE the
+     *  block, so clamping the block alone would tuck «−42%» in and leave its minus over
+     *  the plot's edge. */
+    const inPlot = (l: number) =>
+      Math.min(Math.max(l, plot.l + MARK_CLEAR + signW), plot.r - MARK_CLEAR - w);
+    const seated = inPlot(anchored);
     // Seats, in the order the exports use them: UNDER the point (the default everywhere
     // there is room for it), then level beside it left or right — which is what the 402
     // frames fall back to when the point is too near the floor — then over it, then a line
@@ -343,10 +401,16 @@ function drawMarkerTwoLine(
       const t = b - 14, bot = b + hi - 14;
       const hit = (placed ?? []).filter((p) => t < p.b && bot > p.t);
       if (!hit.length) return [px - MARK_BESIDE_GAP - w];
-      const l = Math.min(...hit.map((p) => p.l)) - w - MARK_CLEAR;
-      const r = Math.max(...hit.map((p) => p.r)) + MARK_CLEAR;
-      const near = (x: number) => Math.abs(x + w / 2 - px);
-      return near(l) <= near(r) ? [l, r] : [r, l];
+      const lo = Math.min(...hit.map((p) => p.l));
+      const hiX = Math.max(...hit.map((p) => p.r));
+      const l = lo - w - MARK_CLEAR;
+      const r = hiX + MARK_CLEAR;
+      // Which side is chosen by ORDER, not by distance: the block goes on the side of the
+      // neighbour its own point is on. Two crises on one row read left-to-right like the
+      // axis under them, so a 2008 label tucked LEFT of the 2000 one is not a tighter fit,
+      // it is the wrong chart. (Distance picked the near side, which on the zoomed price
+      // frames put exactly that pair in the wrong order for the length of the morph.)
+      return px >= (lo + hiX) / 2 ? [r, l] : [l, r];
     };
     const tuckSeats = (b: number, k: string) =>
       tuckAt(b).map((l, i) => ({ k: `${k}${i}`, l, b }));
@@ -354,32 +418,43 @@ function drawMarkerTwoLine(
     // A marker parked ABOVE its point stays above it; one that hangs below stays below,
     // and only takes to the air when nothing down there is free.
     const seats = above ? [
-      seat_('over', anchored, over),
-      // Level beside the point, for a marker whose seat above it is taken by something wide
-      // — on the Charging Bull frame that is the disc's own caption, and the export moves
+            seat_('over', seated, over),
+      // Sideways along its OWN line first — the same rule the dates below follow, and for
+      // the same reason. «−51% 2008» stands two thirds of a label width from «−42% 2000»,
+      // so on the narrow frame its natural seat overlaps its neighbour's and it used to
+      // fall to `level-r`: a whole row down, level with its own peak, reading as a label
+      // hanging off its drop rather than one of a pair. Slid along the line instead, the
+      // two read as what they are — two crises, one row, in axis order.
+      ...tuckSeats(over, 'over-tuck'),
+      // Level beside the point, for a marker whose whole LINE is taken by something wide —
+      // on the Charging Bull frame that is the disc's own caption, and the export moves
       // the «−26% 1987» block down beside the peak exactly like this.
       seat_('level-r', px + MARK_BESIDE_GAP, py),
       seat_('level-l', px - MARK_BESIDE_GAP - w, py),
-      ...tuckSeats(over, 'over-tuck'),
-      seat_('over2', anchored, over - hi),
+      seat_('over2', seated, over - hi),
       ...tuckSeats(over - hi, 'over2-tuck'),
     ] : [
-      seat_('under', anchored, below),
+      // The frame can ask for the seat BESIDE the point instead of the one under it (see
+      // `besideFirst`). It is still only a preference: it goes through the same fit test as
+      // any other seat, so a crowded frame falls through to the list below.
+      ...(seatFirst === 'level-l'
+        ? [seat_('level-l', px - MARK_BESIDE_GAP_ASKED - w, py + MARK_BESIDE_DY)] : []),
+            seat_('under', seated, below),
       // A date that has to give way keeps its distance UNDER the point and slides sideways
       // along that line first — dropping a whole block leaves it 60px adrift of the dot it
       // names, and stepping up level with the dot reads as a different seat from every
       // other date on the frame. Only when nothing on that line is free does it drop.
       ...tuckSeats(below, 'under-tuck'),
-      seat_('under2', anchored, below + hi),
+      seat_('under2', seated, below + hi),
       seat_('level-l', px - MARK_BESIDE_GAP - w, py + MARK_BESIDE_DY),
       seat_('level-r', px + MARK_BESIDE_GAP, py + MARK_BESIDE_DY),
       seat_('below-l', px - MARK_BESIDE_GAP - w, below),
       seat_('below-r', px + MARK_BESIDE_GAP, below),
       ...tuckSeats(py + MARK_BESIDE_DY, 'level-tuck'),
       // Only once nothing below or beside will do does a date go ABOVE its point.
-      seat_('over', anchored, over),
+      seat_('over', seated, over),
       seat_('over-l', px - MARK_BESIDE_GAP - w, over),
-      seat_('over2', anchored, over - hi),
+      seat_('over2', seated, over - hi),
     ];
     // The block, with air on the SIDES only: two blocks abreast need a gap to read as two,
     // but two stacked under each other are already separated by their own leading — padding
@@ -393,22 +468,35 @@ function drawMarkerTwoLine(
       if (k.l < plot.l || k.r > plot.r || k.t < plot.t || k.b > plot.b) return false;
       return !(placed ?? []).some((p) => k.l < p.r && k.r > p.l && k.t < p.b && k.b > p.t);
     };
-    // The seat is STICKY. Scroll moves every point continuously, so re-picking the best free
-    // seat each frame let a crowded date flick between two of them mid-morph. It goes back to
-    // its natural seat the moment that one is free, keeps the seat it took while it is not,
-    // and only looks for a new one when the seat it is in stops fitting. Held by NAME, so
-    // what is remembered is «which side of its own point», not a stale pair of coordinates.
-    const key = `${line1}|${line2}|${above}`;
-    let seat = seats[0];
-    if (!fits(seat)) {
-      const held = seats.find((s) => s.k === MARK_SEAT_HELD.get(key));
-      seat = (held && fits(held) ? held : seats.find(fits)) ?? seats[0];
-      MARK_SEAT_HELD.set(key, seat.k);
+    if (seatFirst === 'peak-r') {
+      // PINNED, and it does not go through the search at all: no candidate list, no fit
+      // test, no stickiness. The block hangs off its own point — right of the peak and just
+      // under its tip, ABOVE the line falling away from it, the way the phone export draws
+      // «−26% 1987» — and travels with it. Anything that searches here flicks: on this frame
+      // the natural seat is under the disc's caption for the whole zoom, so every frame the
+      // winner changed and the label stepped between the caption's left, its right, and the
+      // bull marker's right. A seat that is READ, not chosen, is the only thing that holds.
+      left = px + PEAK_SEAT_DX;
+      base = py + PEAK_SEAT_DY;
+      placed?.push(box(left, base));
     } else {
-      MARK_SEAT_HELD.delete(key);
+      // The seat is STICKY. Scroll moves every point continuously, so re-picking the best free
+      // seat each frame let a crowded date flick between two of them mid-morph. It goes back to
+      // its natural seat the moment that one is free, keeps the seat it took while it is not,
+      // and only looks for a new one when the seat it is in stops fitting. Held by NAME, so
+      // what is remembered is «which side of its own point», not a stale pair of coordinates.
+      const key = `${line1}|${line2}|${above}`;
+      let seat = seats[0];
+      if (!fits(seat)) {
+        const held = seats.find((s) => s.k === MARK_SEAT_HELD.get(key));
+        seat = (held && fits(held) ? held : seats.find(fits)) ?? seats[0];
+        MARK_SEAT_HELD.set(key, seat.k);
+      } else {
+        MARK_SEAT_HELD.delete(key);
+      }
+      left = seat.l; base = seat.b;
+      placed?.push(box(left, base));
     }
-    left = seat.l; base = seat.b;
-    placed?.push(box(left, base));
   }
   if (maxRight != null && left + w > maxRight) left = maxRight - w;
   ctx.fillStyle = CRISIS;
@@ -435,6 +523,22 @@ interface Crisis {
    *  line keeps falling away from it. 2020 is the exception: the recovery is near-vertical
    *  and right up against the peak, so the label lands on the curve. */
   labelShift?: number;
+  /** Same unit and sign, for the TROUGH DATE under the point — and only on the NARROW
+   *  frame, where the plot keeps the label's type size but loses two thirds of its width.
+   *  Only 2002 carries one: there its trough sits a label's width from the 2008 crash's own
+   *  near-vertical drop, and the block — «September» is wider than the year it is anchored
+   *  by — printed over that line. The seat search dodges other LABELS, not the curves, so
+   *  this one is authored. It shifts the ANCHOR, not the seat, which is why it costs
+   *  nothing on the peak-relative frames: there the same block is already pinned against
+   *  the plot's right edge (see `inPlot`), and the anchor is not what decides where it
+   *  lands. Desktop never needs it — 20px of a 1140-wide plot is not the same crowd. */
+  dateShiftPhone?: number;
+  /** This crisis's own PCT_SHIFT_PHONE, in digit widths — the narrow frame's default is
+   *  three quarters of a digit for every percentage, and 2000 asks for a digit and a half.
+   *  It carries its neighbour with it: «−51% 2008» has no room for its own seat there and
+   *  sits tucked against this block (see `tuckAt`), so the pair moves as one and only the
+   *  leading label states the amount. */
+  pctShiftPhone?: number;
 }
 
 // Numeric peak/trough are data; trough date + crisis label come from copy.json.
@@ -442,10 +546,27 @@ const CRISIS_LABELS = copy.charts.crises;
 const CRISES: Crisis[] = [
   { peak: [1973, 1], trough: [1974, 9], ...CRISIS_LABELS[0] },
   { peak: [1987, 8], trough: [1987, 11], ...CRISIS_LABELS[1] },
-  { peak: [2000, 8], trough: [2002, 9], ...CRISIS_LABELS[2] },
+  // 3 digits ≈ 40px of the 18px face: 20 to clear the 2008 drop the block was printing over,
+  // and 20 more by eye — off the line is not the same as reading clear of it.
+  { peak: [2000, 8], trough: [2002, 9], ...CRISIS_LABELS[2], dateShiftPhone: 3, pctShiftPhone: 1.5 },
   { peak: [2007, 10], trough: [2009, 3], ...CRISIS_LABELS[3] },
   { peak: [2020, 1], trough: [2020, 3], ...CRISIS_LABELS[4], labelShift: 2 },
 ];
+
+/** The trough date's authored seat adjustment on this frame — see Crisis.dateShiftPhone.
+ *  Stated once, so both date-drawing frames read the same rule. */
+const dateShiftOf = (c: Crisis) => (isMobileViewport() ? c.dateShiftPhone ?? 0 : 0);
+
+/** Where every crisis PERCENTAGE sits on the narrow frame, in digit widths left of the
+ *  anchor the wide one uses. Three quarters of a digit ≈ 10px. It is one number rather
+ *  than five per-crisis ones because it is not five problems: the price curve spends its
+ *  whole width in the right half of the plot, so on 402 every peak has its own drop rising
+ *  immediately to the right of the block that names it. The 1973–74 block has no room for
+ *  the full amount and simply stops at the plot's left edge — `inPlot` already clamps every
+ *  seat into the plot, so the first label takes the ~5px there is and no special case. */
+const PCT_SHIFT_PHONE = 0.75;
+const pctShiftOf = (c: Crisis) =>
+  (isMobileViewport() ? c.pctShiftPhone ?? PCT_SHIFT_PHONE : 0);
 
 const ymToX = ([y, m]: YM) => y + (m - 1) / 12;
 const ymToIdx = (xs: number[], ym: YM) => Math.round((ymToX(ym) - xs[0]) * 12);
@@ -501,6 +622,7 @@ const THEME_BEAR = { BG: '#f14268', GRID: '#26090f', AXIS: '#3a0d18', CRISIS: '#
 const THEME_BULL = { BG: '#000000', GRID: '#8a8884', AXIS: '#d8d6d2', CRISIS: '#ff6b5c', LINE: '#8a8884' };
 function applyTheme(theme: number) {
   const k = theme < 0 ? 0 : theme > 1 ? 1 : theme;
+  THEME_K = k;
   BG = lerpColor(THEME_BEAR.BG, THEME_BULL.BG, k);
   GRID = lerpColor(THEME_BEAR.GRID, THEME_BULL.GRID, k);
   AXIS = lerpColor(THEME_BEAR.AXIS, THEME_BULL.AXIS, k);
@@ -608,6 +730,10 @@ function viewConfig(key: string): Cfg {
   // the exact single-1987 drawdown (BM_DD: 0% at y≈box-top) — so the 0% line and the −10/
   // −20/−30 ticks DON'T jump between drawCandleStage and the slide, nor between slides.
   return { kind: 'slide', xMin: 0, xMax: s.tight ? tightXMax() : slideXMax(s.years), yMin: s.yMin, yMax: 100,
+    // `tight` rides along because the DATE's seat differs on these two frames: the phone
+    // export parks «November 1987» beside its dot here, where the wider slides keep every
+    // date under its own (see drawMarkerTwoLine's besideFirst).
+    tight: !!s.tight,
     visibleYears: s.years, focusYear: s.focus, focusAll: false };
 }
 
@@ -804,16 +930,26 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       ctx.fillText(LBL.finCrisis || 'The financial crisis', cx, cy - radius - BULL_CAPTION_OVER);
     } else {
       const k = radius / BULL_CALLOUT_R_DESIGN;
-      ctx.translate(cx, cy);
-      ctx.scale(k, k);
-      // SVG seat (487.3, 208.4) vs circle centre (593.5, 382), +1 line down.
+      // SVG seat (487.3, 208.4) vs circle centre (593.5, 382), +1 line down. Size and the
+      // horizontal seat ride the disc's own scale; the HEIGHT off its centre does not. The
+      // disc shrinks with the frame's width, but «−26% 1987» is placed by the DATA — its
+      // peak sits at the same height whatever the width — so a caption that scales its way
+      // down towards the centre closes on a label that never moves, and by ~900 it is
+      // printing over it. Held at the design distance, it instead rises through the disc as
+      // the frame narrows: still inside it at 800 (the disc's top is 158 up there), and at
+      // full width identical to the export, which is the frame it was drawn against.
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.textAlign = 'left';
-      ctx.font = "24px 'Struve', system-ui, sans-serif";
+      ctx.font = `${(24 * k).toFixed(2)}px 'Struve', system-ui, sans-serif`;
+      // Not a flat line either: over that same range it eases CAPTION_SETTLE px back down,
+      // so a narrowing frame reads as the caption settling rather than as a level it is
+      // pinned to. Driven by k, which is this function's own measure of the frame's width
+      // (≈1 at the 1440 design, ≈0.56 where the phone layout takes over at 800).
+      const settle = CAPTION_SETTLE * smoothstep((1 - k) / (1 - CAPTION_K_AT_PHONE));
       ctx.fillText(
         LBL.finCrisis || 'The financial crisis',
-        487.348 - 593.5,
-        208.448 - 382 + 24,
+        cx + (487.348 - 593.5) * k,
+        cy + (208.448 - 382 + 24) + settle,
       );
     }
     ctx.restore();
@@ -1229,7 +1365,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
       if (markK > 0.004 && px >= x0 + 30 && px <= x1 + 4 && py >= y0 && py <= y1) {
         drawMarkerTwoLine(
           ctx, c.troughMonth, c.troughYear, px, py, FONT, FONT_MARK, { l: x0, r: xData1, t: y0, b: y1 },
-          false, 0, BG, placedMarks,
+          false, dateShiftOf(c), BG, placedMarks,
+          // The two TIGHT frames seat their date beside the dot, per the phone export; the
+          // wider slides keep theirs under it. Taken from whichever frame the morph is
+          // nearer, so the swap happens at the halfway point, where the scale is moving
+          // anyway, rather than at either end where the frame is standing still.
+          isMobileViewport() && (t < 0.5 ? cfgA.tight : cfgB.tight) ? 'level-l' : undefined,
         );
       }
     }
@@ -1258,6 +1399,12 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const bullAlpha = (cfg.bullAlpha as number) || 0;
     const bullCx = sx(1988), bullCy = sy(Y[ymToIdx(xs, [1988, 6])] || 320);
     const bullR = BULL_CALLOUT_R_DESIGN / BM_GEOM.box.w * (x1 - x0);
+    // Where the figurine + its gold dot land on the curve (December 1989). Read here, not
+    // at the draw call below, because the crisis labels have to book it as an obstacle
+    // before they choose their seats — one source, so the box can never describe a marker
+    // that is drawn somewhere else.
+    const bullMarkX = sx(1989 + 11 / 12);
+    const bullMarkY = sy(isFinite(Y[ymToIdx(xs, [1989, 12])]) ? Y[ymToIdx(xs, [1989, 12])] : 350);
     if (bullAlpha > 0.01) {
       ctx.save(); ctx.globalAlpha = bullAlpha;
       drawBullHalo(ctx, bullCx, bullCy, bullR);
@@ -1277,7 +1424,9 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     const iEnd = Math.min(xs.length - 1, ymToIdx(xs, [Math.ceil(xMax), 12]));
 
     ctx.save();
-    ctx.beginPath(); ctx.rect(x0, y0, xData1 - x0, y1 - y0); ctx.clip();
+    // Top of the ink is the top TICK (see seriesTop), not the plot's ceiling.
+    const yTop = seriesTop(yClip, sy);
+    ctx.beginPath(); ctx.rect(x0, yTop, xData1 - x0, y1 - yTop); ctx.clip();
 
     // Area fill under the main line: cream on bear/1b, green only once the invest
     // theme has taken over (investAlpha). Keying on showInvestment alone flipped
@@ -1347,6 +1496,17 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         ctx.restore();
         const cb = bullCy - bullR - BULL_CAPTION_OVER;
         placedMarks.push({ l: bullCx - cw / 2 - 6, r: bullCx + cw / 2 + 6, t: cb - 20, b: cb + 10 });
+        // …and the figurine + gold dot, which are painted later too. Without them the
+        // «−26% 1987» block had a free seat right on top of the bull — and took it or the
+        // one to its left depending on where the morph had the peak that frame, so it
+        // flicked between the two as you scrolled. Box in the marker's own SVG units
+        // (see BULL_PATH: the figure spans ±22 of the dot and rises 40 above it), scaled
+        // the way drawBull scales it.
+        const bs = bullMarkerScale(x1 - x0);
+        placedMarks.push({
+          l: bullMarkX - 25 * bs, r: bullMarkX + 25 * bs,
+          t: bullMarkY - 42 * bs, b: bullMarkY + 14 * bs,
+        });
       }
       for (const c of CRISES) {
         const iP = ymToIdx(xs, c.peak), iT = ymToIdx(xs, c.trough);
@@ -1376,7 +1536,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
           ctx, `${drop.toFixed(0)}%`, c.label,
           sx(xs[iP]), sy(Y[iP]), FONT_MARK_BOLD, FONT_MARK,
           { l: x0, r: xData1, t: y0, b: y1 }, true,
-          c.labelShift ?? 0, bullAlpha > 0.02 ? '' : BG, placedMarks,
+          (c.labelShift ?? 0) + pctShiftOf(c), bullAlpha > 0.02 ? '' : BG, placedMarks,
+          // The phone's Charging Bull frame: «−26% 1987» is PINNED into the notch of its
+          // own drop, right of the peak and a line under its tip, exactly where the export
+          // draws it. Nothing is searched for it there — on that frame its natural seat is
+          // under «The financial crisis» for the whole zoom, so the search re-chose every
+          // frame and the label stepped between the caption's left, the caption's right and
+          // the bull marker's right as the three slid past each other.
+          bullAlpha > 0.02 && c.peak[0] === 1987 && isMobileViewport() ? 'peak-r' : undefined,
         );
       }
       ctx.restore();
@@ -1455,10 +1622,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
 
     if (bullAlpha > 0.01) {
       ctx.save(); ctx.globalAlpha = bullAlpha;
-      const iDec1989 = ymToIdx(xs, [1989, 12]);
-      const dec89Price = isFinite(Y[iDec1989]) ? Y[iDec1989] : 350;
-      const dx = sx(1989 + 11 / 12), dy = sy(dec89Price);
-      drawBullCallout(ctx, bullCx, bullCy, bullR, dx, dy, x1 - x0);
+      drawBullCallout(ctx, bullCx, bullCy, bullR, bullMarkX, bullMarkY, x1 - x0);
       ctx.restore();
     }
   }
@@ -1526,11 +1690,20 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     drawYearAxis(ctx, sx, y1, xMin, xMax, x0, x1);
 
     ctx.save();
+    // The PLOT rect, not the series ceiling: this frame carries both scales at once and the
+    // percentage one starts at 0% on the plot's top line. Capping the whole block at the
+    // price scale's top tick (as drawState2 does — everything it draws is priced) chopped
+    // the tops off the drawdown pieces while they hung from that line, and let them grow
+    // back only as the morph pulled them down. The cap belongs to the price CURVE, and it
+    // is taken below, around the one path that is drawn in prices.
     ctx.beginPath(); ctx.rect(x0, y0, xData1 - x0, y1 - y0); ctx.clip();
     const endDots: { x: number; y: number; r: number; a: number }[] = [];
 
     if (a2Alpha > 0.02) {
       ctx.save(); ctx.globalAlpha = a2Alpha;
+      // Same ceiling as drawState2's, so the cap doesn't pop on or off through the morph.
+      const yTop = seriesTop(yClip, (v) => sy2(v, yClip));
+      ctx.beginPath(); ctx.rect(x0, yTop, xData1 - x0, y1 - yTop); ctx.clip();
       const iStart = Math.max(0, ymToIdx(xs, [Math.floor(xMin), 1]));
       const iEnd = Math.min(xs.length - 1, ymToIdx(xs, [Math.ceil(xMax), 12]));
       ctx.strokeStyle = LINE; ctx.lineWidth = lineWThin();
@@ -1612,7 +1785,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
         const py = lerp(screenYAt(iT, peakPrice, cfgA.kind), screenYAt(iT, peakPrice, cfgB.kind), pieceT);
         drawMarkerTwoLine(
           ctx, c.troughMonth, c.troughYear, sx(xs[iT]), py, FONT, FONT_MARK, { l: x0, r: xData1, t: y0, b: y1 },
-          false, 0, BG, placedMarks,
+          false, dateShiftOf(c), BG, placedMarks,
         );
       }
       ctx.restore();

@@ -72,7 +72,7 @@ export function Colophon() {
     /* Frame paddings, not a centred flex box: on the phone the list is twice the
        viewport tall, so there is nothing to centre. 46/175 top off the Copy-URL rect,
        78/165 bottom off the collapse control's line box. */
-    <section className="w-full min-h-[100dvh] bg-[#F14268] text-white px-5 lg:px-[149px] pt-[46px] pb-[78px] lg:pt-[175px] lg:pb-[165px]">
+    <section className="w-full min-h-[100svh] bg-[#F14268] text-white px-5 lg:px-[149px] pt-[46px] pb-[78px] lg:pt-[175px] lg:pb-[165px]">
       {/* One type spec for the whole slide: 24px on a 32px line, +0.01em. The desktop
           frame drops the tracking on the two Struve labels only. */}
       <div className="max-w-[1142px] mx-auto text-[24px] leading-[32px] tracking-[0.01em]">

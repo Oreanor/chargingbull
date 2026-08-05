@@ -631,7 +631,7 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           const sc = tuneStore.getScale(id);
           const parts: string[] = [];
           if (base) parts.push(base);
-          if (ox || oy) parts.push(`translate(${ox.toFixed(2)}vh, ${oy.toFixed(2)}vh)`);
+          if (ox || oy) parts.push(`translate(${ox.toFixed(2)}svh, ${oy.toFixed(2)}svh)`);
           if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
           el.style.transform = parts.length ? parts.join(' ') : '';
         };
@@ -802,8 +802,8 @@ export default function CandleIntro({
 
   // Standalone mode: own scroll region.
   return (
-    <section ref={sectionRef} style={{ height: `${frames * 100}dvh` }} className="relative w-full">
-      <div className="sticky top-0 h-[100dvh] w-full overflow-hidden">
+    <section ref={sectionRef} style={{ height: `${frames * 100}svh` }} className="relative w-full">
+      <div className="sticky top-0 h-[100svh] w-full overflow-hidden">
         <CandleScene progress={scrollYProgress} span={span} />
       </div>
     </section>

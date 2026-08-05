@@ -18,8 +18,8 @@ import MEASURE_H_M from '../assets/tonnes/measure-height-mobile.svg?raw'; // ↕
  * LAYOUT MODEL — one rule, no offset layers. Every piece is authored as a rect in its
  * breakpoint's own design frame, straight off the Figma export:
  *
- *   desktop  Desktop-20.svg     1440 × 800   (1vh = 8px)
- *   phone    iPhone 17-15.svg    402 × 874   (1vh = 8.74px)
+ *   desktop  Desktop-20.svg     1440 × 800   (1svh = 8px)
+ *   phone    iPhone 17-15.svg    402 × 874   (1svh = 8.74px)
  *
  * `f()` turns those design px into vh, so at the mockup's height a piece IS the
  * mockup's size and sits at the mockup's coordinate — nothing multiplies it. Pieces are
@@ -76,11 +76,28 @@ const DESKTOP: Frame = {
   caption:   { cx: 710, y: 642.95, w: 640, font: 18, line: 24 },
 };
 
+// Both measures are sized to the FIGURE, not to the mockup's own rects: the phone's bull is
+// rendered a few percent smaller than the export drew it (the GL host is frozen at 800px and
+// framed by width, so its size does not follow the frame's), and the arrows stood off it —
+// past the nose and the rump by ~5% across, and a tail's width above the back. So the spans
+// end where the bull does: nose→rump for 4.9 m, tail→hooves for 3.4 m, the hoof end sitting
+// just above the wheels with the rear one cut out of it (see `baseline.gap`).
+//
+// The spans carry their own type with them — each measure is ONE asset, arrow and label
+// together, so pulling them in shrinks «4.9 m» by 10% and «3.4 m» by 9%. That is the trade
+// this layout is built on (a piece is a rect, never a rect times a correction); the
+// alternative is re-cutting both SVGs so the label keeps its size while the arrow moves.
 const MOBILE: Frame = {
   px: { w: 402, h: 874 },
   headline:  { x: 14.69, y: 143.64, w: 371.90 },
-  measureW:  { x: 20.97, y: 345.76, w: 378 },
-  measureH:  { x: 316.55, y: 250.61, w: 68.74 },
+  measureW:  { x: 42.7, y: 345.76, w: 340.4 },
+  // x carries the 2.3 the narrower asset moves its own arrow by (the rule sits 30.2% in
+  // from its left edge), so the vertical line stays exactly where the mockup put it. y is
+  // solved from the TIPS, not typed: the top one CLEARS the tail (288.7 — the leader is a
+  // rule across the figure, so sitting on the tail's own top edge cuts through it), and the
+  // hoof one lands on the ground the cab's wheels stand on (507): the ground is shared, so
+  // that end is read off the wheels, a few px above the tyre's own bottom.
+  measureH:  { x: 318.3, y: 263.4, w: 62.85 },
   arrow:     { aspect: 234.1 / 60.3, tips: [0.103771, 0.998321] },
   leaderTop: { x: 240, w: 141 },
   baseline:  { x: 240, w: 141, gap: [0.291, 0.624] },
@@ -114,7 +131,7 @@ export default function TonnesFrame() {
 
   const F = isMobile ? MOBILE : DESKTOP;
   /** design px → vh in that frame */
-  const f = (px: number) => `${((px * 100) / F.px.h).toFixed(4)}vh`;
+  const f = (px: number) => `${((px * 100) / F.px.h).toFixed(4)}svh`;
 
   const rootRef = useRef<HTMLDivElement>(null);
   const greenRef = useRef<HTMLDivElement>(null);
@@ -157,7 +174,7 @@ export default function TonnesFrame() {
         const dx = (rect.x - frame.px.w / 2) / vh + ox;
         const dy = (rect.y - frame.px.h / 2) / vh + oy;
         el.style.transform =
-          `translate(${dx.toFixed(3)}vh, ${dy.toFixed(3)}vh)` +
+          `translate(${dx.toFixed(3)}svh, ${dy.toFixed(3)}svh)` +
           (Math.abs(ts - 1) < 1e-4 ? '' : ` scale(${ts.toFixed(4)})`);
       }
       const k = tonnesOverlayScale(progress.get());

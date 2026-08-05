@@ -50,7 +50,7 @@ export default function App() {
   // map→model handoff. Override the API base with `?api=...` if needed.
   if (params.has('datum')) {
     return (
-      <div className="w-full h-screen bg-black">
+      <div className="w-full h-[100svh] bg-black">
         <DatumSplat
           label="bull-env"
           sceneId={params.get('scene') || '32caa065-7eb1-43a1-b8fc-5d6017ed52ad'}
@@ -70,7 +70,7 @@ export default function App() {
     // stages). Tune poses, hit "copy MDX", paste keys back into src/content/openerBull.ts.
     if (params.has('opener')) {
       return (
-        <div className="w-full h-[100dvh] overflow-hidden">
+        <div className="w-full h-[100svh] overflow-hidden">
           <ModelChapter
             src={OPENER_MODEL}
             frames={Number(params.get('frames')) || 8}
@@ -87,7 +87,7 @@ export default function App() {
     const frames = Number(params.get('frames')) || 4;
     const stages = params.get('stages') || undefined;
     return (
-      <div className="w-full h-[100dvh] overflow-hidden">
+      <div className="w-full h-[100svh] overflow-hidden">
         <ModelChapter
           src={model}
           frames={frames}

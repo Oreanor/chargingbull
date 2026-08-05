@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useInViewMount } from './useInViewMount';
 import { useSmoothProgress } from './smoothScroll';
 import { createChartsEngine, CHART_STEPS, DWELL_HOLD_FRAC, type ChartsEngine } from './charts/chartsEngine';
+import { isMobileViewport } from './deviceBudget';
+import { viewportH } from './viewport';
 import { tuneStore } from './tuneEditor';
 import copy from '../content/copy.json';
 import './ChartsChapter.css';
@@ -35,7 +37,7 @@ const ENTRY_VH = 90;
  *  The rest of the tail is the clean-chart beat before AnatomyCrisis rises — the card is
  *  already off-screen through it, so it costs nothing to watch. (Its opening counterpart,
  *  ENTRY_CLEAR, was the opposite: it landed the first card at dead centre 72% into the
- *  lead-in and left it PINNED there, in full view, for the remaining ~25vh of scrolling.
+ *  lead-in and left it PINNED there, in full view, for the remaining ~25svh of scrolling.
  *  The card now arrives exactly as the chart starts to move, so it never stands.) */
 const EXIT_CLEAR = 0.72;
 
@@ -93,6 +95,17 @@ export default function ChartsChapter() {
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const progress = useSmoothProgress(ref);
   const [engine, setEngine] = useState<ChartsEngine | null>(null);
+  // The credits line has its own PHONE wording (copy.charts.footerPhone) — the full
+  // citation is five lines on a 402-wide frame, which eats the plot. Same 800px frame
+  // the stage's CSS and the canvas itself flip at (deviceBudget.MOBILE_MAX), so the
+  // three never disagree about which mockup is being drawn.
+  const [phone, setPhone] = useState(isMobileViewport);
+  useEffect(() => {
+    const onResize = () => setPhone(isMobileViewport());
+    window.addEventListener('resize', onResize);
+    onResize();
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Create the engine once the chapter nears the viewport. Attach ResizeObserver only
   // after setEngine — early RO paints were flashing the 0a line + −20% before the
@@ -124,8 +137,9 @@ export default function ChartsChapter() {
   }, [mounted]);
 
   // Tell the engine how much room the credits block needs under the plot, so the X
-  // labels are laid out above it instead of across it. Measured, not a breakpoint guess:
-  // the block is fixed 16/24 text and wraps to six lines on a narrow phone.
+  // labels are laid out above it instead of across it. MEASURED, not a breakpoint guess —
+  // which is also why the phone's shorter wording needs nothing else: the block is
+  // observed, so the plot floor rises with it the moment it wraps to fewer lines.
   useEffect(() => {
     const eng = engine, el = legendRef.current;
     if (!eng || !el) return;
@@ -150,7 +164,7 @@ export default function ChartsChapter() {
     if (!stage || !secEl) return;
     const update = () => {
       const rect = secEl.getBoundingClientRect();
-      const vh = window.innerHeight || 1;
+      const vh = viewportH() || 1;
       // The stage is a STATIONARY pink backdrop (position:fixed, never moves) that sits
       // ABOVE the explainer (z-20 vs z-10). It must NOT cover the explainer while its text
       // is still being read — so it fades in ONLY as the section closes to ~1 screen away,
@@ -216,7 +230,7 @@ export default function ChartsChapter() {
       // Split the section: the morph runs 0..1 over the first part (idx 0→N-1); the last
       // EXIT_VH is a tail where the chart HOLDS its final frame and only the last card moves.
       const secEl = ref.current;
-      const vh = window.innerHeight || 1;
+      const vh = viewportH() || 1;
       const rangePx = secEl ? Math.max(1, secEl.offsetHeight - vh) : 1;
       // The section is three regions: a lead-in where the first card arrives, the morph
       // itself, and a tail where the last card leaves. The chart only moves in the middle.
@@ -288,7 +302,7 @@ export default function ChartsChapter() {
       if (legendRef.current) {
         const [ox, oy] = tuneStore.get('charts.legend');
         const sc = tuneStore.getScale('charts.legend');
-        const vh = (window.innerHeight || 1) / 100;
+        const vh = (viewportH() || 1) / 100;
         const parts: string[] = [];
         if (ox || oy) parts.push(`translate(${(ox * vh).toFixed(1)}px, ${(oy * vh).toFixed(1)}px)`);
         if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
@@ -297,7 +311,7 @@ export default function ChartsChapter() {
       if (brandRef.current) {
         const [ox, oy] = tuneStore.get('charts.topbar');
         const sc = tuneStore.getScale('charts.topbar');
-        const vh = (window.innerHeight || 1) / 100;
+        const vh = (viewportH() || 1) / 100;
         const parts: string[] = [];
         if (ox || oy) parts.push(`translate(${(ox * vh).toFixed(1)}px, ${(oy * vh).toFixed(1)}px)`);
         if (sc !== 1) parts.push(`scale(${sc.toFixed(3)})`);
@@ -322,8 +336,8 @@ export default function ChartsChapter() {
   }, [engine, progress]);
 
   return (
-    <section ref={ref} style={{ height: `${N * 100 + SEG_EXTRA * 100 + ENTRY_VH + EXIT_VH}dvh` }} className="cc-section relative w-full">
-      <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100dvh] w-full overflow-hidden" style={{ opacity: 0, visibility: 'hidden', pointerEvents: 'none' }}>
+    <section ref={ref} style={{ height: `${N * 100 + SEG_EXTRA * 100 + ENTRY_VH + EXIT_VH}svh` }} className="cc-section relative w-full">
+      <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100svh] w-full overflow-hidden" style={{ opacity: 0, visibility: 'hidden', pointerEvents: 'none' }}>
         <canvas ref={canvasRef} className="cc-canvas" />
         <div className="cc-gradient" aria-hidden />
         <div className="cc-topbar">
@@ -348,7 +362,7 @@ export default function ChartsChapter() {
           className="cc-legend"
           data-tune="charts.legend"
           data-tune-mode="store"
-          dangerouslySetInnerHTML={{ __html: copy.charts.footer }}
+          dangerouslySetInnerHTML={{ __html: phone ? copy.charts.footerPhone : copy.charts.footer }}
         />
         {/* Text cards — PINNED overlays (not scrolled). Each fades in only when its
             chart has settled and out during the morph (opacity driven in apply above),

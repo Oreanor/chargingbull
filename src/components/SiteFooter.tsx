@@ -19,7 +19,7 @@ export function SiteFooter() {
   );
   return (
     <footer
-      className="relative w-full min-h-[100dvh] flex flex-col justify-center bg-black text-[#767676] px-8 lg:pl-[46px] lg:pr-[64px] py-16 md:py-24"
+      className="relative w-full min-h-[100svh] flex flex-col justify-center bg-black text-[#767676] px-8 lg:pl-[46px] lg:pr-[64px] py-16 md:py-24"
       style={{ fontFamily: 'var(--font-struve)' }}
     >
       {/* Méridien mark — desktop only. On mobile the logo disappears (per the mockup), and

@@ -125,17 +125,22 @@
   display: block;
   overflow: visible; /* let the bull dot render outside the bbox */
 }
-/* Phone: the stage it is pinned inside is `h-screen`, i.e. 100vh — the LARGE viewport, taller
-   than what is on screen while the browser's URL bar is showing. Anchoring to the stage's own
-   bottom therefore parks the locator below the fold by exactly the height of that chrome. The
-   offset is measured from the visible bottom instead; the stage keeps its 100vh so the map
-   canvas is not resized on every URL-bar show/hide. */
+/* Phone. The stage this is pinned inside used to be `h-screen` — 100vh, the LARGE viewport,
+   taller than what is on screen while the browser's URL bar shows — so anchoring to the
+   stage's own bottom parked the locator below the fold by exactly the height of that chrome,
+   and the offset was written as `calc(100vh - 100dvh + 14px)` to measure from the visible
+   bottom instead. The stage is 100svh now (see engine/viewport.ts: every height on the page
+   is, so the URL bar sliding resizes nothing), which is the visible bottom — so this is just
+   an inset again. */
 @media (max-width: 720px) {
   .mc-locator {
     width: 180px;
     height: 210px;
-    right: 14px;
+    /* …and in the LEFT corner here, where the wide frame keeps it on the right. `right`
+       is cleared, not just overridden: the base rule sets it, and a box pinned to both
+       sides is pinned to neither. */
+    left: 14px;
+    right: auto;
     bottom: 14px;
-    bottom: calc(100vh - 100dvh + 14px);
   }
 }

@@ -51,7 +51,7 @@ export default function SelfieFrame() {
         if (!el) continue;
         const [ox, oy] = tuneStore.get(pc.id);
         const s = tuneStore.getScale(pc.id);
-        el.style.transform = `translate(${(ox + pc.x).toFixed(2)}vh, ${(oy + pc.y).toFixed(2)}vh) scale(${s}) translate(-50%, -50%)`;
+        el.style.transform = `translate(${(ox + pc.x).toFixed(2)}svh, ${(oy + pc.y).toFixed(2)}svh) scale(${s}) translate(-50%, -50%)`;
       }
     };
     tick();
@@ -68,7 +68,7 @@ export default function SelfieFrame() {
           data-tune={pc.id}
           data-tune-mode="store"
           className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ left: '50%', top: '50%', width: '6vh', transform: 'translate(-50%, -50%)' }}
+          style={{ left: '50%', top: '50%', width: '6svh', transform: 'translate(-50%, -50%)' }}
           dangerouslySetInnerHTML={{ __html: DOT }}
         />
       ))}
