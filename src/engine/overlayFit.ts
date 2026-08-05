@@ -154,12 +154,15 @@ const BLOWUP_IN0 = 0.75;
 const BLOWUP_IN1 = 0.80;
 const BLOWUP_OUT0 = 0.85;
 const BLOWUP_OUT1 = 0.90;
-/** Absolute seat during the разлёт, in frame heights: the approach seat's 0.08 less the 0.069
- *  that was asked for, then 0.02 further left so the thrown horns land ON the two green dots
- *  rather than just inside them. Read off the 637×985 frame, where the tips sat ~20px right
- *  of the dots — and 20px is the same fraction of the frame at every window size, since both
- *  the dots (vh) and this (frame heights) key off the height alone. */
-const BLOWUP_X = -0.009;
+/** Absolute seat during the разлёт, in frame heights. It was −0.009 — the approach seat's
+ *  0.08 less the 0.069 that was asked for, then 0.02 further left so the thrown horns landed
+ *  ON the two green dots. That framing left the whole right side of the figure inside the
+ *  phone's crop with air to spare, so the composition ran wide and the second horn dot had
+ *  nothing but black under it. Now +0.011 of a frame height (10px of the 874 mockup) to the
+ *  RIGHT of that: the right horn and the rump go over the edge, and the frame closes on the
+ *  head. PartsFrame's phone seats carry the same 10px, and its second horn dot is gone with
+ *  the horn it named. Still one absolute number in frame heights, for the reason below. */
+const BLOWUP_X = 0.0022;
 
 /** Frame nudge for the phone, as [right, up] in frame heights. Desktop always [0, 0]. */
 export function mobileFrameNudge(t: number): [number, number] {

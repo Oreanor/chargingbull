@@ -1,1 +1,48 @@
-{}
+{
+  "parts.hornsDot1": {
+    "desktop": [
+      -4.55,
+      -12.03
+    ],
+    "mobile": [
+      -0.1,
+      0.2
+    ]
+  },
+  "parts.hornsDot2": {
+    "desktop": [
+      11.32,
+      -12.85
+    ]
+  },
+  "parts.measure5cm": {
+    "desktop": [
+      -2.53,
+      0.71
+    ],
+    "mobile": [
+      -0.4,
+      0.3
+    ]
+  },
+  "parts.dot": {
+    "desktop": [
+      -11.63,
+      -0.3
+    ],
+    "mobile": [
+      0,
+      0
+    ]
+  },
+  "parts.horns": {
+    "desktop": [
+      -0.2,
+      -1.21
+    ],
+    "mobile": [
+      -1.81,
+      -1.32
+    ]
+  }
+}

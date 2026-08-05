@@ -71,14 +71,20 @@ const COORDS_DESKTOP: Record<string, [number, number]> = {
   'parts.hornsDot1': [-42, -35.8],
   'parts.hornsDot2': [7.84, -34.45],
 };
+// MOBILE x carries the same +1.14 (10px of the 874 frame) the figure moved right by when
+// the phone's разлёт seat was closed on the head — see overlayFit.BLOWUP_X. The labels are
+// screen-anchored, so a frame that pans without them leaves every dot behind its feature.
+// (It was 50px for a moment and the note ran off the right edge; the pan parallaxes, so if
+// the two pieces that point AT something drift, they are the ones to re-read.)
 const COORDS_MOBILE: Record<string, [number, number]> = {
-  'parts.title': [-5.09, 32.36],      // "30" + subtitle, bottom-left
-  'parts.dot': [-12.66, 6.7],         // nose / snout tip
-  'parts.emptyInside': [9.77, 1.27],  // right of the head
-  'parts.measure5cm': [3.07, -11.88], // 5 cm on the withers (холка)
-  'parts.horns': [5.14, -31.74],      // horns note across the top
-  'parts.hornsDot1': [-15.13, -22.52], // tip of the left horn fragment
-  'parts.hornsDot2': [20.03, -22.76],  // tip of the right horn fragment
+  'parts.title': [-3.95, 32.36],      // "30" + subtitle, bottom-left
+  'parts.dot': [-11.52, 6.7],         // nose / snout tip
+  'parts.emptyInside': [10.91, 1.27], // right of the head
+  'parts.measure5cm': [4.21, -11.88], // 5 cm on the withers (холка)
+  'parts.horns': [6.28, -31.74],      // horns note across the top
+  'parts.hornsDot1': [-13.99, -22.52],// tip of the left horn fragment
+  // (no parts.hornsDot2 here — the phone's right horn is cut by the crop, so that dot is
+  //  not drawn at all; the desktop keeps all three.)
 };
 // Desktop sizes are the ASSETS' OWN design sizes, in vh against the 1440×800 frame
 // (1svh = 8px), so each label lands at the mockup's size with nothing multiplying it:
@@ -139,7 +145,8 @@ export default function PartsFrame() {
     mk('parts.measure5cm', measureRef),
     mk('parts.horns', hornsRef),
     mk('parts.hornsDot1', hornsDot1Ref),
-    mk('parts.hornsDot2', hornsDot2Ref),
+    // Desktop only — the phone draws one dot up top (see the markup below).
+    ...(isMobile ? [] : [mk('parts.hornsDot2', hornsDot2Ref)]),
   ];
 
   useEffect(() => {
@@ -239,7 +246,7 @@ export default function PartsFrame() {
           style={{ ...anchor, width: mob('9svh', px(181)) }}
         >
           {isMobile
-            ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75svh', lineHeight: 1.15 }}>{copy.parts.emptyInside}</div>
+            ? <div style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: '2.75svh', lineHeight: 1.15, textAlign: 'center' }}>{copy.parts.emptyInside}</div>
             : <div className="w-full [&>svg]:block [&>svg]:w-full [&>svg]:h-auto" dangerouslySetInnerHTML={{ __html: EMPTY_INSIDE }} />}
         </div>
 
@@ -268,14 +275,14 @@ export default function PartsFrame() {
         {/* horns note — "cast thicker, ~7.5 cm of bronze" (DOM text, both layouts) */}
         <div ref={hornsRef} data-tune="parts.horns" data-tune-mode="store" className="absolute" style={{ ...anchor, width: mob('34svh', '57svh') }}>
           <div
-            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06svh', px(18)), lineHeight: mob(1.55, 24 / 18) }}
+            style={{ color: green, fontFamily: 'var(--font-struve)', fontSize: mob('2.06svh', px(18)), lineHeight: mob(1.3, 24 / 18) }}
             dangerouslySetInnerHTML={{ __html: copy.parts.horns }}
           />
         </div>
 
-        {/* marker dots — both horns + the nose (parts.dot). All three on both
-            breakpoints: the second used to be desktop-only, with [0,0] standing in for its
-            mobile seat, so on a phone the frame showed two dots instead of three. */}
+        {/* marker dots — the nose (parts.dot) plus the horns. THREE on the desktop, TWO on
+            the phone: the narrow crop cuts the right horn, so its dot had nothing to sit on
+            and hung in the corner. One dot up top there, on the horn that is still whole. */}
         <div
           ref={hornsDot1Ref}
           data-tune="parts.hornsDot1"
@@ -284,14 +291,16 @@ export default function PartsFrame() {
           style={{ ...anchor, width: mob(DOT_W.mobile, DOT_W.desktop) }}
           dangerouslySetInnerHTML={{ __html: DOT }}
         />
-        <div
-          ref={hornsDot2Ref}
-          data-tune="parts.hornsDot2"
-          data-tune-mode="store"
-          className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
-          style={{ ...anchor, width: mob(DOT_W.mobile, DOT_W.desktop) }}
-          dangerouslySetInnerHTML={{ __html: DOT }}
-        />
+        {isMobile ? null : (
+          <div
+            ref={hornsDot2Ref}
+            data-tune="parts.hornsDot2"
+            data-tune-mode="store"
+            className="absolute [&>svg]:block [&>svg]:w-full [&>svg]:h-auto"
+            style={{ ...anchor, width: DOT_W.desktop }}
+            dangerouslySetInnerHTML={{ __html: DOT }}
+          />
+        )}
       </div>
     </div>
   );

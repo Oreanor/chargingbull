@@ -1,4 +1,4 @@
-import { OPENER_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TRACK } from './openerBull';
+import { OPENER_MODEL, OPENER_CUT_MODEL, OPENER_FRAMES, OPENER_PLACEMENT, OPENER_EXTRAS, OPENER_TRACK } from './openerBull';
 import copy from './copy.json';
 import { BearsBullsTitle } from '../components/BearsBullsTitle';
 import { BullBearExplainer } from '../components/BullBearExplainer';
@@ -21,6 +21,7 @@ import { BullBearExplainer } from '../components/BullBearExplainer';
 
 <ModelChapter
   src={OPENER_MODEL}
+  cutSrc={OPENER_CUT_MODEL}
   frames={OPENER_FRAMES}
   loader
   background={[0, 0, 0, 1]}

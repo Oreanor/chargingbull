@@ -25,6 +25,13 @@ const RAD2DEG = 180 / Math.PI;
 export interface GlbSceneOptions {
   container: HTMLElement;
   modelUrl: string;
+  /** The SAME figure cut into sections, for the explode. The chapter shows `modelUrl` — one
+   *  watertight mesh, no saw lines — and swaps to this one only while the explode is on
+   *  (see applyVariant), so the seams appear as the thing comes apart rather than being
+   *  drawn across an intact bull for the whole chapter. Loaded AFTER the main model, in the
+   *  background: it is not needed until the explode, and the reveal waits on the main one.
+   *  Must be the same figure in the same authored space — the swap applies no correction. */
+  cutModelUrl?: string;
   /** [r,g,b,a]; a=0 → transparent canvas over the page. */
   background?: [number, number, number, number];
   /** Spotlight look: a soft radial glow at the centre fading to black at the edges
@@ -119,6 +126,18 @@ const FRONT_IS_AXIS_MAX = true;
  *  whole animal tipping over. */
 const PITCH_PIVOT = 0.8;
 
+/** Both builds of the bull are cast shells — single-sided faces show the inside as holes
+ *  from any angle that looks into one. Stated once, since two models now need it. */
+function doubleSided<T extends THREE.Object3D>(root: T): T {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) m.side = THREE.DoubleSide;
+  });
+  return root;
+}
+
 export class GlbScene {
   private readonly options: GlbSceneOptions;
   private renderer: THREE.WebGLRenderer | null = null;
@@ -147,8 +166,19 @@ export class GlbScene {
   private extraEnvTex: THREE.Texture | null = null;
   /** Per-extra depth-only shell meshes (built lazily) for single-layer transparency. */
   private readonly extraShells: (THREE.Mesh[] | null)[] = [];
-  /** Main model + its home position, for the forward push/lunge. */
+  /** Main model + its home position, for the forward push/lunge. This is the GROUP that
+   *  holds both builds of the figure (see cutModel/solidModel): everything that PLACES the
+   *  bull — scale, pitch, drop, push, the fallback framing — acts on the group, so the two
+   *  builds can never disagree about where it stands. */
   private mainModel: THREE.Object3D | null = null;
+  /** The two builds, siblings in that group. `solid` is one watertight mesh — no seams, and
+   *  what the chapter shows for all of its length; `cut` is the same figure sawn into its 55
+   *  sections, the only one the explode can take apart. Exactly one is visible; the swap is
+   *  driven by the explode amount alone (see applyVariant). They are interchangeable because
+   *  they are the same figure in the same authored space: identical world boxes to the
+   *  millimetre (3.058 × 3.397 × 5.567 about the same centre), so the swap moves nothing. */
+  private cutModel: THREE.Object3D | null = null;
+  private solidModel: THREE.Object3D | null = null;
   /** World-space height of the main model + its y before any drop — the two numbers
    *  `dropFrac` needs, kept so a breakpoint change can re-seat it without a reload. */
   private modelHeight = 0;
@@ -276,14 +306,12 @@ export class GlbScene {
       this.options.modelUrl,
       (gltf) => {
         if (this.destroyed) return;
-        const model = gltf.scene;
-        model.traverse((o) => {
-          const mesh = o as THREE.Mesh;
-          if (mesh.isMesh && mesh.material) {
-            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-            for (const m of mats) m.side = THREE.DoubleSide;
-          }
-        });
+        // The figure is a GROUP from here on, not the loaded scene: the cut build joins it
+        // later as a sibling (see cutModelUrl), and everything below places the group, so
+        // the two are seated, pitched, dropped and pushed by one set of numbers.
+        const model = new THREE.Group();
+        model.add(doubleSided(gltf.scene));
+        this.solidModel = gltf.scene;
 
         const placement = this.options.placement;
         if (placement && placement.recenter === false) {
@@ -330,17 +358,17 @@ export class GlbScene {
           controls.update();
         }
 
-        // Capture per-mesh explode anchors now that the model is placed, then
-        // apply any explode/push requested before load finished.
         // mainModel is already set on the recenter:false path, where seatFigure needs it and
         // has also set modelHome. NaN seatedDrop = that never ran, i.e. the recentred path,
         // whose home is simply where the centring left the model.
         this.mainModel = model;
         if (Number.isNaN(this.seatedDrop)) this.modelHome.copy(model.position);
-        this.captureMeshHomes(model);
-        if (this.explodeAmount !== 0) this.applyExplode();
         if (this.pushAmount !== 0) this.applyPush();
         this.options.onProgress?.(1, 1, true);
+        // Only now the cut build, into the same group: it is not needed until the explode,
+        // and starting it here keeps it off the wire while the reveal is still waiting on
+        // this one. Its explode anchors are captured when it lands (see loadCutBuild).
+        if (this.options.cutModelUrl) this.loadCutBuild(loader, model, this.options.cutModelUrl);
       },
       (e) => {
         // three reports bytes; only emit when total is known.
@@ -559,7 +587,39 @@ export class GlbScene {
     this.applyExplode();
   }
 
+  /** The cut build, loaded in the background and parked in the figure's group next to the
+   *  solid one. It inherits the group's placement, so nothing here re-seats it. */
+  private loadCutBuild(loader: GLTFLoader, group: THREE.Object3D, url: string): void {
+    loader.load(
+      url,
+      (gltf) => {
+        if (this.destroyed) return;
+        const cut = doubleSided(gltf.scene);
+        this.cutModel = cut;
+        group.add(cut);
+        // Anchors come off the CUT scene alone — the solid one is a sibling in the group and
+        // is never taken apart, so it must not appear in meshHomes.
+        this.captureMeshHomes(cut);
+        this.applyExplode();
+      },
+      undefined,
+      // A missing cut build is not a broken chapter: the figure stays whole and the explode
+      // does nothing, which is a better failure than a black frame at the seam.
+      (err) => console.warn('[GlbScene] cut build failed to load', err),
+    );
+  }
+
+  /** Which build is on screen. The cut one exists to come APART, so it is shown exactly
+   *  while the explode is on and the solid one carries every other frame — that is the whole
+   *  point of loading two. Falls back to the solid until the cut build has landed. */
+  private applyVariant(): void {
+    const cut = this.explodeAmount > 0 && !!this.cutModel;
+    if (this.cutModel) this.cutModel.visible = cut;
+    if (this.solidModel) this.solidModel.visible = !cut;
+  }
+
   private applyExplode(): void {
+    this.applyVariant();
     const ex = this.explodeAmount;
     const { front, rear, bias, sharpness, rise = 1 } = this.explodeWeights;
     for (const [mesh, home] of this.meshHomes) {

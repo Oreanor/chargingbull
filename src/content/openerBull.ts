@@ -8,7 +8,15 @@ import type { ChapterExtra } from '../engine/ModelChapter';
  * "copy MDX" there, and paste the resulting `keys` back into OPENER_TRACK here.
  */
 
-export const OPENER_MODEL = '/chapters/splash/models/Bullforweb2-butcher4.glb';
+// TWO builds of the same figure. The chapter runs on the WHOLE one — one watertight mesh,
+// no saw lines across the bronze — and swaps to the cut one only while the explode is on
+// (ModelChapter `cutSrc` → GlbSceneOptions.cutModelUrl). They share an authored space: both
+// measure 3.058 × 3.397 × 5.567 about the same centre, so the swap moves nothing on screen.
+// The cut build is the heavier of the two (1.3 MB against 0.93) and is fetched only after
+// the whole one has landed — the opener's reveal waits on that one, and nothing needs the
+// sections until ~0.75 of the chapter.
+export const OPENER_MODEL = '/chapters/splash/models/Bullforweb6.glb';
+export const OPENER_CUT_MODEL = '/chapters/splash/models/Bullforweb2-butcher4.glb';
 export const OPENER_FRAMES = 14;
 // Phone-only seating of the figure: it sits 9% of its own height lower than the captured
 // poses put it, with the muzzle tipped 6° down so the head reads the way it does in the wide

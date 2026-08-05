@@ -106,6 +106,7 @@ const LOADER_INTRO_MS = 0;
  */
 export default function ModelChapter({
   src,
+  cutSrc,
   frames = 4,
   track = { keys: [] },
   background = [0, 0, 0, 1],
@@ -120,6 +121,10 @@ export default function ModelChapter({
 }: {
   /** Model URL under public/, e.g. "/models/bull.sog". */
   src: string;
+  /** Optional second build of the SAME figure, sawn into sections. The chapter shows `src`
+   *  — whole, no saw lines — and swaps to this one only while the explode is on. Mesh
+   *  models only; loaded in the background after `src` (see GlbSceneOptions.cutModelUrl). */
+  cutSrc?: string;
   /** Scroll budget in viewport-heights (the sticky region's length). */
   frames?: number;
   /** Camera keyframes + lead-in/out fades. */
@@ -234,6 +239,7 @@ export default function ModelChapter({
           {active ? (
             <ModelScene
               src={src}
+              cutSrc={cutSrc}
               background={background}
               vignette={vignette}
               autoFrame={autoFrame}
@@ -278,6 +284,7 @@ export default function ModelChapter({
 
 function ModelScene({
   src,
+  cutSrc,
   background,
   vignette,
   autoFrame,
@@ -289,6 +296,9 @@ function ModelScene({
   onReady,
 }: {
   src: string;
+  /** The same figure sawn into its sections. Loaded behind the main one and shown only
+   *  while the explode is on — see GlbSceneOptions.cutModelUrl. */
+  cutSrc?: string;
   background: [number, number, number, number];
   vignette?: boolean;
   autoFrame: boolean;
@@ -329,7 +339,7 @@ function ModelScene({
     // Pick the renderer from the file extension: meshes → three.js GlbScene,
     // Datum splats (.sog/.ply) → DatumScene. Both expose the same pose API.
     const scene: ModelSceneHandle = isMeshModel(src)
-      ? new GlbScene({ container, modelUrl: src, background, vignette, placement, extras, rotate, pan, onProgress, onError })
+      ? new GlbScene({ container, modelUrl: src, cutModelUrl: cutSrc, background, vignette, placement, extras, rotate, pan, onProgress, onError })
       : new DatumScene({ container, modelUrl: src, background, controlsMode: 'orbit', autoFrame, onProgress, onError });
     void scene.init();
 
