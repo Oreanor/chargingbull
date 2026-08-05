@@ -138,7 +138,11 @@
  */
 :root {
   --card-gap: 20px;          /* (402 − 362) / 2 in the design frame */
-  --card-w: min(362px, calc(100vw - 2 * var(--card-gap)));
+  /* `100%`, not `100vw`: vw is the window INCLUDING the scrollbar, so on a 394px window with
+     a 16px bar the card was sized against 394 and laid out in 378 — it kept its left inset
+     and had 4px left over on the right, which is the squeeze this was meant to remove. A
+     percentage resolves against the card's own container, which is the column it sits in. */
+  --card-w: min(362px, calc(100% - 2 * var(--card-gap)));
   --card-pad: 24px;
   --card-radius: 22px;
   --card-title: 30px;
