@@ -3,6 +3,7 @@ import MapChapter from './MapChapter';
 import { bullSizeTrim, isNarrowViewport } from './mapViewport';
 import DatumSplat, { type DatumSplatHandle } from '../components/DatumSplat';
 import { useInViewMount } from './useInViewMount';
+import { isTouchPointer } from './deviceBudget';
 import { viewportH } from './viewport';
 import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotate» hint (text is HTML)
 
@@ -139,15 +140,41 @@ export default function MapBullHandoff({
   // «Rotate» hint state: shown once the bull has SETTLED (reveal done), hidden the moment
   // the user starts rotating it or the frame begins to leave.
   const labelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const revealedRef = useRef(false);
   const rotatedRef = useRef(false);
-  const updateLabel = useCallback(() => {
+  /** The reader has dismissed the scene — orbit off, page scrolls again (see closeScene). */
+  const closedRef = useRef(false);
+
+  /** Whether the bull is currently taking pointer input. The overlay covers the whole
+   *  viewport, so this is also the answer to "can the reader scroll past?". */
+  const applyInteractive = useCallback(() => {
+    const ov = overlayRef.current;
+    if (ov) ov.style.pointerEvents = revealedRef.current && !closedRef.current ? 'auto' : 'none';
+  }, []);
+
+  const updateChrome = useCallback(() => {
     const el = labelRef.current;
-    if (!el) return;
     const ov = overlayRef.current;
     // "leaving" = the sticky bull has begun sliding up off the top of the viewport.
     const leaving = ov ? ov.getBoundingClientRect().top < -8 : false;
-    el.style.opacity = revealedRef.current && !rotatedRef.current && !leaving ? '1' : '0';
+    const live = revealedRef.current && !closedRef.current && !leaving;
+    // Hint and close button are the SAME switch, thrown by the first touch on the bull:
+    // until then the scene is asking to be rotated, from then on it is holding a reader who
+    // needs a way out. So the button is deliberately absent on arrival — offering an exit
+    // from something nobody has entered just puts furniture over the frame.
+    //
+    // Only on touch: DatumSplat swallows the wheel (blockWheelZoom) so a mouse reader
+    // scrolls straight past a rotating bull and was never stuck. A width breakpoint would
+    // be a proxy for the wrong thing — the trap is touch-scroll being captured, not size.
+    const btn = closeRef.current;
+    if (btn) {
+      const show = live && rotatedRef.current && isTouchPointer();
+      btn.style.opacity = show ? '1' : '0';
+      btn.style.pointerEvents = show ? 'auto' : 'none';
+    }
+    if (!el) return;
+    el.style.opacity = live && !rotatedRef.current ? '1' : '0';
     // Dead centre of the viewport on a phone — and it does NOT trail the scene's widening
     // shift: that shift exists to bring the bull to centre, so following it would push the
     // hint back off centre by the same amount. On a wide screen the authored −30px stands;
@@ -157,6 +184,16 @@ export default function MapBullHandoff({
       ? 'translate(-50%, 26px)'
       : `translate(calc(-50% - ${BULL_LEFT_VW}vw - 30px), 26px)`;
   }, []);
+
+  /** Hand the screen back: orbit off, so a touch drag scrolls the page again. The bull
+   *  STAYS — the reader is dismissing the controls, not the scene, and the figure is the
+   *  frame the narrative continues over. Re-arms on the way out (see onDive), so scrolling
+   *  back up to the bull offers it again rather than leaving a dead scene. */
+  const closeScene = useCallback(() => {
+    closedRef.current = true;
+    applyInteractive();
+    updateChrome();
+  }, [applyInteractive, updateChrome]);
 
   // Mount the bull splat only as this section approaches — NOT during the opener.
   // (Payload: Bull_Datum_pipeline_600K.sog, 9.8 MB with JPEG-packed textures. The
@@ -229,22 +266,24 @@ export default function MapBullHandoff({
       const k = 1 - easeInOutCubic(raw);
       bullRef.current?.setCameraOffset(AZ_START * k, POLAR_START * k, 1 + (distStartMul() - 1) * k);
     }
+    // The bull is SETTLED once the reveal completes; re-arm the hint + the close button if
+    // scrolled back in.
+    revealedRef.current = raw >= 1;
+    if (raw < 1) { rotatedRef.current = false; closedRef.current = false; }
     // Orbit (free drag-rotate) only AFTER the scripted transition finishes — during
     // the handoff the camera is on rails, so the page stays scrollable and the script
-    // isn't fought; once fully revealed, hand control to the model.
-    if (overlayRef.current) overlayRef.current.style.pointerEvents = raw >= 1 ? 'auto' : 'none';
-    // The bull is SETTLED once the reveal completes; re-arm the hint if scrolled back in.
-    revealedRef.current = raw >= 1;
-    if (raw < 1) rotatedRef.current = false;
-    updateLabel();
-  }, [updateLabel]);
+    // isn't fought; once fully revealed, hand control to the model unless the reader has
+    // handed it back (closeScene).
+    applyInteractive();
+    updateChrome();
+  }, [applyInteractive, updateChrome]);
 
   // Fade the hint out as the frame leaves (scroll past the hold), and kill it for good the
   // moment the user grabs the bull to rotate it. onDive covers the reveal/settle; the scroll
   // + pointer listeners cover the exit and the interaction, which onDive doesn't see.
   useEffect(() => {
-    const onScroll = () => updateLabel();
-    const onDown = () => { if (revealedRef.current) { rotatedRef.current = true; updateLabel(); } };
+    const onScroll = () => updateChrome();
+    const onDown = () => { if (revealedRef.current) { rotatedRef.current = true; updateChrome(); } };
     const ov = overlayRef.current;
     window.addEventListener('scroll', onScroll, { passive: true });
     ov?.addEventListener('pointerdown', onDown);
@@ -252,7 +291,7 @@ export default function MapBullHandoff({
       window.removeEventListener('scroll', onScroll);
       ov?.removeEventListener('pointerdown', onDown);
     };
-  }, [updateLabel]);
+  }, [updateChrome]);
 
   return (
     <div ref={gateRef} className="relative bg-black">
@@ -286,6 +325,27 @@ export default function MapBullHandoff({
           <span className="[&>svg]:block [&>svg]:h-9 [&>svg]:w-auto" dangerouslySetInnerHTML={{ __html: ROTATE_ICON }} />
           <span style={{ fontFamily: 'var(--font-struve)', fontWeight: 700, fontSize: '24px', lineHeight: 1, color: '#61E26B' }}>Rotate</span>
         </div>
+        {/* Close — the way OUT of the scene, and it appears only once the reader is IN it
+            (first touch on the bull; see updateChrome). Once the bull is orbitable this
+            overlay covers the whole viewport and takes every touch, so on a phone there is
+            nowhere left to swipe the page: without this the reader who starts rotating
+            cannot go on reading.
+            Seated off «iPhone 17 - 42»: 40px disc, 20px from the top and right edges, the
+            green the chapter already uses for the Rotate hint, and a 12×12 cross at 2px with
+            round caps. Sized in px, not vh — it is a control, not part of the composition. */}
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={closeScene}
+          aria-label="Close the 3D scene and continue reading"
+          className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-[#61E26B]"
+          style={{ opacity: 0, pointerEvents: 'none', transition: 'opacity 0.35s ease' }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden focusable="false">
+            <path d="M12 0L0 12" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M0 0L12 12" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </div>
 
       {/* MAP (+ hold) — pulled up under the bull overlay; it zooms in but never melts. */}

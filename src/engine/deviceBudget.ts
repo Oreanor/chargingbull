@@ -35,6 +35,19 @@ export function isMobileViewport(): boolean {
   return typeof window !== 'undefined' && window.innerWidth <= MOBILE_MAX;
 }
 
+/**
+ * Does this reader scroll by dragging the page itself?
+ *
+ * Asked instead of a width, because the thing that depends on it is not a layout: a 3D
+ * scene that takes pointer input takes the SCROLL with it, and only where the scroll is a
+ * drag. A wheel reader is never trapped by one — DatumSplat lets the wheel through to the
+ * page on purpose. Narrow-window-on-a-desktop is the case a breakpoint would get wrong in
+ * both directions, so it is not used here.
+ */
+export function isTouchPointer(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+}
+
 /** The heavy WebGL blocks that share the budget. */
 export type GlBlock = 'candles' | 'model' | 'map' | 'splat' | 'charts';
 
