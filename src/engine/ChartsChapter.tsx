@@ -4,6 +4,7 @@ import { useSmoothProgress } from './smoothScroll';
 import { createChartsEngine, CHART_STEPS, DWELL_HOLD_FRAC, type ChartsEngine } from './charts/chartsEngine';
 import { isMobileViewport } from './deviceBudget';
 import { viewportH } from './viewport';
+import { onScroll as onPageScroll } from './scroller';
 import { tuneStore } from './tuneEditor';
 import copy from '../content/copy.json';
 import './ChartsChapter.css';
@@ -235,10 +236,10 @@ export default function ChartsChapter() {
       secEl.style.background = exiting ? '#000' : '#f14268';
     };
     update();
-    window.addEventListener('scroll', update, { passive: true });
+    const detach = onPageScroll(update);
     window.addEventListener('resize', update);
     return () => {
-      window.removeEventListener('scroll', update);
+      detach();
       window.removeEventListener('resize', update);
     };
   }, [mounted]);

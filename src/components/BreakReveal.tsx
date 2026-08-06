@@ -1,4 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { onScroll as onPageScroll } from '../engine/scroller';
+import { viewportH } from '../engine/viewport';
 
 /**
  * BreakReveal — a chapter divider that appears FROM DARKNESS in place (not
@@ -66,14 +68,14 @@ export function BreakReveal({
     const onScroll = () => {
       if (fired) return;
       const r = section.getBoundingClientRect();
-      if (r.top <= 2 && r.bottom > window.innerHeight * 0.5) {
+      if (r.top <= 2 && r.bottom > viewportH() * 0.5) {
         fired = true;
         if (preload) preload().catch(() => {});
       }
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const detach = onPageScroll(onScroll);
     onScroll();
-    return () => window.removeEventListener('scroll', onScroll);
+    return detach;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

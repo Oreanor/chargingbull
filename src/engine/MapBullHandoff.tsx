@@ -5,6 +5,7 @@ import DatumSplat, { type DatumSplatHandle } from '../components/DatumSplat';
 import { useInViewMount } from './useInViewMount';
 import { isTouchPointer } from './deviceBudget';
 import { viewportH } from './viewport';
+import { onScroll as onPageScroll } from './scroller';
 import ROTATE_ICON from '../assets/rotate-icon.svg?raw'; // icon for the «Rotate» hint (text is HTML)
 
 /**
@@ -285,10 +286,10 @@ export default function MapBullHandoff({
     const onScroll = () => updateChrome();
     const onDown = () => { if (revealedRef.current) { rotatedRef.current = true; updateChrome(); } };
     const ov = overlayRef.current;
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const detach = onPageScroll(onScroll);
     ov?.addEventListener('pointerdown', onDown);
     return () => {
-      window.removeEventListener('scroll', onScroll);
+      detach();
       ov?.removeEventListener('pointerdown', onDown);
     };
   }, [updateChrome]);

@@ -22,6 +22,7 @@ import PoseProbe from './PoseProbe';
 import { tuneStore } from './tuneEditor';
 import { mobileProfileDistScale, mobileFrameNudge } from './overlayFit';
 import { viewportH } from './viewport';
+import { docTop, onScroll as onPageScroll, scrollToPos } from './scroller';
 
 /** What ModelChapter needs from a renderer. Both DatumScene (splats) and
  *  GlbScene (three.js meshes) satisfy it, so the editor/runtime are renderer-
@@ -182,11 +183,8 @@ export default function ModelChapter({
   const scrollToProgress = (p: number) => {
     const el = ref.current;
     if (!el) return;
-    let topY = 0;
-    let n: HTMLElement | null = el;
-    while (n) { topY += n.offsetTop; n = n.offsetParent as HTMLElement | null; }
     const range = Math.max(1, el.offsetHeight - viewportH());
-    window.scrollTo({ top: topY + p * range });
+    scrollToPos(docTop(el) + p * range);
   };
   const fadeRef = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<ModelSceneHandle | null>(null);
@@ -599,9 +597,8 @@ function KeyframeEditor({
     // right after the click doesn't immediately drop the selection.
     let armed = false;
     const t = setTimeout(() => { armed = true; }, 350);
-    const onScroll = () => { if (armed) setSel(null); };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => { clearTimeout(t); window.removeEventListener('scroll', onScroll); };
+    const detach = onPageScroll(() => { if (armed) setSel(null); });
+    return () => { clearTimeout(t); detach(); };
   }, [sel]);
 
   // Pointer drag for the scrub handle and keyframe pills, with frame snapping.

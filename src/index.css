@@ -5,11 +5,27 @@
 @tailwind utilities;
 
 @layer base {
-  /* Clip horizontal overflow at BOTH the root and body — on mobile the scroll container
-     is <html>, so a body-only clip lets a stray wide element (e.g. a full-bleed wordmark)
-     push the document sideways: content shifts left, fixed UI stays put. `clip` (not
-     `hidden`) creates no scroll container, so position:sticky is unaffected. */
-  html, body { background: #000; overflow-x: clip; }
+  /* THE DOCUMENT DOES NOT SCROLL — the longread does, inside #lr-scroll. That is what
+     keeps a phone's URL bar from retracting mid-scroll, and with it the whole class of
+     bugs that came from a viewport height that moved. See engine/scroller.ts for the why.
+     Clipped at BOTH the root and body, since a stray wide element (e.g. a full-bleed
+     wordmark) would otherwise push the page sideways: content shifts left, fixed UI
+     stays put. */
+  html, body { height: 100%; overflow: hidden; background: #000; }
+
+  /* One screen tall, and the ONLY scrolling box on the page. Sized in svh — the same
+     number every stage inside it is (`h-[100svh]`) and the same number viewport.ts
+     measures — so the box, the sticky stages and the JS all agree by construction.
+     With the bar pinned open that number is simply the height of the screen.
+     `overscroll-behavior: none` kills the pull-to-refresh and the scroll chaining that
+     an inner scroller would otherwise hand back to the document. */
+  #lr-scroll {
+    height: 100svh;
+    overflow-y: auto;
+    overflow-x: clip;
+    overscroll-behavior: none;
+    outline: none; /* it is focused on mount so arrow keys/space scroll it */
+  }
   body {
     font-family: var(--font-struve);
     color: #f5f3ee;

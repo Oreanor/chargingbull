@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import copy from '../content/copy.json';
 import { viewportH } from '../engine/viewport';
+import { onScroll as onPageScroll } from '../engine/scroller';
 import './BullBearExplainer.css';
 
 /**
@@ -104,10 +105,10 @@ export function BullBearExplainer() {
       content.style.opacity = (1 - smoothstep(clamp01((p - 0.74) / 0.22))).toFixed(3);
     };
     update();
-    window.addEventListener('scroll', update, { passive: true });
+    const detach = onPageScroll(update);
     window.addEventListener('resize', update);
     return () => {
-      window.removeEventListener('scroll', update);
+      detach();
       window.removeEventListener('resize', update);
     };
   }, []);

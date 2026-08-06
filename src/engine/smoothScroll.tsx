@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { useMotionValue, type MotionValue } from 'motion/react';
 import { viewportH } from './viewport';
+import { docTop, onScroll as onPageScroll, scrollPos } from './scroller';
 
 /**
  * smoothScroll — the engine's motion model: NO stop frames. The native scrollbar
@@ -15,7 +16,8 @@ import { viewportH } from './viewport';
  * The PAGE scrolls natively 1:1 — we do NOT transform a page wrapper. (We tried;
  * a transform-based page lag fights the browser's native paint and jitters — the
  * content "dives"/"races" by a frame.) Instead we smooth only the scroll VALUE the
- * cinematic scenes read: `smoothed` lazily catches `window.scrollY` with a
+ * cinematic scenes read: `smoothed` lazily catches the page's scroll offset
+ * (`scroller.scrollPos` — the longread's own box, not the window) with a
  * critically-damped follow (gentle start, catch-up, soft brake, no overshoot).
  * So the 3D camera, map and plaque overlays glide/lag premium-ly, while the page
  * text stays crisp and jitter-free. Within a chapter the overlays and the 3D share
@@ -40,17 +42,6 @@ function useSmoothScroll(): MotionValue<number> | null {
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
-/** Document-Y of an element's layout top. */
-function layoutTop(el: HTMLElement): number {
-  let y = 0;
-  let n: HTMLElement | null = el;
-  while (n) {
-    y += n.offsetTop;
-    n = n.offsetParent as HTMLElement | null;
-  }
-  return y;
-}
-
 /**
  * Per-section scroll progress (0..1), mirroring framer-motion's
  * `useScroll({ offset: ['start start','end end'] })`. Reads the shared scroll
@@ -73,13 +64,12 @@ export function useSmoothProgress<T extends HTMLElement>(
     const measure = () => {
       const el = ref.current;
       if (!el) return;
-      top = layoutTop(el);
+      top = docTop(el);
       // Height from viewportH (svh), not innerHeight: the section is `frames · 100svh`,
-      // so this is the section's own unit — and a phone's URL bar sliding in mid-scroll
-      // must not remap progress under a chapter that is already playing. The cost is that
-      // with the bar HIDDEN the scrollport is ~90px taller than svh, so the section unpins
-      // at progress ~0.99 rather than exactly 1 — the tail of every track is a hold, so
-      // nothing is cut; a track that ENDED on a move would have to spend its last frame.
+      // so this is the section's own unit. Since the document stopped scrolling (see
+      // scroller.ts) the two are the same number anyway — the bar no longer retracts, so
+      // the scrollport can no longer run taller than svh and leave every track ending at
+      // progress ~0.99. viewportH stays because it is the unit the sections are authored in.
       range = Math.max(1, el.offsetHeight - viewportH());
     };
     const compute = (v: number) => progress.set(clamp01((v - top) / range));
@@ -88,7 +78,7 @@ export function useSmoothProgress<T extends HTMLElement>(
 
     const onResize = () => {
       measure();
-      compute(smoothed ? smoothed.get() : window.scrollY);
+      compute(smoothed ? smoothed.get() : scrollPos());
     };
     window.addEventListener('resize', onResize);
     const ro = new ResizeObserver(onResize);
@@ -100,10 +90,9 @@ export function useSmoothProgress<T extends HTMLElement>(
       compute(smoothed.get());
       detach = smoothed.on('change', compute);
     } else {
-      const onScroll = () => compute(window.scrollY);
-      onScroll();
-      window.addEventListener('scroll', onScroll, { passive: true });
-      detach = () => window.removeEventListener('scroll', onScroll);
+      const tick = () => compute(scrollPos());
+      tick();
+      detach = onPageScroll(tick);
     }
 
     return () => {
@@ -119,15 +108,15 @@ export function useSmoothProgress<T extends HTMLElement>(
 /**
  * Wraps the whole longread and publishes the smoothed scroll position. The page
  * itself scrolls NATIVELY (we never move it) — the native scroll of the segment
- * happens first; this value just lazily catches up to `window.scrollY` with a
+ * happens first; this value just lazily catches up to the live scroll offset with a
  * critically-damped follow, so the scenes/overlays that read it glide behind the
  * natural scroll. No page transform → no jitter.
  */
 export function SmoothScroll({ children }: { children: ReactNode }) {
-  const smoothed = useMotionValue(typeof window !== 'undefined' ? window.scrollY : 0);
+  const smoothed = useMotionValue(typeof window !== 'undefined' ? scrollPos() : 0);
 
   useEffect(() => {
-    let pos = window.scrollY;
+    let pos = scrollPos();
     let vel = 0;
     let last = performance.now();
     let raf = 0;
@@ -138,7 +127,7 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (dt <= 0) { raf = requestAnimationFrame(tick); return; } // shared-timestamp guard (no /0)
-      const target = window.scrollY;
+      const target = scrollPos();
 
       // Unity-style SmoothDamp: eases in (gentle start) AND out (soft brake) toward
       // a moving target with one time constant, no overshoot.
@@ -171,14 +160,14 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
       last = performance.now();
       raf = requestAnimationFrame(tick);
     };
-    const onScroll = () => start();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    start(); // settle to the current scrollY, then park
+    const wake = () => start();
+    const detach = onPageScroll(wake);
+    window.addEventListener('resize', wake);
+    start(); // settle to the current offset, then park
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
+      detach();
+      window.removeEventListener('resize', wake);
     };
   }, [smoothed]);
 

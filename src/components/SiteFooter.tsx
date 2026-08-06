@@ -1,3 +1,4 @@
+import { scrollToPos } from '../engine/scroller';
 import LINKEDIN from '../assets/footer/linkedin.svg?raw';
 import X_ICON from '../assets/footer/x.svg?raw';
 
@@ -8,7 +9,7 @@ import X_ICON from '../assets/footer/x.svg?raw';
  * (External link targets point at mrdn.world — adjust if the real URLs differ.)
  */
 export function SiteFooter() {
-  const top = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+  const top = () => scrollToPos(0, true);
   // Social icons — reused in two spots: next to the © on MOBILE (mockup block_footer)
   // and in column 2 on DESKTOP. Defined once so the markup isn't duplicated.
   const socials = (
