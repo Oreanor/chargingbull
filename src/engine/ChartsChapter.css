@@ -6,6 +6,18 @@
    THEME_BEAR.BG and the explainer panel. */
 .cc-section { background: #f14268; color: #f5f3ee; }
 
+/* THE STAGE NEVER OWNS THE PAGE'S SCROLL.
+   It is `position: fixed` over the whole viewport, and the page scrolls in a box now (see
+   engine/scroller.ts). A wheel or a finger landing inside a fixed subtree has no scrollable
+   ancestor to hand itself to — the chain ends at the document, which no longer scrolls — so
+   the reader was simply stuck the moment the pink chart covered the screen. Measured: 400px
+   of wheel moved the page 0px.
+   Answer: the stage is pointer-transparent, so every event falls through to the flow behind
+   it and scrolls the page as usual. Only the credits keep hit-testing (they carry links),
+   and only above the phone, where they are a 45px strip rather than a full-width band under
+   the thumb — plus the wheel forwarder in ChartsChapter, so even they cannot swallow it. */
+.cc-stage { pointer-events: none; }
+
 /* Side margin of the whole frame — the SAME number the canvas lays its plot out on
    (chartsEngine SIDE_PAD_F), so the header, the credits and the chart's own left edge are
    one line. Desktop-36 has it at 10% of the frame; the iPhone export halves it to 20/402. */
@@ -53,7 +65,7 @@
 .cc-legend {
   /* Sources sit closer to the chart (mockup: ~48px under the month labels). */
   position: absolute; left: var(--cc-side); bottom: clamp(20px, 5.4svh, 46px);
-  z-index: 40; pointer-events: auto;
+  z-index: 40; pointer-events: auto; /* links — the one thing on the stage that is operated */
   font-family: var(--font-struve);
   font-size: clamp(11px, 1.05vw, 16px); line-height: 1.5;
   /* Sources are a footnote, not a rule under the chart. On desktop they break where the
@@ -83,7 +95,10 @@
 /* Cards sit ABOVE the "Bear Markets" topbar (z-50) so the heading doesn't creep over them. */
 .cc-cards { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
 .cc-card {
-  pointer-events: auto;
+  /* Scroll-transparent, like the rest of the stage — see .cc-stage's pointer-events. The
+     card is read, never operated, and it covers half the phone's screen. (The ✎ editor
+     forces its own pointer-events when it is on, so selecting a card there still works.) */
+  pointer-events: none;
   position: absolute; top: 50%; left: clamp(24px, 4vw, 56px);
   transform: translateY(-50%);
   /* desktop 672; mobile: 362 + left gutter (matches .so-text / .mc-card) */
@@ -152,6 +167,11 @@
      that much off the plot. However many lines it comes to, the canvas reserves exactly
      that — ChartsChapter measures this block and feeds setBottomReserve. */
   .cc-legend {
+    /* Scroll-transparent on the phone: here it is a full-width 96px band across the bottom
+       of the screen, i.e. exactly where a thumb starts a scroll, and a finger landing on it
+       would be stuck (see .cc-stage). The sources stay readable; they are just not tappable
+       at this size, which is what the portrait export asks of them anyway. */
+    pointer-events: none;
     left: var(--cc-side);
     right: var(--cc-side);
     bottom: 14px;

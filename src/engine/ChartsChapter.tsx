@@ -4,7 +4,7 @@ import { useSmoothProgress } from './smoothScroll';
 import { createChartsEngine, CHART_STEPS, DWELL_HOLD_FRAC, type ChartsEngine } from './charts/chartsEngine';
 import { isMobileViewport } from './deviceBudget';
 import { viewportH } from './viewport';
-import { onScroll as onPageScroll } from './scroller';
+import { onScroll as onPageScroll, scroller } from './scroller';
 import { containFrame, PHONE_FRAME } from './fitFrame';
 import { tuneStore } from './tuneEditor';
 import copy from '../content/copy.json';
@@ -159,6 +159,24 @@ export default function ChartsChapter() {
     };
   }, [mounted]);
 
+  // …and the one thing on the stage that DOES hit-test — the credits' links, desktop only —
+  // must still not swallow the page's scroll. Everything else falls through by CSS; this
+  // catches the remainder at the stage, in the capture phase, and hands the delta to the
+  // page. One line so that making something on this layer clickable can never strand the
+  // reader again. (Touch needs no equivalent: on the phone nothing here hit-tests.)
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const onWheel = (e: WheelEvent) => {
+      const box = scroller();
+      if (!box) return; // standalone preview: the window scrolls, nothing to forward
+      box.scrollTop += e.deltaY;
+      e.preventDefault();
+    };
+    stage.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => stage.removeEventListener('wheel', onWheel, { capture: true });
+  }, [mounted]);
+
   // CONTAIN-FIT — the phone composition is laid out at the export's own 402×874 and scaled
   // by ONE number to fit the screen; the canvas underneath keeps covering it. See
   // engine/fitFrame for why, and .cc-frame for what rides it. The engine is handed the same
@@ -247,13 +265,14 @@ export default function ChartsChapter() {
       const op = past ? 0 : clamp01((vh * 1.05 - rect.top) / (vh * 0.15));
       stage.style.opacity = op.toFixed(3);
       // This stage is fixed inset-0 z-20 over the WHOLE viewport, so while invisible it must
-      // NOT eat clicks/scroll — that includes when the section is still BELOW (you're up at
-      // the bull, rect.top > 0), not only when it's already PAST. `visibility:hidden` removes
-      // it from hit-testing entirely (survives even a `pointer-events:auto !important` from
-      // the ✎ layout editor's global style); otherwise the invisible chart canvas swallows
-      // the whole page — clicks land on cc-canvas and nothing else responds.
+      // NOT eat clicks — that includes when the section is still BELOW (you're up at the
+      // bull, rect.top > 0), not only when it's already PAST. `visibility:hidden` removes it
+      // from hit-testing entirely (survives even a `pointer-events:auto !important` from the
+      // ✎ layout editor's global style); otherwise the invisible chart canvas swallows the
+      // whole page — clicks land on cc-canvas and nothing else responds. Visible, it is
+      // pointer-transparent by CSS and stays that way: a fixed layer that hit-tests has no
+      // scrollable ancestor to hand a wheel or a finger to. See .cc-stage.
       const hidden = op < 0.004;
-      stage.style.pointerEvents = hidden ? 'none' : 'auto';
       stage.style.visibility = hidden ? 'hidden' : 'visible';
       // EXIT — over the LAST screen (section bottom within a viewport, rect.bottom ≤ vh) the
       // stage UN-PINS and rides up off the top so AnatomyCrisis (z-30) rises into its place.
