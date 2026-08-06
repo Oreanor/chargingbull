@@ -57,13 +57,19 @@
 .calc-result .sub b { color: inherit; font-weight: 700; }
 .calc-result .sub .ri { color: #61E26B; } /* "real $…" is the highlighted bit */
 
-.calc-viz { position: relative; margin: 28px 0 8px; touch-action: none; user-select: none; }
+/* `pan-y`, not `none`: the flags need the browser to keep its hands off a HORIZONTAL drag,
+   but the plot fills the screen on a phone, so `none` here meant a finger anywhere on the
+   chart stopped the page from scrolling and the reader was stuck on the slide. Only the
+   grab handles below take the gesture outright. */
+.calc-viz { position: relative; margin: 28px 0 8px; touch-action: pan-y; user-select: none; }
 /* Charts plot band ≈ 62% of stage (padT 18% + padB 20%); leave room for lead + note. */
 .calc-chart { width: 100%; height: clamp(280px, 54svh, 680px); display: block; }
 .calc-flag { position: absolute; top: 0; bottom: 0; width: 0; }
 /* Pole: bottom is set in JS to the dragger's top edge, so it runs through the axis. */
 .calc-flag .line { position: absolute; top: 0; left: -1px; width: 2px; background: #61E26B; }
-.calc-flag .grab { position: absolute; left: -15px; top: 0; bottom: 0; width: 30px; cursor: ew-resize; }
+/* The one place the page must NOT scroll: dragging a year flag is a horizontal gesture and
+   the browser would otherwise take it as a page pan halfway through. */
+.calc-flag .grab { position: absolute; left: -15px; top: 0; bottom: 0; width: 30px; cursor: ew-resize; touch-action: none; }
 /* Dragger, desktop: the mockup's 51×33 pill. It sits ON the canvas floor (bottom: 0) —
    the floor is cut to exactly its height + gap in JS, which is what puts it under the axis. */
 .calc-flag .yr {
@@ -109,6 +115,12 @@
    the `max-[800px]:` Tailwind layer) — this slide used to switch at 640, so 641–800 got
    the desktop hint/pills fluid-scaled down instead of the phone layout. */
 @media (max-width: 800px) {
+  /* Air at the seam. The sources sit 18px off the sticky's bottom edge, where the export
+     puts them — and the sticky's bottom edge IS the section's, so the grey footnote ran
+     straight into the next chapter's body text and the two read as one block. A gap cannot
+     come from inside a sticky screen (it is pinned to the section's end), so it is the
+     section that carries it. */
+  .calc-section { margin-bottom: 6svh; }
   .calc-top { align-items: flex-start; }
   .calc-result { text-align: left; }
   /* Phone frame, off the iPhone 36 export: 20px side margins (the same 4.98vw the charts
@@ -124,11 +136,32 @@
   .calc-amt-tail { display: block; }
   .calc-result .sub { font-size: 18px; line-height: 1.28; }
   .calc-result .big { font-size: 40px; margin-top: 8px; }
-  /* The block owns the screen: the plot takes whatever is left between the value and the
-     sources (≈516px of an 874 frame, where it used to stop at 367). */
-  .calc-chart { height: clamp(300px, 54svh, 560px); }
-  .calc-viz { margin: 20px 0 6px; }
-  .calc-note { margin-top: 16px; max-width: none; font-size: 16px; line-height: 1.5; }
+  /* PHONE LAYOUT — three seats in the sticky screen, not a flow stack.
+     The export does not stack these: its plot runs from y 126 to the axis at 696 with the
+     value and the stats line lying OVER its empty upper-left corner, and the end year's pole
+     climbing above the plot to 109. Stacked in flow the text pushed the plot down instead —
+     it started at 271 rather than 126, 145px low and 100px short, which is what read as "the
+     chart should be higher".
+     So on the phone the plot and the sources take absolute seats off the export and the
+     text block rides over them. Seats are against .calc-sticky (sticky is a positioned
+     ancestor, and its padding edge IS the 874 frame), in svh so they scale with the screen
+     exactly as every other phone layout here does.
+       viz    top 86  = the CANVAS top: the plot's 126 less the 40 of padT that holds the
+                        end year (see CalculatorSlide's padT)
+              height  to 751, the knob's bottom edge (axis 696.4 + padB 54.5)
+       note   bottom 18, its last line landing on the export's 851.6 baseline */
+  .calc-wrap { height: 100%; }
+  .calc-viz {
+    position: absolute; left: 4.98vw; right: 4.98vw;
+    top: 9.84svh; height: 76.09svh; margin: 0;
+  }
+  .calc-chart { height: 100%; }
+  /* The text is the layer ON TOP — without this the absolutely-seated plot paints over it. */
+  .calc-top { position: relative; z-index: 1; }
+  .calc-note {
+    position: absolute; left: 4.98vw; right: 4.98vw; bottom: 2.06svh;
+    margin: 0; max-width: none; font-size: 16px; line-height: 1.5;
+  }
 
   /* Year pills → round green knobs with the ↔ SVG; years move onto the canvas.
      Same seat as the pill: bottom: 0 on a floor cut to the knob's own height. */
@@ -143,8 +176,13 @@
   .calc-flag .knob svg { display: block; width: 22px; height: 12px; fill: #06210b; }
   /* Hairline pole (the export strokes it at 1), and its top is cut in JS to clear the series. */
   .calc-flag .line { width: 1px; left: -0.5px; }
-  /* The amount field at the export's 101×44. */
-  .calc-field { padding: 5px 16px 5px 10px; border-radius: 12px; }
+  /* The amount field, padded as the export pads it — 8 left of the spinner, 11 right of the
+     digits, where this carried 10/16. Worth the 7px: with the plot on its export seat the
+     end year's label runs along the field's right edge, and at the opening amount (100, the
+     narrowest field that still sits on line one) those 7px are the difference between the
+     two touching and clearing. Longer amounts wrap the field to its own line and cannot
+     reach the label at all. */
+  .calc-field { padding: 5px 11px 5px 8px; border-radius: 12px; }
   /* Hint: green type over a black outline, so it stays readable where it crosses the axis
      and the series (the export sets it with a 2px black stroke and the arrow with 6px). */
   .calc-hint {

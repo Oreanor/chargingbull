@@ -70,9 +70,16 @@ export function CalculatorSlide() {
     const HINT_GAP = 6;
     const PILL_H = 33, KNOB_D = 48, KNOB_TOP_DY = 6.5;
     const padB = () => (isMobile() ? KNOB_TOP_DY + KNOB_D : POLE_END_DY + PILL_H);
-    // Headroom for the year the phone prints ABOVE the endpoint dot (13px type + its
-    // 10px lift); on desktop that year lives in the pill under the axis instead.
-    const padT = () => (isMobile() ? 30 : 16);
+    // Headroom for the year the phone prints ABOVE the endpoint dot; on desktop that year
+    // lives in the pill under the axis instead.
+    //
+    // It has to cover the WHOLE stack the label sits on, and 30 was one pixel short of it:
+    // the pole is allowed up to `padT − YEAR_LIFT`, the baseline sits YEAR_LIFT above that,
+    // and Struve 18 bold reaches ~13px over its own baseline — 9 + 9 + 13 = 31. So the end
+    // year (2026, whose pole is the tallest because the series peaks there) had its caps cut
+    // by the canvas edge. 40 clears it with slack and is what the export leaves: year ink at
+    // 87 over a plot that starts at 126.
+    const padT = () => (isMobile() ? 40 : 16);
     // Slight X-domain gutter so edge years aren’t flush with the plot ends (matches charts).
     const X_EDGE_PAD = 0.02;
     const plotW = () => canvas.clientWidth - PAD.l - PAD.r;
@@ -180,9 +187,14 @@ export function CalculatorSlide() {
           poleTop.push(topY);
           ctx.fillStyle = GREEN;
           ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-          // Centred on its pole, but never over the edge of the frame — the end year sits
-          // on the last flag, which is as far right as a flag goes.
-          const lx = Math.min(Math.max(px, PAD.l + half), W - PAD.r - half);
+          // Centred on its pole, but never over the edge of the CANVAS — not of the plot.
+          // Clamping to the plot's own padding pulled the end year ~25px left of its pole,
+          // and once the plot took the export's seat (high on the screen, see the phone
+          // block in the CSS) that was far enough to slide it under the amount field. The
+          // export puts this year past the plot's right edge too: pole at 356.5, year
+          // centred on it, ink running to 382 where the plot stops at 382 and the frame at
+          // 402. The canvas edge is the real constraint — past it the glyph is cut.
+          const lx = Math.min(Math.max(px, half), W - half);
           inkText(ctx, String(label), lx, topY - YEAR_LIFT, YEAR_FONT, GROUND);
         }
       }
