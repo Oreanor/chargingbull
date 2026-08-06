@@ -12,8 +12,9 @@
 // Per-id offset is stored in vh units (so a tuned layout scales with the viewport
 // like the 3D bull does). Offsets are ALSO per-breakpoint: an entry is either a
 // legacy plain vector (shared) or `{ desktop, mobile }`. Editing only ever writes
-// the slot for the CURRENT viewport width (mobile = ≤800px); mobile falls back to
-// the desktop slot until it's tuned. Two apply modes:
+// the slot for the CURRENT viewport width (mobile = ≤800px), and each slot is read
+// only at its own breakpoint — a desktop nudge never reaches the phone (see `resolve`).
+// Two apply modes:
 //   - "store": the owning component reads tuneStore.get(id)/getScale(id) each frame
 //     and bakes it into its own JS-driven layout — used by elements tagged
 //     `data-tune` + `data-tune-mode="store"` (candle callouts, stage plaques, …).
@@ -33,8 +34,7 @@ type Vec = number[];
 // Per-id entry is EITHER a legacy plain vector (shared across breakpoints) OR a
 // per-breakpoint object { desktop?, mobile? } (+ an optional `adaptive` flag, per-element).
 // Editing at a given viewport width only ever writes that breakpoint's slot; the other
-// is left untouched. Mobile falls back to desktop when it has no own slot, so a
-// desktop-only tune still shows on phones until it's specifically overridden there.
+// is left untouched, and neither reads the other's (see `resolve`).
 // `adaptive`: the element shrinks so its rendered width fits the screen (never upscaling
 // past its own scale / captured maxW) — keeps intro copy from overflowing on mobile.
 // See tuneStore.fitScale.
@@ -50,14 +50,25 @@ const MOBILE_MAX = 800;
 const currentBp = (): BP =>
   typeof window !== 'undefined' && window.innerWidth <= MOBILE_MAX ? 'mobile' : 'desktop';
 
-// The effective vector for the CURRENT viewport: own slot → desktop fallback (mobile)
-// → nothing. Legacy plain-array entries apply to both breakpoints.
+/**
+ * The vector for the CURRENT viewport: its own slot, or nothing. Legacy plain-array entries
+ * apply to both breakpoints.
+ *
+ * Mobile used to fall back to the desktop slot — "a desktop-only tune still shows on phones
+ * until it's specifically overridden there". That is wrong for this project, because nothing
+ * here is one layout at two sizes: every tuned layer is AUTHORED per breakpoint against its
+ * own mockup (TonnesFrame and PartsFrame each keep a rect table per frame, CandleIntro a
+ * whole second set of coordinates). A desktop nudge is therefore a correction to the DESKTOP
+ * numbers and means nothing to the phone's — inherited, it just moves the phone's pieces off
+ * the figure they are pinned to. Which is what it did: two nudges saved on the desktop
+ * Tonnes frame (measureW −1.85, measureH +2) landed on every phone, pulling the width arrow
+ * 15px left of the bull and dropping the height arrow and both dashed leaders 17px below it.
+ */
 const resolve = (id: string): Vec => {
   const e = offsets[id];
   if (!e) return [];
   if (Array.isArray(e)) return e;
-  const bp = currentBp();
-  return e[bp] ?? (bp === 'mobile' ? e.desktop : undefined) ?? [];
+  return e[currentBp()] ?? [];
 };
 
 // A MUTABLE slot for the current breakpoint. Migrates a legacy shared array to
