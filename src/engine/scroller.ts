@@ -72,6 +72,29 @@ export function onScroll(fn: () => void): () => void {
   return () => target.removeEventListener('scroll', fn);
 }
 
+/**
+ * `--sb`: the width of the page scroller's own scrollbar, published once for the CSS.
+ *
+ * The scrollbar belongs to `#lr-scroll` now, not to the document, so it sits INSIDE the
+ * viewport — and a `position: fixed` layer spanning `inset: 0` paints straight over it. A
+ * pinned full-screen chapter therefore made the page's scroll bar vanish for its whole
+ * length and reappear after it. Anything fixed and full-bleed keeps `right: var(--sb)` so
+ * the bar stays visible under it. Zero where the scrollbar is an overlay (phones, macOS).
+ */
+function publishScrollbarWidth(): void {
+  const el = scroller();
+  if (!el) return;
+  const sb = Math.max(0, window.innerWidth - el.clientWidth);
+  document.documentElement.style.setProperty('--sb', `${sb}px`);
+}
+
+/** Start tracking `--sb`. Called once, by the longread that owns the scroll box. */
+export function armScrollbarWidth(): () => void {
+  publishScrollbarWidth();
+  window.addEventListener('resize', publishScrollbarWidth);
+  return () => window.removeEventListener('resize', publishScrollbarWidth);
+}
+
 /** Jump the page to an absolute offset. */
 export function scrollToPos(top: number, smooth = false): void {
   const opts: ScrollToOptions = { top, behavior: smooth ? 'smooth' : 'auto' };

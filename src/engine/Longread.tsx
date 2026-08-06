@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import ProgressRail from './ProgressRail';
 import DevToolbar from './DevToolbar';
 import { SmoothScroll } from './smoothScroll';
-import { SCROLLER_ID } from './scroller';
+import { SCROLLER_ID, armScrollbarWidth } from './scroller';
 
 export default function Longread({ children }: { children: ReactNode }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -12,6 +12,7 @@ export default function Longread({ children }: { children: ReactNode }) {
   // the (already-at-top) box, and it takes no outline — see #lr-scroll in index.css.
   useEffect(() => {
     scrollRef.current?.focus({ preventScroll: true });
+    return armScrollbarWidth();
   }, []);
 
   return (

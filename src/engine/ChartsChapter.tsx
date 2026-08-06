@@ -289,10 +289,14 @@ export default function ChartsChapter() {
         stage.style.position = 'absolute';
         stage.style.top = 'auto';
         stage.style.bottom = '0';
+        // Anchored inside the section now, i.e. already inside the scrollbar — so the --sb
+        // inset the fixed state needs would take another bar's width off this one.
+        stage.style.right = '0';
       } else {
-        stage.style.position = ''; // revert to the class's `fixed inset-0`
+        stage.style.position = ''; // revert to the class's fixed seat
         stage.style.top = '';
         stage.style.bottom = '';
+        stage.style.right = '';
       }
       stage.style.transform = '';
       // Any residual sub-pixel seam behind the rising stage reads as black (= AnatomyCrisis),
@@ -427,7 +431,7 @@ export default function ChartsChapter() {
 
   return (
     <section ref={ref} style={{ height: `${N * 100 + SEG_EXTRA * 100 + ENTRY_VH + EXIT_VH}svh` }} className="cc-section relative w-full">
-      <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100svh] w-full overflow-hidden" style={{ opacity: 0, visibility: 'hidden', pointerEvents: 'none' }}>
+      <div ref={stageRef} className="cc-stage fixed z-20 h-[100svh] overflow-hidden" style={{ opacity: 0, visibility: 'hidden' }}>
         <canvas ref={canvasRef} className="cc-canvas" />
         <div className="cc-gradient" aria-hidden />
         {/* Everything below is the COMPOSITION and rides the fit frame; the canvas above

@@ -26,6 +26,12 @@
     overscroll-behavior: none;
     outline: none; /* it is focused on mount so arrow keys/space scroll it */
   }
+  /* NO transform / filter / will-change on #lr-scroll, ever. Any of them makes it the
+     containing block for the `position: fixed` layers inside it, and a fixed element in a
+     transformed SCROLL container is positioned against its content box — so it scrolls away
+     with the content and the pinned chapter simply leaves. Measured when this was tried as
+     a way to keep it off the scrollbar: the charts stage ended up 45,599px above the
+     viewport. The scrollbar is kept clear by --sb instead (see engine/scroller.ts). */
   body {
     font-family: var(--font-struve);
     color: #f5f3ee;

@@ -16,7 +16,15 @@
    it and scrolls the page as usual. Only the credits keep hit-testing (they carry links),
    and only above the phone, where they are a 45px strip rather than a full-width band under
    the thumb — plus the wheel forwarder in ChartsChapter, so even they cannot swallow it. */
-.cc-stage { pointer-events: none; }
+.cc-stage {
+  pointer-events: none;
+  /* Seated here rather than with an `inset-0` utility, because the RIGHT edge is not the
+     viewport's: the page's scrollbar lives inside it now (see --sb in engine/scroller.ts),
+     and a stage spanning the full width painted over it, so the scroll bar disappeared for
+     the length of this chapter. The exit state (position:absolute inside the section) sets
+     right back to 0 in JS — there the box is already inside the scrollbar. */
+  top: 0; left: 0; right: var(--sb, 0px);
+}
 
 /* Side margin of the whole frame — the SAME number the canvas lays its plot out on
    (chartsEngine SIDE_PAD_F), so the header, the credits and the chart's own left edge are

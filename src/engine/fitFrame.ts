@@ -16,10 +16,14 @@
  * (a canvas ground, the map, the bull) keeps covering the whole screen, so the leftover is
  * never a visible seam.
  *
- * `k` is capped at 1: the composition is never blown up past the size it was drawn at. The
- * mobile band runs to 800px (deviceBudget.MOBILE_MAX, a GPU budget rather than a design
- * width), and a small tablet inside it would otherwise take the phone frame's 30px heading
- * to 60px. Same call CandleIntro's portrait fit makes.
+ * `k` is NOT capped, and that is the whole point: the composition always fills the screen as
+ * far as its aspect allows. It was capped at 1 for a day, to stop a small tablet inside the
+ * 800px band blowing the phone frame's 30px heading up to 60. What that actually did was
+ * strand the composition in dead space on every window BIGGER than 402×874 in both axes —
+ * a narrow, tall desktop window, which is exactly what a person resizes to when they want to
+ * look at the phone layout. Measured at 476×990: a 402×874 island with 37px of nothing down
+ * each side and 58px top and bottom. Scaling up is the honest behaviour — the mockup, larger,
+ * with its proportions intact.
  */
 
 export type FrameSize = { w: number; h: number };
@@ -40,7 +44,7 @@ export type FittedFrame = {
 
 /** Contain-fit `design` into a `vw × vh` box and centre it. */
 export function containFrame(vw: number, vh: number, design: FrameSize): FittedFrame {
-  const k = Math.min(1, vw / design.w, vh / design.h);
+  const k = Math.min(vw / design.w, vh / design.h);
   const w = design.w * k;
   const h = design.h * k;
   return { x: (vw - w) / 2, y: (vh - h) / 2, w, h, k };
