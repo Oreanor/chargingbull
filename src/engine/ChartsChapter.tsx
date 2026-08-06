@@ -43,6 +43,13 @@ const EXIT_CLEAR = 0.72;
 
 /** Minimum breathing room between the X labels and the credits block below them. */
 const LEGEND_CLEARANCE = 30;
+/**
+ * Minimum breathing room between the heading's last line and the top of the plot — the
+ * mockup's own gap: on the 402×874 phone export the brand block's ink ends at 86 and the
+ * plot starts at 113. Used as a FLOOR, so both design frames are untouched (the fraction is
+ * larger there) and it only takes over on frames short enough for the fraction to collide.
+ */
+const HEADER_CLEARANCE = 26;
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
@@ -136,17 +143,32 @@ export default function ChartsChapter() {
     };
   }, [mounted]);
 
-  // Tell the engine how much room the credits block needs under the plot, so the X
-  // labels are laid out above it instead of across it. MEASURED, not a breakpoint guess —
-  // which is also why the phone's shorter wording needs nothing else: the block is
-  // observed, so the plot floor rises with it the moment it wraps to fewer lines.
+  // Tell the engine how much room the HTML chrome needs above and below the plot, so the
+  // chart is laid out around it instead of across it. MEASURED, not a breakpoint guess —
+  // which is also why the phone's shorter wording needs nothing else: the blocks are
+  // observed, so the plot's floor and ceiling follow them the moment they re-wrap.
+  //
+  // The heading is the one that bites. It is fixed px (a 30px seat plus 18/30px type on
+  // the phone) while the plot's top band is a FRACTION of the frame, so the shorter the
+  // frame the closer the chart creeps to «Bear Markets» — measured, they touch at 667 tall,
+  // and a real iPhone lays out at ~750 (svh is the screen LESS the browser bars, not the
+  // screen). That is the designer's «heading sticking to the chart», and it is not a units
+  // question: no svh/dvh choice fixes a proportional band under a fixed-px header.
   useEffect(() => {
-    const eng = engine, el = legendRef.current;
-    if (!eng || !el) return;
-    const push = () => eng.setBottomReserve(el.offsetHeight + LEGEND_CLEARANCE);
+    const eng = engine, el = legendRef.current, head = brandRef.current, stage = stageRef.current;
+    if (!eng || !el || !head || !stage) return;
+    const push = () => {
+      eng.setBottomReserve(el.offsetHeight + LEGEND_CLEARANCE);
+      // Ink bottom measured against the stage, not the topbar's own box — that box carries
+      // symmetric padding, and billing the chart for the seat ABOVE the heading would push
+      // the plot down on the desktop frames, where nothing is wrong.
+      const ink = head.getBoundingClientRect().bottom - stage.getBoundingClientRect().top;
+      eng.setTopReserve(ink + HEADER_CLEARANCE);
+    };
     push();
     const ro = new ResizeObserver(push);
     ro.observe(el);
+    ro.observe(head);
     window.addEventListener('resize', push);
     return () => { ro.disconnect(); window.removeEventListener('resize', push); };
   }, [engine]);

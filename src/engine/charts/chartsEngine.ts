@@ -816,6 +816,8 @@ export interface ChartsEngine {
   bullFactor(): number;
   /** px reserved under the plot for the HTML credits, so X labels never overlap them. */
   setBottomReserve(px: number): void;
+  /** px reserved ABOVE the plot for the HTML heading, so the plot never climbs into it. */
+  setTopReserve(px: number): void;
   resize(): void;
   ready(): boolean;
 }
@@ -894,6 +896,8 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   let platePaths: Path2D[] | null = null;
   // px the page reserves under the plot (the HTML credits block). Set from ChartsChapter.
   let bottomReserve = 0;                // which breakpoint platePaths was built for // cached Black Monday plate outlines
+  // px the page reserves ABOVE the plot (the HTML heading block). Same source, same reason.
+  let topReserve = 0;
 
   // Bull marker (Desktop-43): gold dot + the bull figurine + a big "1989" above it,
   // anchored at (dx,dy) = the Dec-1989 point, scaled to the plot so it tracks the zoom.
@@ -1072,7 +1076,14 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // on a narrow phone they wrap past that band, so the year labels ended up printed
     // across them. Take whichever is larger — the design band, or what the page says it
     // actually needs (measured, not a magic breakpoint fraction).
-    const padT = Math.round(H * TOP_PAD_F());
+    // Same shape as padB, and for the same reason. The design band is a FRACTION of the
+    // frame, but the header above it is fixed px (30px seat + 18/30px type on the phone,
+    // ~116px whatever the frame does). So on a short frame the fraction lands ABOVE the
+    // heading's last line and the plot climbs into it: measured, the two touch at 667 tall
+    // and sit 10px apart on a real iPhone, where svh is the screen LESS the browser bars
+    // (~750, not 852). Take whichever is larger — the design band, or what the page says
+    // the header actually occupies.
+    const padT = Math.max(Math.round(H * TOP_PAD_F()), topReserve);
     const padB = Math.max(Math.round(H * 0.20), bottomReserve + X_LABEL_BAND);
     const x1 = W - padR;
     // Series + hatch stop here; Y labels / grid continue to x1.
@@ -2121,6 +2132,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // resize (mount, stage reveal, heavy-scene teardown) must not paint bm→0a stand-in
     // or flash −20% before scroll owns the frame.
     setBottomReserve(px: number) { bottomReserve = Math.max(0, Math.round(px)); },
+    setTopReserve(px: number) { topReserve = Math.max(0, Math.round(px)); },
     resize() {
       if (!scrubReady) return;
       applyProgress(lastLinear);
