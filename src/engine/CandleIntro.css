@@ -44,6 +44,13 @@
   will-change: transform;
   z-index: 30; /* above the chart stage */
 }
+/* …except in portrait, where the title block takes the viewport's WIDTH rather than the
+   frame's (HERO_MAX_K in CandleIntro.tsx) and so is MEANT to leave the 402 frame: past a
+   ~470px viewport the wordmark is wider than the frame it is authored in, and the clip above
+   was cutting it off flat down both sides. Nothing else in the portrait hero reaches an edge
+   (wordmark 24.3→367.6, coords and tagline centred), and the block itself can never outgrow
+   the screen — it is 343.27 × vw/402 wide, i.e. 85% of the viewport at any size. */
+.ci-stage-hero.ci-stage--portrait { overflow: visible; }
 
 .ci-overlay { --ci-grid: 0; --ci-pink: #de2053; --ci-coral: #e0655b; }
 

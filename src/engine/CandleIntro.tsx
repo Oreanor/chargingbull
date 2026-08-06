@@ -130,6 +130,57 @@ const PORT_FRAME = { w: 393, h: 852 } as const;
  * the candle half keeps the frame its plates were authored against.
  */
 const PORT_FRAME_HERO = { w: 402, h: 874 } as const;
+/**
+ * THE TITLE BLOCK'S OWN FIT — wordmark + tagline, width-driven, up to 125%.
+ *
+ * The hero stage keeps the contain fit it always had, so the coords line stays exactly where
+ * the mockup puts it and keeps its clearance under the viewport-pinned Meridian mark. Only
+ * the block below it takes the width: k = vw/402, held at HERO_MAX_K (reached at 502.5px of
+ * viewport). At the mockup's own 402 that is 1 and nothing moves.
+ *
+ * Why the block and not the whole hero: the stage's fit is a CONTAIN of a 402×874 frame whose
+ * composition sits low in it (coords at 159, tagline ending at 824.5), and on a viewport that
+ * is proportionally wider — 500×791 — the height term cancels the width one outright, leaving
+ * the title at 0.96 with a black band down each side. Scaling the whole stage instead is worse
+ * than useless: the coords are a centred rule the full width of the frame, so as they ride up
+ * they go behind the mark, «NEW YORK» first. The block has room above it and nothing pinned
+ * over it, which is the whole reason it can take the growth.
+ *
+ * It grows from its own BOTTOM edge, so the tagline keeps the margin the mockup gives it and
+ * the wordmark climbs into the empty frame over the bull's muzzle. What stops it, other than
+ * the cap, is the coords line above (HERO_BLOCK_GAP).
+ */
+const HERO_MAX_K = 1.25;
+/** Screen px kept between the coords line and the top of the block climbing toward it. */
+const HERO_BLOCK_GAP = 16;
+/**
+ * The three edges the arithmetic above needs, in the 402×874 frame, all read off the live
+ * page: the coords' bottom, and the block's own top (the wordmark's) and bottom (the
+ * tagline's). The two block edges are re-measured each fit and floored at these — the tagline
+ * is written into that <p> by the GL effect, which may not have run yet (an empty box would
+ * read as a block ending higher than it does), and a tagline that wraps to another line has to
+ * take the space rather than hang off the frame.
+ */
+const HERO_COORDS_BOTTOM = 185;
+const HERO_BLOCK_TOP = 403.8;
+const HERO_BLOCK_BOTTOM = 824.5;
+
+/**
+ * THE INTRO'S OWN ZOOM — one number for every authored block in this chapter.
+ *
+ * Everything here is drawn on the designer's 402-wide phone: the title block, and the plates
+ * that carry the rest of the intro (the 16 Oct fact and the Black Monday crash — heading plus
+ * copy, both of them). So they all take the same rule: the block is that mockup, zoomed by
+ * how much wider the screen is than the mockup — under 402 it goes down, over it up, held at
+ * HERO_MAX_K (125%, reached at 502.5px).
+ *
+ * Sizing only. Where each block SITS is its own business: the title block hangs off its own
+ * bottom edge, the fact plate off its top-left corner, the crash plate off the right edge that
+ * rides the last candle. The chart under them is not in this — the candles, the grid and the
+ * price axis are fitted to the viewport by the stage (see the fit effect), which is a
+ * different job: they are a drawing that spans the frame, not a block authored inside it.
+ */
+const introScale = (vw: number) => Math.min(vw / PORT_FRAME_HERO.w, HERO_MAX_K);
 // Portrait frame below the project-wide phone breakpoint (deviceBudget.MOBILE_MAX).
 
 function CandleScene({ progress, span }: { progress: MotionValue<number>; span: [number, number] }) {
@@ -163,11 +214,19 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
   const overlayRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const logoRef = useRef<HTMLImageElement>(null);
+  /** The wordmark + tagline stack — scaled on its own, see HERO_MAX_K. */
+  const heroBlockRef = useRef<HTMLDivElement>(null);
   const wordmarkRef = useRef<HTMLDivElement>(null);
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const coordsRef = useRef<HTMLDivElement>(null);
   const spanRef = useRef(span);
   spanRef.current = span;
+  /** The chart stage's live fit scale — the plates ride it, and need to know it to land on
+   *  introScale on screen whatever it happens to be. Written by the fit, read by the tick. */
+  const stageKRef = useRef(1);
+  /** …and how much of the frame the viewport actually shows, in the stage's own design px
+   *  (vh / k, the stage being centred vertically). A zoomed plate is checked against it. */
+  const stageVisHRef = useRef<number>(PORT_FRAME.h);
 
   // Fit-scale: TWO layers, two fits, one frame.
   //  • chart stage (stageRef): width-fit + bottom-anchored — k = vw/frameW, so the
@@ -205,6 +264,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         stage.style.transform = `translate(0, -50%) scale(${k})`;
         stage.style.setProperty('--ci-axis-edge', `${EDGE_PX / k}px`);
         stage.style.setProperty('--ci-axis-shift', `${shiftFrame}px`);
+        stageKRef.current = k;
+        stageVisHRef.current = vh / k;
       } else {
         // LANDSCAPE — fit-height, then reflow-THEN-scale. Everything stays ONE locked
         // block: the candle camera + grid + plates all live in the fixed 1440×800 frame and
@@ -243,6 +304,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         stage.style.transform = `translate(0, -50%) scale(${k})`;
         stage.style.setProperty('--ci-axis-edge', `${EDGE_PX / k}px`);
         stage.style.setProperty('--ci-axis-shift', `${shiftFrame}px`);
+        stageKRef.current = k;
+        stageVisHRef.current = vh / k;
       }
 
       const heroStage = heroStageRef.current;
@@ -257,11 +320,36 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
         heroStage.style.height = `${f.h}px`;
         heroStage.style.transform = `translate(-50%, -50%) scale(${kc})`;
         heroStage.classList.toggle('ci-stage--portrait', portrait);
+
+        // …and on top of that stage fit, the title block's own (see HERO_MAX_K). Landscape
+        // keeps the CSS transform (the stack's translateY) — clearing the inline one restores
+        // it. `s` is what the block needs ON TOP of the stage's kc to land at k on screen, so
+        // the wordmark is drawn at exactly 343.27 × k px however the stage was fitted.
+        const block = heroBlockRef.current;
+        if (block && !portrait) {
+          block.style.transform = '';
+          block.style.transformOrigin = '';
+        } else if (block) {
+          const sub = subtitleRef.current, wm = wordmarkRef.current;
+          const bottom = Math.max(HERO_BLOCK_BOTTOM, sub ? sub.offsetTop + sub.offsetHeight : 0);
+          const top = Math.min(HERO_BLOCK_TOP, wm ? wm.offsetTop : Infinity);
+          // Room between the coords line and the block's bottom edge, in SCREEN px — both of
+          // those ride the stage's own fit, so on a short viewport this closes and the cap
+          // gives way before the block can reach the coords.
+          const room = (bottom - HERO_COORDS_BOTTOM) * kc - HERO_BLOCK_GAP;
+          const k = Math.min(introScale(vw), room / (bottom - top));
+          const s = k / (kc || 1);
+          block.style.transformOrigin = `50% ${bottom}px`;
+          block.style.transform = Math.abs(s - 1) < 1e-4 ? 'none' : `scale(${s.toFixed(4)})`;
+        }
       }
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(wrap);
+    // …and the subtitle, because the portrait fit is limited by ITS bottom edge: the tagline
+    // is filled in by the GL effect after this one runs, and a re-wrap changes the reach.
+    if (subtitleRef.current) ro.observe(subtitleRef.current);
     window.addEventListener('resize', fit);
     return () => { ro.disconnect(); window.removeEventListener('resize', fit); };
   }, []);
@@ -402,6 +490,9 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
     const BM_HTML_DESKTOP = frameImg(BM_FRAME_LAND, CRASH_W);
     const BM_HTML_MOBILE = frameImg(BM_FRAME_PORT, CRASH_W_PORT);
     let bmMobile = false;
+    /** Plate layout boxes, cached per zoom level — see `boxOf` in the tick. */
+    const plateSize = new Map<HTMLElement, [number, number]>();
+    let plateSizeAt = -1;
     bmEl.innerHTML = BM_HTML_DESKTOP;
 
     // --- title: shown all at once (no typed reveal, no logo fade, no wordmark glow) ---
@@ -539,6 +630,38 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
       // Plaques stay at authored size (no scale squeeze); candle host is locked to
       // the 393 design width (see fit effect + .ci-candle-host).
       const isMobile = port;
+      // What the plates need ON TOP of the stage's fit to land on introScale (see it). The
+      // stage's own scale is height-driven, so this is not 1 even at the mockup's width.
+      // Portrait only — the landscape plates are laid out against the 1440 frame.
+      const plateS = isMobile ? introScale(window.innerWidth) / (stageKRef.current || 1) : 1;
+      // Their boxes, for the anchor correction below. offsetWidth/Height are layout boxes and
+      // so are transform-free, and they only move when the viewport does — cached off `plateS`
+      // rather than re-read every frame, which would be a forced reflow per plate per frame.
+      if (plateSizeAt !== plateS) { plateSize.clear(); plateSizeAt = plateS; }
+      const boxOf = (el: HTMLElement, fallbackW: number): [number, number] => {
+        const b = plateSize.get(el);
+        if (b) return b;
+        const box: [number, number] = [el.offsetWidth || fallbackW, el.offsetHeight];
+        // A zero height is not a measurement — the crash plate is an <img> swapped in on the
+        // same frame it is first read, so its box is empty until the SVG lands. Caching that
+        // would leave the plate un-capped for the life of the page (which is what put the
+        // −20.5% figure through the bottom of the screen). Re-read until it is real.
+        if (box[1] > 0) plateSize.set(el, box);
+        return box;
+      };
+      // A plate hangs off its TOP edge, so zooming it grows it downward — and the crash plate
+      // is a tall one, seated at 429.65 of the 852 frame with the −20.5% figure under it. On a
+      // viewport that shows less of the frame than the mockup does, the full 125% put that
+      // figure off the bottom of the screen. Each plate therefore takes the zoom only as far
+      // as its own room allows: everything above the visible frame's bottom edge, less 12.
+      const visBottom = PORT_FRAME.h / 2 + stageVisHRef.current / 2 - 12;
+      const roomS = (topPx: number, h: number, floor = visBottom) =>
+        h > 0 ? Math.min(plateS, (Math.min(floor, visBottom) - topPx) / h) : plateS;
+      // The fact plate's floor is not the screen but the plate BELOW it: the mockup seats the
+      // two 11.6px apart (fact 220 + 198 tall, crash at 429.65), and they are on screen
+      // together for a stretch, so anything it gains lands on the skull. It therefore holds
+      // its authored size on a wide screen and only ever zooms DOWN, with the frame.
+      const FACT_FLOOR = CRASH_Y_PORT - 8;
       factItems.forEach((fi, i) => {
         // fade each label up gradually as the chart draws past it; on scatter it
         // flies off (transform) and dissolves (plateFade).
@@ -572,14 +695,28 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
               topPx = Math.max(fi.el.offsetHeight + 8, p.y - 10) + oy;
             }
           }
-          // Plates are always at their authored size; this is the editor's live scratch only.
+          // The plate is authored at one size and ZOOMED by introScale — `sc` on top of that
+          // is the editor's live scratch only. This one keeps its default 50% 50% origin (the
+          // scatter spins about its centre and must go on doing so), so the seat is corrected
+          // instead: HALF the growth back on each axis, which pins the top-left corner — the
+          // mockup coordinate the plate is placed by. (The crash plate below is the other
+          // case: its own transform-origin is the corner, so it corrects differently.)
           const sc = tuneStore.getScale(`opener.candle.fact.${i}`);
+          let ps = 1;
+          if (isMobile) {
+            const [bw, bh] = boxOf(fi.el, 268);
+            ps = roomS(topPx, bh, FACT_FLOOR);
+            leftPx += ((ps - 1) * bw) / 2;
+            topPx += ((ps - 1) * bh) / 2;
+          }
           fi.el.style.left = leftPx + 'px';
           fi.el.style.top = topPx + 'px';
           const flyT = flyTransform(leftPx, topPx, base, FACT_FLY_SPEED[i] ?? 1, FACT_FLY_SPIN[i] ?? 0);
           const parts: string[] = [];
           if (sc !== 1) parts.push(`scale(${sc})`);
           if (flyT !== 'none') parts.push(flyT);
+          // Last, so the scatter's own translate stays in un-zoomed px.
+          if (Math.abs(ps - 1) > 1e-4) parts.push(`scale(${ps.toFixed(4)})`);
           fi.el.style.transform = parts.length ? parts.join(' ') : 'none';
         }
       });
@@ -611,12 +748,24 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
           leftPx = Math.min(host.clientWidth - 220, cx + CRASH_X) + bTune[0] * vhPx;
           topPx = CRASH_Y + bTune[1] * vhPx;
         }
+        // Same zoom as the fact plate, seated off the other corner: on the phone this plate is
+        // placed by the gap between its RIGHT edge and the last candle, so it has to grow
+        // leftward or it would walk into the crash column it points at. This one carries
+        // `transform-origin: top left` of its own (CandleIntro.css), so the top edge is
+        // already pinned and only x is corrected — by the WHOLE growth, not half of it.
+        let bps = 1;
+        if (isMobile) {
+          const [bw, bh] = boxOf(bmEl, CRASH_W_PORT);
+          bps = roomS(topPx, bh);
+          leftPx -= (bps - 1) * bw;
+        }
         bmEl.style.left = leftPx + 'px';
         bmEl.style.top = topPx + 'px';
         const bFly = flyTransform(leftPx, topPx, '', CRASH_FLY_SPEED, CRASH_FLY_SPIN);
         const bParts: string[] = [];
         if (bsc !== 1) bParts.push(`scale(${bsc})`);
         if (bFly !== 'none') bParts.push(bFly);
+        if (Math.abs(bps - 1) > 1e-4) bParts.push(`scale(${bps.toFixed(4)})`);
         bmEl.style.transform = bParts.length ? bParts.join(' ') : 'none';
       }
 
@@ -734,8 +883,8 @@ function CandleScene({ progress, span }: { progress: MotionValue<number>; span: 
               {' '}{copy.opener.hero.coordsGeo}
             </div>
           </div>
-          {/* wordmark (biggest) + subtitle */}
-          <div className="ci-hero">
+          {/* wordmark (biggest) + subtitle — scaled as ONE block, on top of the stage's fit */}
+          <div ref={heroBlockRef} className="ci-hero">
             <div
               ref={wordmarkRef}
               className="ci-wordmark"
