@@ -77,9 +77,12 @@ export const OPENER_TRACK: CameraTrack = {
     // MODEL to [-0.0953, -0.0016, -0.0898]; that shift is folded into the target here
     // instead of moving the bull, because the bull's origin is shared — every other key's
     // target and the cab's hand-placed seat are measured against it.
-    // The two angles were then turned by hand on the live page (az 27.9 → 31.8, polar
-    // 102.2 → 99): the capture is framed against the tool's own viewport, this one has a
-    // «30 separate parts» block sitting to the right of the figure to clear.
+    // The pose was then turned and pulled in by hand on the live page — the capture is framed
+    // against the tool's own viewport, this one has a «30 separate parts» block sitting to
+    // the right of the figure to clear. az 27.9 → 26.7, polar 102.2 → 96.4, and the distance
+    // in from the capture's own 2.16 to 1.97, which is the разлёт reading ~10% larger.
+    // The hold now starts at 0.79 rather than 0.80, so the explode has landed before
+    // PartsFrame begins to fade its labels up (0.80 → 0.835).
     // Not taken from that capture: its exposure (asked for) and its pushZ, which was 0.
     // Two numbers are refitted rather than copied, because this ramp is a straight line where
     // the tool's is a smoothstep over a bias remap: bias 0.61 / sharpness 1.56 is the pair
@@ -107,14 +110,14 @@ export const OPENER_TRACK: CameraTrack = {
     // Desktop target y re-read in the editor, 0.42 → 0.47: the camera looks that much
     // higher, so the exploded figure sits lower in the frame. Desktop only — the phone
     // override still carries the capture's 0.42.
-    { at: 0.8, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.35, 0.47, 0.76],
+    { at: 0.79, az: 26.7, polar: 96.4, dist: 1.97, explode: 1.08, fov: 45, target: [0.35, 0.47, 0.76],
       phone: { az: 34.9, polar: 102.9, target: [0.07, 0.42, 0.93] },
       weights: { front: 1.69, rear: 0, bias: 0.61, sharpness: 1.56, rise: 1.4 },
       fog: { color: '#0c0d10', near: 2.5, far: 3.7 } },
     // Hold ends at 0.86, not 0.85 — which is also where overlayFit's REAR seat begins, so
     // the phone's framing now hands over exactly as the camera starts its swing behind the
     // figure. (BLOWUP_OUT0 still releases the разлёт seat at 0.85; it leads the pose by 0.01.)
-    { at: 0.86, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.35, 0.47, 0.76],
+    { at: 0.86, az: 26.7, polar: 96.4, dist: 1.97, explode: 1.08, fov: 45, target: [0.35, 0.47, 0.76],
       phone: { az: 34.9, polar: 102.9, target: [0.07, 0.42, 0.93] },
       weights: { front: 1.69, rear: 0, bias: 0.61, sharpness: 1.56, rise: 1.4 },
       fog: { color: '#0c0d10', near: 2.5, far: 3.7 } },

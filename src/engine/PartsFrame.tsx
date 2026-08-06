@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
 import { tuneStore } from './tuneEditor';
 import copy from '../content/copy.json';
-import { bullMatchScale } from './overlayFit';
+import { bullMatchScale, phoneMag } from './overlayFit';
 // Inlined (not <img>) so the SVG can use the page's @font-face fonts. On DESKTOP the
 // label SVGs are used as-is; on MOBILE all copy is rendered as DOM text from
 // content/copy.json (per the "no text baked into SVG" rule) — only the pure-graphic
@@ -82,7 +82,10 @@ const COORDS_MOBILE: Record<string, [number, number]> = {
   'parts.emptyInside': [10.91, 1.27], // right of the head
   'parts.measure5cm': [4.21, -11.88], // 5 cm on the withers (холка)
   'parts.horns': [6.28, -31.74],      // horns note across the top
-  'parts.hornsDot1': [-13.99, -22.52],// tip of the left horn fragment
+  // Tip of the left horn fragment — re-read after the разлёт pose was pulled in to dist 1.97
+  // (openerBull): same angles on the phone, so the figure only grew, and the horn's end
+  // travelled up and out from under the dot by ~35px of a 871-tall screen.
+  'parts.hornsDot1': [-15.63, -25.64],
   // (no parts.hornsDot2 here — the phone's right horn is cut by the crop, so that dot is
   //  not drawn at all; the desktop keeps all three.)
 };
@@ -171,6 +174,11 @@ export default function PartsFrame() {
         const k = bullMatchScale();
         green.style.transform = Math.abs(k - 1) < 1e-4 ? '' : `scale(${k.toFixed(4)})`;
       }
+      // The phone's width fit, on the ROOT — the whole разлёт composition, the same factor
+      // the camera divides its distance by (overlayFit.phoneMag). Kept off the green group so
+      // the two frames read alike: root = fit, group = that frame's own match/trim.
+      const m = phoneMag();
+      root.style.transform = Math.abs(m - 1) < 1e-4 ? '' : `scale(${m.toFixed(4)})`;
     };
     // Opacity is scroll-driven. Visible around the explode (cam stop @ f10.6 / 0.80):
     // rise 0.80→0.835, hold, then dissolve at f11.1 (0.842 → 0.877).
@@ -208,7 +216,11 @@ export default function PartsFrame() {
   const green = '#61E26B';
 
   return (
-    <div ref={rootRef} className="absolute inset-0 pointer-events-none" style={{ opacity: 0 }}>
+    <div
+      ref={rootRef}
+      className="absolute inset-0 pointer-events-none"
+      style={{ opacity: 0, transformOrigin: '50% 50%' }}
+    >
       <div ref={greenRef} className="absolute inset-0" style={{ transformOrigin: '50% 50%' }}>
         {/* "30" (outlined graphic) + subtitle (DOM text) — one draggable block */}
         <div ref={titleRef} data-tune="parts.title" data-tune-mode="store" className="absolute" style={anchor}>

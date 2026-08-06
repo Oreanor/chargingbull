@@ -19,6 +19,11 @@
  *
  * 3. PHONE FRAME SEATING — the screen-plane nudge that seats each phone beat where
  *    its mockup puts it (hero lift → broadside pan → Tonnes seating).
+ *
+ * 4. PHONE CONTAIN FIT (≤800, everywhere) — the 402×874 composition fitted to the screen
+ *    on BOTH axes: phoneFitScale (height, which svh gives for free) × phoneMag (width,
+ *    which lets it grow past the mockup up to a cap). The camera takes the same factor
+ *    inverted, so the bull is always the size the overlays over it were drawn for.
  */
 
 import { viewportH } from './viewport';
@@ -56,8 +61,21 @@ const smoothstep = (t: number) => {
   return t * t * (3 - 2 * t);
 };
 
-/** The height the phone composition is laid out against (iPhone 17 mockups, 402×874). */
+/** The frame the phone composition is laid out against (iPhone 17 mockups, 402×874). */
 const PHONE_DESIGN_H = 874;
+const PHONE_DESIGN_W = 402;
+
+/**
+ * How far past the mockup's own size the composition may be magnified (see phoneMag).
+ *
+ * Bounded by the TALLEST beat, the разлёт: measured on the live page its content runs from
+ * the horns note's first line to «form the bull», 0.78 of a half-frame above the centre and
+ * 0.81 below. 1.15 puts that lower end at 0.936 — a margin of ~6% of the half-height left
+ * under the type, which is the least this composition should ever have. The Tonnes beat is
+ * roomier vertically (0.63/0.61) but is the one that reaches the CAP first anyway: it is
+ * limited by width, and phoneMag already answers that end.
+ */
+const PHONE_MAG_CAP = 1.15;
 
 /**
  * PHONE CONTAIN FIT — how much of the mockup's height this screen actually has.
@@ -88,6 +106,48 @@ function phoneFitScale(): number {
   if (typeof window === 'undefined') return 1;
   if (window.innerWidth > MOBILE_MAX) return 1;
   return (viewportH() || PHONE_DESIGN_H) / PHONE_DESIGN_H;
+}
+
+/**
+ * PHONE WIDTH MAGNIFICATION — the other half of the contain fit, and why the opener read
+ * small on a real phone.
+ *
+ * phoneFitScale is height only, which is right as far as it goes: it is the factor an
+ * svh-authored piece already scales by. But a contain fit has two axes, and the height is
+ * only the binding one when the screen is at LEAST as slender as the design frame. Every
+ * phone the opener actually runs on is proportionally WIDER than 402×874 (0.46): 393×711 is
+ * 0.55, 457×871 is 0.52. On those the height fit leaves the width unspent — at 457×871 the
+ * «3.2 TONNES» headline, which is 92% of the mockup's own frame, drew across 78% of the
+ * screen, and both dimension beats sat inside a wide black margin.
+ *
+ * So the composition is allowed to grow until the design frame's WIDTH is the screen's:
+ *
+ *     k = min(W / 402, H / 874 × CAP)   =   phoneFitScale × phoneMag
+ *
+ * At the mockup's own 402×874 both terms are 1 and nothing moves — that framing is still
+ * exactly what the export draws. Below the design aspect (a screen slenderer than 402×874)
+ * this goes UNDER 1 and the width binds instead, which is the same contain fit read the
+ * other way: nothing can cross the frame's edge, whichever edge is closer.
+ *
+ * The cap is what keeps a short screen honest — mapping the full width onto a 800×400 would
+ * magnify by 4.35 and throw the type off the top and bottom. Vertical extent is a fraction
+ * of the height at every size, so ONE cap covers every aspect (see PHONE_MAG_CAP).
+ *
+ * Both ends take it, but by different routes. The two composed frames scale their ROOT by it,
+ * and the frame seats — positions inside that same composition — are multiplied by it. The
+ * MODEL takes it as a zoom, not a dolly: below MOBILE_MAX the GL host is frozen at an 800px
+ * framing with the horizontal fov held, so the figure's size on screen is proportional to the
+ * host's WIDTH, and the host is simply widened to 800·mag (ModelChapter.css `--bull-zoom`).
+ * That is a true magnification of the rendered image — the pose, the perspective and every
+ * spacing inside the figure are the mockup's, only larger. Pulling the camera in instead was
+ * tried first and is wrong at close range: see mobileProfileDistScale.
+ */
+export function phoneMag(): number {
+  if (typeof window === 'undefined') return 1;
+  if (window.innerWidth > MOBILE_MAX) return 1;
+  const fit = phoneFitScale();
+  if (!fit) return 1;
+  return Math.min(window.innerWidth / PHONE_DESIGN_W / fit, PHONE_MAG_CAP);
 }
 
 /**
@@ -125,6 +185,16 @@ function mobileProfileFitAmount(t: number): number {
  * steps back by exactly the factor the svh-authored overlays have already shrunk by, so the
  * bull shrinks with them and the whole composition fits. At the mockup's own height that is
  * 1 and this is the beat pull alone, unchanged.
+ *
+ * phoneMag, the width half of the same fit, is NOT here — it is a host-width zoom instead
+ * (see phoneMag). A dolly is only a stand-in for a zoom, and how good a stand-in depends on
+ * how far the camera is: at the Tonnes beat the two agree (magnifying by 1.14 through the
+ * distance measured 1.15 on the cab), but at the разлёт the camera sits about a third of its
+ * own distance off the head, and the same 1.14 came out as 1.45 — the head burst its own
+ * green measures and the horn dots slid off. The height fit still rides the distance because
+ * that is what shipped and what was verified at the Tonnes beat; it inherits the same
+ * weakness at the разлёт, and moving it to the host width too is the follow-up (it needs an
+ * answer for viewports wider than 800·fit, which would leave the canvas short of the screen).
  */
 export function mobileProfileDistScale(t: number): number {
   return beatDistScale(t) / phoneFitScale();
@@ -237,14 +307,17 @@ export function mobileFrameNudge(t: number): [number, number] {
     (1 - smoothstep(clamp01((t - BLOWUP_OUT0) / (BLOWUP_OUT1 - BLOWUP_OUT0))));
   const rear = smoothstep(clamp01((t - REAR_IN0) / (REAR_IN1 - REAR_IN0)));
   // Seats are in frame heights and land as `nx · H` pixels, so they scale with the screen on
-  // their own — which is the contain fit, the same one the svh overlays and (via the camera
-  // pull-back) the bull now take. Nothing multiplies them: the pixel lock that used to
-  // cancel that scaling is gone, and putting it back here would leave the seating fixed
-  // while the thing it seats got smaller.
+  // their own — which is the HEIGHT half of the contain fit, the same one the svh overlays and
+  // (via the camera pull-back) the bull take. The pixel lock that used to cancel that scaling
+  // is gone, and putting it back here would leave the seating fixed while the thing it seats
+  // got smaller. What they do NOT get from their units is phoneMag — that one lives on the
+  // frames' roots — so it is applied here, to the pair: a seat is a position INSIDE the
+  // composition, and a magnified composition carries its own parts with it.
   const seated = (APPROACH_X * approach * (1 - blow) + BLOWUP_X * blow) * (1 - fit) + BEAT_X * fit;
+  const mag = phoneMag();
   return [
-    seated * (1 - rear) + REAR_X * rear,
-    HERO_RAISE * hero + BEAT_Y * fit,
+    (seated * (1 - rear) + REAR_X * rear) * mag,
+    (HERO_RAISE * hero + BEAT_Y * fit) * mag,
   ];
 }
 

@@ -1,8 +1,8 @@
 {
   "parts.hornsDot1": {
     "desktop": [
-      -4.55,
-      -12.03
+      -9.2,
+      -16.15
     ],
     "mobile": [
       -0.1,
@@ -11,14 +11,14 @@
   },
   "parts.hornsDot2": {
     "desktop": [
-      11.32,
-      -12.85
+      19.28,
+      -11.68
     ]
   },
   "parts.measure5cm": {
     "desktop": [
       -2.53,
-      0.71
+      1.21
     ],
     "mobile": [
       -0.4,
@@ -27,8 +27,8 @@
   },
   "parts.dot": {
     "desktop": [
-      -11.63,
-      -0.3
+      -14.06,
+      12.04
     ],
     "mobile": [
       0,
@@ -43,6 +43,30 @@
     "mobile": [
       -1.81,
       -1.32
+    ]
+  },
+  "tonnes.measureW": {
+    "desktop": [
+      -1.85,
+      0
+    ]
+  },
+  "parts.emptyInside": {
+    "desktop": [
+      1.52,
+      1.92
+    ]
+  },
+  "parts.title": {
+    "desktop": [
+      10.92,
+      5.59
+    ]
+  },
+  "tonnes.measureH": {
+    "desktop": [
+      0,
+      2
     ]
   }
 }

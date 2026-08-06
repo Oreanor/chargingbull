@@ -20,7 +20,7 @@ import { stagesToTrack, type StagesFile } from './stagesToTrack';
 import { bullEditStore } from './editStore';
 import PoseProbe from './PoseProbe';
 import { tuneStore } from './tuneEditor';
-import { mobileProfileDistScale, mobileFrameNudge } from './overlayFit';
+import { mobileProfileDistScale, mobileFrameNudge, phoneMag } from './overlayFit';
 import { viewportH } from './viewport';
 import { docTop, onScroll as onPageScroll, scrollToPos } from './scroller';
 
@@ -365,6 +365,19 @@ function ModelScene({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, bgKey, vignette, placementKey, extrasKey, rotate, pan, autoFrame, blockWheel]);
+
+  // The phone's width fit, as a zoom of the frozen 800px framing: the figure's on-screen
+  // size is proportional to the host's width, so this magnifies the render itself rather
+  // than moving the camera (see overlayFit.phoneMag). Desktop reads 1 and the media query
+  // ignores it anyway. The host's own ResizeObserver above re-fits the canvas.
+  useEffect(() => {
+    const host = containerRef.current;
+    if (!host) return;
+    const apply = () => host.style.setProperty('--bull-zoom', phoneMag().toFixed(4));
+    apply();
+    window.addEventListener('resize', apply);
+    return () => window.removeEventListener('resize', apply);
+  }, []);
 
   return (
     <div className="mc-gl-clip relative w-full h-full overflow-hidden bg-black">

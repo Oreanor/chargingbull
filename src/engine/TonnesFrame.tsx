@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
 import { tuneStore } from './tuneEditor';
-import { TONNES_TRIM, tonnesOverlayScale } from './overlayFit';
+import { TONNES_TRIM, phoneMag, tonnesOverlayScale } from './overlayFit';
 // Inlined (not <img>) so the SVG <text> can use the page's @font-face fonts (Space Mono
 // for the m-labels). As <img> these would render in an isolated context with no access
 // to our webfonts. The headline is outlines, so it needs no font at all.
@@ -127,11 +127,20 @@ const MOBILE: Frame = {
 
 const GREEN = '#61E26B';
 
-/** The two leaders as full rects: span from the frame, row from the height arrow's tips
- *  (less half the rule's thickness, so the rule is centred on the tip). */
-const leaders = (F: Frame): { leaderTop: Rect; baseline: Rect } => {
+/**
+ * The two leaders as full rects: span from the frame, row from the height arrow's tips
+ * (less half the rule's thickness, so the rule is centred on the tip).
+ *
+ * `dy` (design px) and `s` are the arrow's LIVE ✎ nudge and scale, so a dragged or resized
+ * arrow carries its rules with it. They are read here rather than baked into the rect above
+ * because a leader's row is a property of the arrow, not of the mockup: the ✎ layer reaches
+ * every piece by its own transform, and these two have no piece of their own to ride — drag
+ * the arrow down and the rules used to stay behind, pointing at nothing. `s` scales about the
+ * arrow's own centre, the way the transform does, so the tips stay on the tips.
+ */
+const leaders = (F: Frame, dy = 0, s = 1): { leaderTop: Rect; baseline: Rect } => {
   const h = F.measureH.w * F.arrow.aspect;
-  const row = (t: number) => F.measureH.y + t * h - LEADER / 2;
+  const row = (t: number) => F.measureH.y + dy + (0.5 + (t - 0.5) * s) * h - LEADER / 2;
   return {
     leaderTop: { ...F.leaderTop, y: row(F.arrow.tips[0]) },
     baseline: { ...F.baseline, y: row(F.arrow.tips[1]) },
@@ -170,23 +179,31 @@ export default function TonnesFrame() {
 
     const frame = window.innerWidth <= MOBILE_MAX ? MOBILE : DESKTOP;
     const vh = frame.px.h / 100; // design px per vh in this frame
-    const rules = leaders(frame);
-    const pieces: [string, React.RefObject<HTMLDivElement | null>, { x: number; y: number }][] = [
-      ['tonnes.headline', headlineRef, frame.headline],
-      ['tonnes.measureW', measureWRef, frame.measureW],
-      ['tonnes.measureH', measureHRef, frame.measureH],
-      ['tonnes.baseline', baselineRef, rules.baseline],
-      ['tonnes.leaderTop', leaderTopRef, rules.leaderTop],
-      ['tonnes.caption', captionRef, {
-        x: frame.caption.cx - frame.caption.w / 2,
-        y: frame.caption.y,
-      }],
-    ];
+    // Rebuilt each apply, not hoisted: the two leaders' rows are read off the height arrow's
+    // LIVE ✎ nudge/scale (see `leaders`), so they have to be recomputed whenever it moves.
+    const layout = () => {
+      const rules = leaders(
+        frame,
+        tuneStore.get('tonnes.measureH')[1] * vh,
+        tuneStore.getScale('tonnes.measureH'),
+      );
+      return [
+        ['tonnes.headline', headlineRef, frame.headline],
+        ['tonnes.measureW', measureWRef, frame.measureW],
+        ['tonnes.measureH', measureHRef, frame.measureH],
+        ['tonnes.baseline', baselineRef, rules.baseline],
+        ['tonnes.leaderTop', leaderTopRef, rules.leaderTop],
+        ['tonnes.caption', captionRef, {
+          x: frame.caption.cx - frame.caption.w / 2,
+          y: frame.caption.y,
+        }],
+      ] as [string, React.RefObject<HTMLDivElement | null>, { x: number; y: number }][];
+    };
 
     // Top-left from screen centre, in vh — the piece's own width/height come from the
     // rect too, so a piece never needs a scale of its own.
     const applyPieces = () => {
-      for (const [id, ref, rect] of pieces) {
+      for (const [id, ref, rect] of layout()) {
         const el = ref.current;
         if (!el) continue;
         const [ox, oy] = tuneStore.get(id);
@@ -199,6 +216,12 @@ export default function TonnesFrame() {
       }
       const k = tonnesOverlayScale(progress.get());
       green.style.transform = Math.abs(k - 1) < 1e-4 ? '' : `scale(${k.toFixed(4)})`;
+      // The phone's width fit, on the ROOT: it belongs to the whole composition, caption
+      // included, which is exactly what the green group is not (it carries the figure's own
+      // trim). Root × group is the composition's full scale, and the camera divides its
+      // distance by the same root factor — see overlayFit.phoneMag.
+      const m = phoneMag();
+      root.style.transform = Math.abs(m - 1) < 1e-4 ? '' : `scale(${m.toFixed(4)})`;
     };
 
     const applyOpacity = () => {
@@ -257,7 +280,11 @@ export default function TonnesFrame() {
   const wheelCut = `linear-gradient(90deg, #000 0 ${g0}, transparent ${g0} ${g1}, #000 ${g1})`;
 
   return (
-    <div ref={rootRef} className="absolute inset-0 pointer-events-none" style={{ opacity: 0 }}>
+    <div
+      ref={rootRef}
+      className="absolute inset-0 pointer-events-none"
+      style={{ opacity: 0, transformOrigin: '50% 50%' }}
+    >
       <div ref={greenRef} className="absolute inset-0" style={{ transformOrigin: '50% 50%' }}>
         <div
           ref={headlineRef}
