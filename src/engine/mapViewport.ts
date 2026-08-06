@@ -30,3 +30,18 @@ export const isNarrowViewport = () =>
  */
 const BULL_TRIM_NARROW = 0.75;
 export const bullSizeTrim = () => (isNarrowViewport() ? BULL_TRIM_NARROW : 1);
+
+/**
+ * Which Manhattan the map extrudes: the baked BOX city on a phone, Mapbox's real
+ * footprints on a wide viewport (see mapBuildings.ts for what the boxes are and why).
+ *
+ * `?city=boxes` / `?city=tiles` forces one either way. Not a preference, a review knob:
+ * the box city is otherwise unreachable on the desktop where it gets looked at, and a
+ * change to it that can only be seen by shrinking a window is a change nobody checks.
+ */
+export const isBoxCity = () => {
+  const forced = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('city')
+    : null;
+  return forced ? forced === 'boxes' : isNarrowViewport();
+};

@@ -12,7 +12,8 @@
     "knip": "knip",
     "test:bull-frame": "node scripts/fix-bull-framing.mjs",
     "test:bull-frame:fix": "node scripts/fix-bull-framing.mjs --fix",
-    "test:gl": "node scripts/gl-residency.mjs"
+    "test:gl": "node scripts/gl-residency.mjs",
+    "bake:boxes": "node scripts/bake-building-boxes.mjs"
   },
   "dependencies": {
     "@datum-sdk/engine": "file:./vendor/datum-sdk-engine-0.6.1.tgz",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@mapbox/vector-tile": "^3.0.0",
     "@mdx-js/rollup": "^3.1.0",
     "@types/mdx": "^2.0.13",
     "@types/react": "^18.3.17",
@@ -41,6 +43,7 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.6.0",
     "knip": "^6.17.1",
+    "pbf": "^5.1.2",
     "playwright": "^1.61.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",

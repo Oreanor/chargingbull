@@ -5,7 +5,13 @@ import { useSmoothProgress } from './smoothScroll';
 import { viewportH } from './viewport';
 import { glQuality, glWindow, noteGlLive, onGlEvict, requestGl, withCappedDpr } from './deviceBudget';
 import { markGl } from './glDiag';
-import { bullSizeTrim, isNarrowViewport } from './mapViewport';
+import { bullSizeTrim, isBoxCity, isNarrowViewport } from './mapViewport';
+import {
+  BOX_FADE, BOX_NYSE, BUILDING_BOX_MINZOOM, BUILDING_BOX_URL, BUILDING_FADE, BUILDING_FILTER,
+  BUILDING_NYSE, BUILDING_RAMP, NYSE_FOOTPRINT, NYSE_MAX_HEIGHT, TRANSPARENT_BUILDINGS_POLY,
+  geomCentroid, pointInPolygon, selectNyseParts,
+} from './mapBuildings';
+import type { BuildingPart, LngLat } from './mapBuildings';
 import bullMapData from '../data/bullMapData.json';
 import './MapChapter.css';
 // Outlined title graphics for the intro ("The Bull's ROUTE"), inlined as raw markup.
@@ -80,7 +86,6 @@ type DeckLayers = {
   ScenegraphLayer: typeof import('@deck.gl/mesh-layers').ScenegraphLayer;
 };
 
-type LngLat = [number, number];
 const BULL_3D_MODEL_URL = '/chapters/bull/images/bull.glb';
 // Mapbox is dynamically imported in createMap (it's ~1MB+ and the map appears
 // chapters in); the access token is stashed here for the Directions fetch.
@@ -382,7 +387,9 @@ const DEFAULT_CAMERAS: CamStop[] = [
   // itself — the bull sits at 65% of 1440, and 61–67% from 1280 to 1920.
   { center: [-74.01482, 40.70621], zoom: 16.52, pitch: 39, bearing: 19 },
 ];
-const DEFAULT_WEIGHTS = [17, 24, 21, 18];
+/** Leg shares. The first is the title leg and is tied to TITLE_BAND_VH — 11 × (JOURNEY_VH /
+ *  ΣW) = 220vh; the other three are Sasha's 480 / 420 / 360. Change one, change both. */
+const DEFAULT_WEIGHTS = [11, 24, 21, 18];
 /** His BULL_HEADING_OVERRIDE, in stop space: NYSE parallel to the street, BG the resting pose. */
 const DEFAULT_HEADINGS: (number | null)[] = [null, 21, null, 19];
 const DEFAULT_BULL_SCALE = 1.3;
@@ -526,9 +533,25 @@ const BULL_FOLLOW: { x0: number; x1: number; y0: number; y1: number; on: number;
  *  inline at each band (`2 * 630`), which is the same number said twice. */
 const PACE = 2;
 const LEGS_VH = PACE * 630;
-/** Scroll the "Bull's ROUTE" title holds before the journey starts — ours, standing in for
- *  his studio opener, which is why it carries that leg's 170svh (doubled with the rest). */
-const TITLE_BAND_VH = PACE * 170;
+/**
+ * The "Bull's ROUTE" title leg — ours, standing in for his studio opener. It is not a
+ * separate band: it IS leg 1, and `weights[0]` is its share, so this constant and that
+ * weight are one number said twice and must move together (weight × JOURNEY_VH / ΣW = this).
+ *
+ * Cut from PACE × 170 = 340 to 220 (weights[0] 17 → 11). At 340 the title leg ran a screen
+ * and a half of MOTIONLESS black — the lockup does not animate (the typing was removed), so
+ * after the first moment there was nothing left to look at, and the camera's fly-in from
+ * stop 0 was spending itself behind an opaque veil. What was cut is the standing part; the
+ * dissolve keeps its length (see TITLE_HOLD_VH).
+ */
+const TITLE_BAND_VH = 220;
+/**
+ * How long the title stays SOLID before it starts dissolving — absolute scroll, like the
+ * dwells, and for the same reason: a reader needs a fixed beat to read two lines, not a
+ * share of whatever the leg happens to be. It used to be the literal 0.45 of leg 1, which
+ * is how a 340vh leg turned into 153vh (1.5 screens) of frozen frame.
+ */
+const TITLE_HOLD_VH = 25;
 /** Scroll a card takes to cross the screen. Held at what it has always been, so the
  *  plaques keep their on-screen speed no matter how the journey underneath is paced —
  *  it used to be pinned to BULL_SLOW, which tied card velocity to the bull's. */
@@ -790,7 +813,15 @@ function stopProgress(jv: number, bands: JourneyBand[], flightEase: (FlightEase 
 /** Everything the progress functions need for the current viewport. The band geometry
  *  depends on the live scroll length — dwells are absolute pixels — so this is rebuilt
  *  whenever the section or the window is measured, not computed once. */
-type Pacing = { bands: JourneyBand[]; flightEase: (FlightEase | null)[]; diveFrac: number };
+type Pacing = {
+  bands: JourneyBand[];
+  flightEase: (FlightEase | null)[];
+  diveFrac: number;
+  /** Scroll the journey actually spans, in px. Carried so a length authored in vh (the
+   *  title hold) can be turned into the band fraction it works out to on this viewport —
+   *  the bands themselves are normalised and have forgotten how long they are. */
+  journeyPx: number;
+};
 function pacingOf(cfg: MapCfg, scrollablePx: number): Pacing {
   // DIVE_VH of viewport height, as a share of the measured scroll — so the dive keeps its
   // authored length whatever the dwells add. Falls back to the design-time constant until
@@ -801,7 +832,22 @@ function pacingOf(cfg: MapCfg, scrollablePx: number): Pacing {
     bands: journeyBands(cfg.weights, cfg.dwellPx, scrollablePx, diveFrac),
     flightEase: cfg.flightEase,
     diveFrac,
+    journeyPx: scrollablePx * (1 - diveFrac),
   };
+}
+
+/**
+ * Opacity of the title card at this scroll: solid for TITLE_HOLD_VH, then dissolving across
+ * the rest of the title leg, so the map surfaces WHILE the camera flies rather than after.
+ * Keyed off the measured leg, which is why it lives next to the pacing and not in the render
+ * loop that used to carry the bare 0.45.
+ */
+function titleVeil(sj: number, p: Pacing): number {
+  const legPx = (p.bands[1]?.flightWidth ?? 0) * p.journeyPx;
+  const holdPx = typeof window !== 'undefined' ? (TITLE_HOLD_VH / 100) * viewportH() : 0;
+  const hold = legPx > 0 ? clamp(holdPx / legPx, 0, 0.9) : 0;
+  const d = clamp((camProgress(sj, p) - hold) / (1 - hold), 0, 1);
+  return 1 - smoothstep(d);
 }
 
 /** Stop progress the CAMERA rides: LINEAR inside each flight, so the authored keyframes
@@ -831,77 +877,112 @@ function cardProgress(sj: number, p: Pacing): number {
   return N;
 }
 
-// ── Building x-ray (ported from wallst-rodeo/map) ─────────────────────────────
-// Foreground structures around the NYSE close-up are moved to a translucent
-// sister layer so the bronze-highlighted exchange behind them shows through.
+// ── The city ──────────────────────────────────────────────────────────────────
+// Two ways to draw Manhattan, chosen by viewport at map creation.
+//
+//   · WIDE — Mapbox's real `building` footprints, extruded from the `composite` vector
+//     tiles. Foreground structures around the NYSE close-up move to a translucent sister
+//     layer (the x-ray) so the bronze exchange behind them shows through, and which
+//     features those are is discovered live off the rendered tiles.
+//   · PHONE — BOXES. Every footprint is pre-reduced to its minimum-area rectangle by
+//     scripts/bake-building-boxes.mjs, so the tile worker earcuts 4 points per building
+//     instead of 8–20. The same bake also resolves the exchange and the x-ray set ahead
+//     of time into a `k` property, which is why this path runs no queryRenderedFeatures
+//     and holds no feature-state at all — the phone was paying for that discovery every
+//     time a tile landed.
+//
+// Both draw the same palette, off the same shared rules (see mapBuildings.ts).
 
-// Precise NYSE building footprint (11 Wall Street). Buildings whose centroid
-// falls inside get feature-state `nyse:true` → bright bronze highlight.
-// Building palette: cool grey→white stone that lightens with height, on the navy map.
-// OURS, and deliberately not the source engine's. wallst-rodeo/map authors a warm
-// bronze-lit ramp (#2c2632…#a07a4a) in its live STYLE config, and porting it over was a
-// mistake: the grey is the look this longread is built on, and the whole point of the
-// gold NYSE highlight is that it is the ONE warm thing in the frame — on a bronze city
-// it stops reading as lit and becomes a slightly brighter shade of everything else.
-// Take geometry, leg weights and mapConfig from Sasha; the palette is not his to set.
-const BUILDING_RAMP: ExpressionSpecification = [
-  'interpolate', ['linear'], ['get', 'height'],
-  0, '#363b45', 60, '#525a68', 160, '#888f9c', 400, '#d9dde3',
+/** Layer ids per path — `boxes` also names the source, which only the phone adds. */
+const CITY = {
+  tiles: { solid: 'building-3d', fade: 'building-3d-fade' },
+  boxes: { solid: 'building-box', fade: 'building-box-fade', source: 'building-boxes' },
+} as const;
+/** Our own extrusion layers, which customizeBaseStyle must not hide along with the
+ *  style's. */
+const CITY_LAYER_IDS: readonly string[] = [
+  CITY.tiles.solid, CITY.tiles.fade, CITY.boxes.solid, CITY.boxes.fade,
 ];
-const BUILDING_NYSE = '#d4a52a';
+
+/** Height/base are read off the same property names on both paths — the bake writes the
+ *  vector tile's own schema. */
+const EXTRUSION_SHAPE = {
+  'fill-extrusion-height': ['get', 'height'] as ExpressionSpecification,
+  'fill-extrusion-base': ['get', 'min_height'] as ExpressionSpecification,
+};
 
 /**
- * Which features of the `building` source-layer get extruded — and THE reason the walls
- * stopped shimmering.
- *
- * That layer carries three overlapping things: whole buildings, their `building:part`
- * pieces (tied back by `building_id`) and plain footprints. Where a building has parts the
- * tile marks the PARENT `extrude: "false"`, because the parts carry the real geometry.
- * Selecting on `has height` alone drew both, so a parent's volume and its parts' volumes
- * shared the same lower walls: two coplanar surfaces at one depth, and the depth test picks
- * a different winner per pixel as the camera moves. That is the flicker.
- *
- * Measured on the NYSE close-up before the fix: 928 extrusions in frame, 87 of them flagged
- * not-to-extrude, 645 of them `building:part`. Ids are NOT unique across a parent and its
- * parts, which is why the x-ray layer has to carry this condition too — an id set alone
- * would pull the non-extrude parent back in.
- *
- * One constant, because the same selection is needed in four places (both layers and both
- * branches of the x-ray filter) and they must not drift apart.
+ * The solid layer's colour. Same ramp both ways; only WHERE the bronze comes from differs.
+ * On the tiles path the exchange is discovered live and carried in feature-state; on the
+ * boxes path the bake resolved it and wrote `k`, so a late tile has nothing to re-tag.
  */
-const BUILDING_FILTER: FilterSpecification = [
-  'all',
-  ['==', ['get', 'extrude'], 'true'],
-  ['has', 'height'],
-  ['!=', ['get', 'underground'], 'true'],
-];
-/** Foreground structures moved to the see-through sister layer around the NYSE close-up. */
-const BUILDING_FADE = '#5f6878';
+const cityColor = (boxes: boolean): ExpressionSpecification => (boxes
+  ? ['case', ['==', ['get', 'k'], BOX_NYSE], BUILDING_NYSE, BUILDING_RAMP]
+  : ['case', ['boolean', ['feature-state', 'nyse'], false], BUILDING_NYSE, BUILDING_RAMP]);
 
-const NYSE_FOOTPRINT: LngLat[] = [
-  [-74.011251, 40.7074775], [-74.0115968, 40.7069027], [-74.0110914, 40.7067031],
-  [-74.0107881, 40.7071851], [-74.0108785, 40.7072476], [-74.0110222, 40.7073303],
-  [-74.0111393, 40.707415], [-74.011251, 40.7074775],
-];
-// Buildings whose centroid sits inside this polygon are faded (made
-// see-through) — the structures that block the NYSE / bull view on the close-up.
-const TRANSPARENT_BUILDINGS_POLY: LngLat[] = [
-  [-74.0110738, 40.7062909], [-74.0114533, 40.7053415], [-74.0115293, 40.7035],
-  [-74.0110928, 40.7018312], [-74.008901, 40.7024354], [-74.0062252, 40.7042553],
-  [-74.0047925, 40.705212], [-74.0079806, 40.7075425], [-74.0093374, 40.7085695],
-  [-74.0104351, 40.7071894], [-74.0108099, 40.7067632], [-74.0110738, 40.7062909],
-];
-
-/** Centroid of a Polygon/MultiPolygon geometry (outer ring only). */
-function geomCentroid(geometry: GeoJSON.Geometry): LngLat | null {
-  let ring: number[][] | undefined;
-  if (geometry.type === 'Polygon') ring = geometry.coordinates[0];
-  else if (geometry.type === 'MultiPolygon') ring = geometry.coordinates[0]?.[0];
-  else return null;
-  if (!ring || !ring.length) return null;
-  let sx = 0, sy = 0;
-  for (const [x, y] of ring) { sx += x; sy += y; }
-  return [sx / ring.length, sy / ring.length];
+/**
+ * Add the city — and own its look. Called at load and again from the x-ray effect, so an
+ * HMR edit to the palette lands on the live map: layers are created once, paint is
+ * re-applied every call.
+ *
+ * The translucent sister layer is built here too, next to the solid one it shadows — they
+ * share a source, a shape and a draw order, and having one appear at load with the other
+ * several hundred lines away on first scroll was how the two drifted apart.
+ */
+function addCityLayers(map: MapboxMap, boxes: boolean): void {
+  const ids = boxes ? CITY.boxes : CITY.tiles;
+  // Under the labels, so street names still read over the city.
+  const before = map.getStyle()?.layers?.find((l) => l.type === 'symbol' && /label|place/.test(l.id))?.id;
+  try {
+    if (boxes) {
+      if (!map.getSource(CITY.boxes.source)) {
+        map.addSource(CITY.boxes.source, {
+          type: 'geojson', data: BUILDING_BOX_URL,
+          // The boxes ARE the simplification — letting the worker simplify them again can
+          // only bend a rectangle out of square.
+          tolerance: 0, buffer: 64,
+        });
+      }
+      if (!map.getLayer(ids.solid)) {
+        map.addLayer({
+          id: ids.solid, source: CITY.boxes.source, type: 'fill-extrusion',
+          minzoom: BUILDING_BOX_MINZOOM, paint: EXTRUSION_SHAPE,
+        }, before);
+      }
+      if (!map.getLayer(ids.fade)) {
+        map.addLayer({
+          id: ids.fade, source: CITY.boxes.source, type: 'fill-extrusion',
+          minzoom: BUILDING_BOX_MINZOOM,
+          filter: ['==', ['get', 'k'], BOX_FADE],
+          layout: { visibility: 'none' },   // switched on only around the exchange
+          paint: EXTRUSION_SHAPE,
+        }, before);
+      }
+    } else {
+      if (!map.getLayer(ids.solid)) {
+        map.addLayer({
+          id: ids.solid, source: 'composite', 'source-layer': 'building',
+          type: 'fill-extrusion', minzoom: 12, filter: BUILDING_FILTER, paint: EXTRUSION_SHAPE,
+        }, before);
+      }
+      // Real layer-level opacity gives Mapbox the cue to render fill-extrusion see-through
+      // (structures behind genuinely show). Starts matching nothing — tagging fills it in.
+      if (!map.getLayer(ids.fade)) {
+        map.addLayer({
+          id: ids.fade, source: 'composite', 'source-layer': 'building',
+          type: 'fill-extrusion', minzoom: 13,
+          filter: ['all', BUILDING_FILTER, ['in', ['id'], ['literal', []]]],
+          paint: EXTRUSION_SHAPE,
+        }, before);
+      }
+    }
+    map.setPaintProperty(ids.solid, 'fill-extrusion-color', cityColor(boxes));
+    // Fully opaque: a translucent extrusion (0.92) uses Mapbox's transparent path, which
+    // doesn't depth-write reliably → overlapping faces flicker.
+    map.setPaintProperty(ids.solid, 'fill-extrusion-opacity', 1);
+    map.setPaintProperty(ids.fade, 'fill-extrusion-color', BUILDING_FADE);
+    map.setPaintProperty(ids.fade, 'fill-extrusion-opacity', 0.28);
+  } catch (e) { console.warn(`city layers (${boxes ? 'boxes' : 'tiles'}) failed`, e); }
 }
 
 /** Recolour the base to navy, hide the style's own building layers (they z-fight our
@@ -916,7 +997,7 @@ function customizeBaseStyle(map: MapboxMap): void {
       ' || fill-extrusion: ' + sl.filter((l) => l.type === 'fill-extrusion').map((l) => l.id).join(', '));
     for (const l of map.getStyle()?.layers ?? []) {
       const id = l.id;
-      if (/build/i.test(id) && id !== 'building-3d' && id !== 'building-3d-fade') {
+      if (/build/i.test(id) && !CITY_LAYER_IDS.includes(id)) {
         try { map.setLayoutProperty(id, 'visibility', 'none'); } catch { /* ok */ }
         continue;
       }
@@ -943,18 +1024,6 @@ function customizeBaseStyle(map: MapboxMap): void {
       }
     }
   } catch (e) { console.warn('base recolour failed', e); }
-}
-
-/** Standard ray-casting point-in-polygon; poly is an array of [lng,lat]. */
-function pointInPolygon(pt: LngLat, poly: LngLat[]): boolean {
-  const x = pt[0], y = pt[1];
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i][0], yi = poly[i][1];
-    const xj = poly[j][0], yj = poly[j][1];
-    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi)) inside = !inside;
-  }
-  return inside;
 }
 
 /** Which stop the x-ray belongs to, read off the data rather than counted by hand.
@@ -1142,25 +1211,11 @@ export default function MapChapter({
           { id: 'directional', type: 'directional', properties: { color: '#eef2f8', intensity: 0.9, direction: [220, 35] } },
         ]);
       } catch { /* style may not accept lights */ }
-      // 3D building extrusions on the cool grey→white palette (see BUILDING_RAMP)
-      try {
-        if (!map.getLayer('building-3d')) {
-          const labelLayer = map.getStyle()?.layers?.find((l) => l.type === 'symbol' && /label|place/.test(l.id))?.id;
-          map.addLayer({
-            id: 'building-3d', source: 'composite', 'source-layer': 'building',
-            type: 'fill-extrusion', minzoom: 12,
-            filter: BUILDING_FILTER,
-            paint: {
-              'fill-extrusion-color': BUILDING_RAMP,
-              'fill-extrusion-height': ['get', 'height'],
-              'fill-extrusion-base': ['get', 'min_height'],
-              // Fully opaque: a translucent extrusion (0.92) uses Mapbox's transparent
-              // path, which doesn't depth-write reliably → overlapping faces flicker.
-              'fill-extrusion-opacity': 1,
-            },
-          }, labelLayer);
-        }
-      } catch (e) { console.warn('building-3d layer failed', e); }
+      // The city: real footprints on a wide viewport, baked boxes on a phone (see CITY).
+      // Read straight off the viewport rather than the `isNarrow` state, because this is
+      // the moment the layers are built — a later resize past the breakpoint must not
+      // imply a source the map does not have.
+      addCityLayers(map, isBoxCity());
 
       // Navy base + hide the style's own buildings + fade labels out on zoom-in.
       customizeBaseStyle(map);
@@ -1381,50 +1436,33 @@ export default function MapChapter({
     };
   }, [mapReady, landmarks, playhead, cfg]);
 
-  // building x-ray: foreground structures near the NYSE close-up fade to a
-  // translucent sister layer, revealing the bronze-highlighted exchange behind
-  // them. Tagging rides idle/sourcedata (Mapbox streams building fragments per
-  // zoom); the filters toggle on the location-progress band around NYSE.
+  // building x-ray: foreground structures near the NYSE close-up fade to a translucent
+  // sister layer, revealing the bronze-highlighted exchange behind them. The filters
+  // toggle on the location-progress band around NYSE.
+  //
+  // WHICH structures those are is the part that differs by path (see CITY). The boxes
+  // path knows already — the bake wrote it into `k` — so on a phone this effect is the
+  // band and nothing else. The tiles path has to find them in the rendered frame, so it
+  // also tags off idle/sourcedata as Mapbox streams building fragments per zoom.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !map.getLayer('building-3d')) return;
+    if (!map || !mapReady) return;
+    // The map itself decides which city is on screen: it was chosen at creation, and a
+    // resize past the breakpoint since then does not rebuild it.
+    const boxes = !!map.getLayer(CITY.boxes.solid);
+    const ids = boxes ? CITY.boxes : CITY.tiles;
+    if (!map.getLayer(ids.solid)) return;
 
-    // Clear any stale nyse/faded feature-state from a previous run/HMR so we don't keep
-    // a wrongly-tagged fragment (e.g. a yellow growth on a neighbouring building).
-    try { map.removeFeatureState({ source: 'composite', sourceLayer: 'building' }); } catch { /* ok */ }
-    // Re-apply the base styling too (hidden buildings / labels / navy) so edits land on
-    // the already-created map without needing a full reload.
-    customizeBaseStyle(map);
-
-    // Highlight the NYSE footprint in bronze on the main layer (faded buildings
-    // are excluded from it, so the exchange stays solid and lit).
-    const buildingColor: ExpressionSpecification = [
-      'case', ['boolean', ['feature-state', 'nyse'], false], BUILDING_NYSE,
-      BUILDING_RAMP,
-    ];
-    try { map.setPaintProperty('building-3d', 'fill-extrusion-color', buildingColor); } catch { /* style not ready */ }
-    // Force opaque even if the layer already existed (HMR / persisted map): a translucent
-    // extrusion uses Mapbox's transparent path and flickers.
-    try { map.setPaintProperty('building-3d', 'fill-extrusion-opacity', 1); } catch { /* style not ready */ }
-
-    // Translucent sister layer — real layer-level opacity gives Mapbox the cue to
-    // render fill-extrusion see-through (structures behind genuinely show).
-    if (!map.getLayer('building-3d-fade')) {
-      try {
-        const labelLayer = map.getStyle()?.layers?.find((l) => l.type === 'symbol' && /label|place/.test(l.id))?.id;
-        map.addLayer({
-          id: 'building-3d-fade', source: 'composite', 'source-layer': 'building',
-          type: 'fill-extrusion', minzoom: 13,
-          filter: ['all', BUILDING_FILTER, ['in', ['id'], ['literal', []]]],
-          paint: {
-            'fill-extrusion-color': BUILDING_FADE,
-            'fill-extrusion-height': ['get', 'height'],
-            'fill-extrusion-base': ['get', 'min_height'],
-            'fill-extrusion-opacity': 0.28,
-          },
-        }, labelLayer);
-      } catch (e) { console.warn('building-3d-fade layer failed', e); }
+    if (!boxes) {
+      // Clear any stale nyse/faded feature-state from a previous run/HMR so we don't keep
+      // a wrongly-tagged fragment (e.g. a yellow growth on a neighbouring building).
+      try { map.removeFeatureState({ source: 'composite', sourceLayer: 'building' }); } catch { /* ok */ }
     }
+    // Re-add anything an HMR edit dropped and re-apply the look (city palette, then the
+    // navy base / hidden style buildings / label fade) so edits land on the already-created
+    // map without needing a full reload.
+    addCityLayers(map, boxes);
+    customizeBaseStyle(map);
 
     const nyseIds = new Set<string | number>();
     /** Tops (m) of the parts already tagged as the exchange — the faces a floating part is
@@ -1441,20 +1479,31 @@ export default function MapChapter({
     let lastFilterKey = '';
     const updateFilters = () => {
       const active = isFadeActiveForProgress(cachedProgress);
-      const ids = [...fadedIds];
-      const key = active ? `on:${ids.join(',')}` : 'off';
+      const tagged = [...fadedIds];
+      // On boxes the set never changes, so the band alone keys the update.
+      const key = active ? `on:${boxes ? '' : tagged.join(',')}` : 'off';
       if (key === lastFilterKey) return;
       lastFilterKey = key;
       try {
-        if (active) {
-          map.setFilter('building-3d', ['all', BUILDING_FILTER, ['!', ['in', ['id'], ['literal', ids]]]] as FilterSpecification);
-          map.setFilter('building-3d-fade', ['all', BUILDING_FILTER, ['in', ['id'], ['literal', ids]]] as FilterSpecification);
+        if (boxes) {
+          // Off the band the blockers are just city again — no filter at all, rather than
+          // one that has to be evaluated over every box.
+          map.setFilter(ids.solid, active ? ['!=', ['get', 'k'], BOX_FADE] : null);
+          map.setLayoutProperty(ids.fade, 'visibility', active ? 'visible' : 'none');
+        } else if (active) {
+          map.setFilter(ids.solid, ['all', BUILDING_FILTER, ['!', ['in', ['id'], ['literal', tagged]]]] as FilterSpecification);
+          map.setFilter(ids.fade, ['all', BUILDING_FILTER, ['in', ['id'], ['literal', tagged]]] as FilterSpecification);
         } else {
-          map.setFilter('building-3d', BUILDING_FILTER);
-          map.setFilter('building-3d-fade', ['all', BUILDING_FILTER, ['in', ['id'], ['literal', []]]] as FilterSpecification);
+          map.setFilter(ids.solid, BUILDING_FILTER);
+          map.setFilter(ids.fade, ['all', BUILDING_FILTER, ['in', ['id'], ['literal', []]]] as FilterSpecification);
         }
       } catch { /* layer/style transient */ }
     };
+
+    // ── tiles only: find the exchange and the blockers in the rendered frame ─────
+    // None of this runs on a phone. Re-querying the rendered features every time a tile
+    // settled was the map's second building bill after the geometry itself, and the box
+    // bake has already answered both questions offline.
 
     // Query the on-screen building fragments overlapping a polygon's bbox and run
     // each centroid through the ray-cast test (Mapbox supplies different fragments
@@ -1471,49 +1520,35 @@ export default function MapChapter({
       // Extend the query box UPWARD (smaller y) so tall buildings' tops — which project
       // well above their ground footprint under pitch — are included. The precise
       // point-in-polygon test below still gates what actually gets tagged.
-      return map.queryRenderedFeatures([[x0 - 20, y0 - 140], [x1 + 20, y1 + 20]], { layers: ['building-3d'] });
+      return map.queryRenderedFeatures([[x0 - 20, y0 - 140], [x1 + 20, y1 + 20]], { layers: [ids.solid] });
     };
 
     const tagNYSE = () => {
-      if (!map.getLayer('building-3d')) return;
+      if (!map.getLayer(ids.solid)) return;
       const before = nyseIds.size;
-      // Candidates: inside the precise footprint, and not a tall neighbour. The exchange
-      // facade is ~90 m; 14 Wall St is ~164 m and 40 Wall St ~283 m, so >120 m is somebody
-      // else clipping the polygon. Strict on the centroid — a neighbour merely overlapping
-      // the edge stays out, while tile-split halves of the exchange still land inside.
-      const cand: { id: string | number; min: number; top: number }[] = [];
+      // Candidates: inside the precise footprint, and not a tall neighbour (see
+      // NYSE_MAX_HEIGHT). Strict on the centroid — a neighbour merely overlapping the
+      // edge stays out, while tile-split halves of the exchange still land inside.
+      const cand: BuildingPart[] = [];
       for (const f of queryPoly(NYSE_FOOTPRINT)) {
         if (f.id == null || nyseIds.has(f.id)) continue;
         const top = Number(f.properties?.height) || 0;
-        if (top > 120) continue;
+        if (top > NYSE_MAX_HEIGHT) continue;
         const c = geomCentroid(f.geometry);
         if (!c || !pointInPolygon(c, NYSE_FOOTPRINT)) continue;
         cand.push({ id: f.id, min: Number(f.properties?.min_height) || 0, top });
       }
-      // OSM models 11 Wall Street as a stack of building:parts, and five of them float.
-      // Two kinds, and only one of them belongs to the exchange's silhouette:
-      //   · roof plant / crown — floats at min_height 96, exactly the top of the 96 m
-      //     mass it stands on. Drop it and the tower is decapitated.
-      //   · a ledge at min_height 74.2, which starts BELOW the top of the 78.5 m part it
-      //     hangs off. Bronzed, it reads as a balcony the building does not have.
-      // So a floating part is the exchange only if it RESTS on a face already tagged: its
-      // min_height meets some tagged part's top. Passing the tops down as we go lets a
-      // stack chain upward, and it stays true if OSM re-ids or re-splits the parts.
-      const LEVEL_EPS = 0.5;
-      const tag = (c: { id: string | number; top: number }) => {
+      // Which of those are actually the exchange (and not a floating ledge next to it) is
+      // the shared rule — the bake picks the boxes with the very same call.
+      for (const c of selectNyseParts(cand, nyseTops)) {
         map.setFeatureState({ source: 'composite', sourceLayer: 'building', id: c.id }, { nyse: true });
         nyseIds.add(c.id);
-        nyseTops.add(c.top);
-      };
-      for (const c of cand) if (c.min === 0) tag(c);
-      for (const c of cand.filter((x) => x.min > 0).sort((a, b) => a.min - b.min)) {
-        if ([...nyseTops].some((t) => Math.abs(t - c.min) <= LEVEL_EPS)) tag(c);
       }
       // eslint-disable-next-line no-console
       if (nyseIds.size !== before) console.log('[MAP-DIAG v3] NYSE tagged:', nyseIds.size, [...nyseIds]);
     };
     const tagFaded = () => {
-      if (!map.getLayer('building-3d')) return;
+      if (!map.getLayer(ids.solid)) return;
       let added = 0;
       for (const f of queryPoly(TRANSPARENT_BUILDINGS_POLY)) {
         if (f.id == null || fadedIds.has(f.id) || nyseIds.has(f.id)) continue; // never fade NYSE
@@ -1527,8 +1562,10 @@ export default function MapChapter({
     const onSourceData = (e: { sourceId?: string; isSourceLoaded?: boolean }) => {
       if (e.sourceId === 'composite' && e.isSourceLoaded) { tagNYSE(); tagFaded(); }
     };
-    map.on('idle', onIdle);
-    map.on('sourcedata', onSourceData);
+    if (!boxes) {
+      map.on('idle', onIdle);
+      map.on('sourcedata', onSourceData);
+    }
 
     const onPlayhead = () => {
       cachedProgress = camLocation(playhead.get(), pacingRef.current);
@@ -1541,10 +1578,21 @@ export default function MapChapter({
       map.off('idle', onIdle);
       map.off('sourcedata', onSourceData);
       unsub();
-      // Restore the solid layer (drop the "exclude faded ids" filter) before
-      // removing its translucent sister, so no buildings are left invisible.
-      try { if (map.getLayer('building-3d')) map.setFilter('building-3d', ['all', ['has', 'height'], ['!=', ['get', 'underground'], 'true']] as FilterSpecification); } catch { /* map gone */ }
-      try { if (map.getLayer('building-3d-fade')) map.removeLayer('building-3d-fade'); } catch { /* map gone */ }
+      // Leave the city in its off-band state — everything solid, nothing see-through —
+      // so no building is left invisible if the effect re-runs. The layers themselves
+      // stay: addCityLayers owns them, and dropping the sister here only bought a
+      // re-tessellation on the way back in.
+      //
+      // The solid filter goes back to BUILDING_FILTER, not to a hand-written copy of it:
+      // the copy that used to sit here had lost the `extrude` test, which is the one that
+      // keeps a parent building and its parts from sharing a wall and flickering.
+      try {
+        if (map.getLayer(ids.solid)) map.setFilter(ids.solid, boxes ? null : BUILDING_FILTER);
+        if (map.getLayer(ids.fade)) {
+          if (boxes) map.setLayoutProperty(ids.fade, 'visibility', 'none');
+          else map.setFilter(ids.fade, ['all', BUILDING_FILTER, ['in', ['id'], ['literal', []]]] as FilterSpecification);
+        }
+      } catch { /* map gone */ }
     };
   }, [mapReady, playhead, cfg]);
 
@@ -1800,11 +1848,10 @@ export default function MapChapter({
       // In the source engine the cards are ordinary sections scrolling in flow at 1:1 —
       // the dwell lives only in the camera — and this is how we get the same split.
       const prog = cardProgress(sj, pacingRef.current);
-      // title card is a STOP: the black HOLDS solid through stop 0 (title types on
-      // a clean black screen) and only dissolves over stop 0→1, revealing the map.
+      // Title card: solid for its authored beat, then dissolving into the map across the
+      // rest of the title leg (see titleVeil).
       if (introRef.current) {
-        const d = clamp((camProgress(sj, pacingRef.current) - 0.45) / 0.55, 0, 1); // after the title dwell
-        introRef.current.style.opacity = (1 - d * d * (3 - 2 * d)).toFixed(3);
+        introRef.current.style.opacity = titleVeil(sj, pacingRef.current).toFixed(3);
       }
       // Outro veil (standalone preview only): fades the map to black across the dive's
       // second half. In underlay mode the bull unfolds OVER the map instead.
@@ -1821,7 +1868,9 @@ export default function MapChapter({
       // Half-window the card travels, in stop-progress. Derived from CARD_TRAVEL_VH so the
       // plaques cross the screen in the same amount of SCROLL whatever the journey pacing
       // underneath does — repacing the bull must not change how fast the text reads.
-      const REACH = CARD_TRAVEL_VH / (2 * (JOURNEY_VH / LEG_COUNT));
+      // Averaged over the LOCATION legs only — no card rides the title leg, and averaging
+      // it in tied how fast the plaques cross the screen to how long the intro holds.
+      const REACH = CARD_TRAVEL_VH / (2 * (LEGS_VH / (LEG_COUNT - 1)));
       const FADE = 0.15;   // fade only over the outer (off-screen) edges
       const lastCardIdx = steps.length - 1; // card i ↔ stop i+1, so the last card is i = N−1
       const dive = diveOf(sj, pacingRef.current);
