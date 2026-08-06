@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import FitFrame from '../engine/FitFrame';
 import { onScroll as onPageScroll } from '../engine/scroller';
 import { viewportH } from '../engine/viewport';
 
@@ -91,6 +92,19 @@ export function BreakReveal({
       {/* px-5 on the phone: the design gutters are 20-23, and 24 would squeeze the fixed
           caption measure below its own width. */}
       <div className="sticky top-0 h-[100svh] flex items-center justify-center px-5 sm:px-6">
+        {/* The phone composition — mark + caption — is drawn to the 402×874 export and its
+            pieces are fixed px off it (the 341.34 measure is what breaks the caption into
+            the design's three lines). So it rides the design frame rather than the live
+            screen: on a shorter or narrower phone the whole lockup scales together instead
+            of the caption keeping its measure while the gap above it shrinks.
+
+            The centring is stated TWICE on purpose — once on the stage above, once here.
+            They are two different boxes: off the phone the frame is `display: contents` and
+            these classes are inert, so the stage centres the composition exactly as it
+            always did; on the phone the frame is the 402×874 box and centres it inside
+            THAT. The stage's own `sm:px-6` is not repeated — inside the frame the gutter is
+            the export's 20px whatever the screen. */}
+        <FitFrame className="flex items-center justify-center px-5">
         {/* wide enough for the desktop wordmark (1211px at the 1440px design width) */}
         <div className="text-center max-w-[1215px]">
           <div
@@ -122,6 +136,7 @@ export function BreakReveal({
             {body}
           </p>
         </div>
+        </FitFrame>
       </div>
     </section>
   );

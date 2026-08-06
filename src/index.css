@@ -45,4 +45,9 @@
     -webkit-font-smoothing: antialiased;
   }
   ::selection { background: #c9a961; color: #000; }
+
+  /* The design frame every phone composition is drawn to — seated and scaled by
+     engine/FitFrame, which is where the why is. Only while it is ON: off the phone the
+     component sets `display: contents` inline and this whole box leaves the layout. */
+  .fit-frame--on { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
 }

@@ -127,7 +127,12 @@
      canvas uses), a 27px top band, and type at its stated size rather than vw-scaled —
      eyebrow 18, «Invested … in the index» 30, the stats line 18, the value 40, sources 16.
      Everything here was running at roughly two thirds of that. */
-  .calc-sticky { padding: 27px 4.98vw 0; align-items: flex-start; }
+  /* Design px, not vw/svh: the composition rides the 402×874 frame now (engine/FitFrame),
+     so 4.98vw IS 20px and the seats below are the export's own numbers. Mixing the two was
+     the distortion — type stated in px while the plot's band was a fraction of a screen
+     that is 124px shorter than the mockup. The padding moves onto the frame with them. */
+  .calc-sticky { padding: 0; align-items: flex-start; }
+  .calc-frame { padding: 27px 20px 0; }
   .calc-eyebrow { font-size: 18px; }
   .calc-amt { font-size: 30px; line-height: 1.33; margin-top: 12px; }
   /* Phone only: «in the index» is its own line, as the export sets it — the heading is two
@@ -143,23 +148,23 @@
      it started at 271 rather than 126, 145px low and 100px short, which is what read as "the
      chart should be higher".
      So on the phone the plot and the sources take absolute seats off the export and the
-     text block rides over them. Seats are against .calc-sticky (sticky is a positioned
-     ancestor, and its padding edge IS the 874 frame), in svh so they scale with the screen
-     exactly as every other phone layout here does.
+     text block rides over them. Seats are against .calc-frame — the fitted 402×874 box,
+     which IS the export's frame — in its own px, so they land exactly where the export
+     puts them and the whole composition scales as one.
        viz    top 86  = the CANVAS top: the plot's 126 less the 40 of padT that holds the
                         end year (see CalculatorSlide's padT)
               height  to 751, the knob's bottom edge (axis 696.4 + padB 54.5)
        note   bottom 18, its last line landing on the export's 851.6 baseline */
   .calc-wrap { height: 100%; }
   .calc-viz {
-    position: absolute; left: 4.98vw; right: 4.98vw;
-    top: 9.84svh; height: 76.09svh; margin: 0;
+    position: absolute; left: 20px; right: 20px;
+    top: 86px; height: 665px; margin: 0;
   }
   .calc-chart { height: 100%; }
   /* The text is the layer ON TOP — without this the absolutely-seated plot paints over it. */
   .calc-top { position: relative; z-index: 1; }
   .calc-note {
-    position: absolute; left: 4.98vw; right: 4.98vw; bottom: 2.06svh;
+    position: absolute; left: 20px; right: 20px; bottom: 18px;
     margin: 0; max-width: none; font-size: 16px; line-height: 1.5;
   }
 

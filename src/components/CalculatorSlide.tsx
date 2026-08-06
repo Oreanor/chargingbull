@@ -5,6 +5,7 @@ import {
   lineWThick, lineWThin, HOLD_THIN_ALPHA, endDotFocusR,
 } from '../engine/charts/chartInk';
 import { cappedDpr } from '../engine/deviceBudget';
+import FitFrame from '../engine/FitFrame';
 import './CalculatorSlide.css';
 
 /**
@@ -415,6 +416,10 @@ export function CalculatorSlide() {
   return (
     <section ref={sectionRef} className="calc-section" style={{ height: '150svh' }}>
       <div className="calc-sticky">
+      {/* The phone composition is the «iPhone 36» export's own 402×874 frame — its type is
+          already stated in that frame's px, and now its seats are too. See engine/FitFrame.
+          Desktop is untouched: the frame leaves the layout entirely there. */}
+      <FitFrame className="calc-frame">
       <div className="calc-wrap">
         <div className="calc-top">
           <div className="calc-lead">
@@ -465,6 +470,7 @@ export function CalculatorSlide() {
         </div>
         <div ref={noteRef} className="calc-note" />
       </div>
+      </FitFrame>
       </div>
     </section>
   );
