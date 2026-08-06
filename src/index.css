@@ -11,7 +11,14 @@
      Clipped at BOTH the root and body, since a stray wide element (e.g. a full-bleed
      wordmark) would otherwise push the page sideways: content shifts left, fixed UI
      stays put. */
-  html, body { height: 100%; overflow: hidden; background: #000; }
+  html, body { background: #000; overflow-x: clip; }
+  /* …but ONLY where the longread's scroll box exists. The standalone `?edit` / `?candles` /
+     `?map` previews render a chapter with no shell around it and scroll the document, the
+     way they always have — locking the document unconditionally left them unable to scroll
+     at all, which is a chapter you cannot review. `:has` keys off the box itself, so the two
+     can never disagree, and it holds from the first paint (the box is in the prerendered
+     HTML) rather than waiting for hydration. */
+  html:has(#lr-scroll), html:has(#lr-scroll) body { height: 100%; overflow: hidden; }
 
   /* One screen tall, and the ONLY scrolling box on the page. Sized in svh — the same
      number every stage inside it is (`h-[100svh]`) and the same number viewport.ts
