@@ -104,11 +104,17 @@ export const OPENER_TRACK: CameraTrack = {
     // which move with it, were re-read off the same page rather than shifted by a constant.
     // The PHONE keeps the capture's target: there the figure is already seated by
     // overlayFit.mobileFrameNudge's own разлёт seat (BLOWUP_X), against the phone mockup.
-    { at: 0.8, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.35, 0.42, 0.76],
+    // Desktop target y re-read in the editor, 0.42 → 0.47: the camera looks that much
+    // higher, so the exploded figure sits lower in the frame. Desktop only — the phone
+    // override still carries the capture's 0.42.
+    { at: 0.8, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.35, 0.47, 0.76],
       phone: { az: 34.9, polar: 102.9, target: [0.07, 0.42, 0.93] },
       weights: { front: 1.69, rear: 0, bias: 0.61, sharpness: 1.56, rise: 1.4 },
       fog: { color: '#0c0d10', near: 2.5, far: 3.7 } },
-    { at: 0.85, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.35, 0.42, 0.76],
+    // Hold ends at 0.86, not 0.85 — which is also where overlayFit's REAR seat begins, so
+    // the phone's framing now hands over exactly as the camera starts its swing behind the
+    // figure. (BLOWUP_OUT0 still releases the разлёт seat at 0.85; it leads the pose by 0.01.)
+    { at: 0.86, az: 31.8, polar: 99, dist: 2.16, explode: 1.08, fov: 45, target: [0.35, 0.47, 0.76],
       phone: { az: 34.9, polar: 102.9, target: [0.07, 0.42, 0.93] },
       weights: { front: 1.69, rear: 0, bias: 0.61, sharpness: 1.56, rise: 1.4 },
       fog: { color: '#0c0d10', near: 2.5, far: 3.7 } },

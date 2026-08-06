@@ -33,9 +33,22 @@ const FIT_IN1 = 0.67;
 const FIT_OUT0 = 0.73;
 const FIT_OUT1 = 0.80;
 
-/** Peak distance multiplier at full fit (1 = no pull). Set so the pair lands at the
- *  size «iPhone 17-15» gives it: bull + cab span 368×223 of the 402×874 frame. */
+/** Peak distance multiplier the overlay was AUTHORED against — the pair at the size
+ *  «iPhone 17-15» gives it: bull + cab span 368×223 of the 402×874 frame. */
 const MOBILE_PROFILE_DIST_MUL = 1.265;
+/**
+ * …and how much smaller the pair is actually drawn. Against the yellow caption underneath —
+ * which is verified to match the export exactly (18/24 Struve, six lines, widest 333 of the
+ * mockup's 332.4) — the figure and the green measures over it read about 5% too big, so both
+ * are trimmed to 0.95.
+ *
+ * ONE number for the pair, and the two ends move together by construction: the camera pulls
+ * back by 1/trim, and `tonnesOverlayScale`'s `pull` — authored distance over live distance —
+ * comes out as the trim itself, so the measures keep spanning the bull they measure. The
+ * caption is deliberately NOT in that group (it is a sibling of the scaled one in
+ * TonnesFrame), so it keeps its authored size, which is the point.
+ */
+export const TONNES_TRIM = 0.95;
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const smoothstep = (t: number) => {
@@ -99,10 +112,11 @@ function mobileProfileFitAmount(t: number): number {
   return rise * fall;
 }
 
-/** Multiply authored camera distance by this on mobile during the fit window. */
+/** Multiply authored camera distance by this on mobile during the fit window. Peaks past the
+ *  authored pull by 1/TONNES_TRIM — that extra distance IS the trim (size goes as 1/dist). */
 export function mobileProfileDistScale(t: number): number {
   const a = mobileProfileFitAmount(t);
-  return 1 + (MOBILE_PROFILE_DIST_MUL - 1) * a;
+  return 1 + (MOBILE_PROFILE_DIST_MUL / TONNES_TRIM - 1) * a;
 }
 
 /* ── Phone frame seating ──────────────────────────────────────────────────────
@@ -133,8 +147,16 @@ const APPROACH_IN1 = 0.55;
 const HERO_RELEASE_T = 0.05;
 const HERO_RAISE = 0.2;
 const APPROACH_X = 0.08;
-const BEAT_X = 0.019;
-const BEAT_Y = 0.012;
+/** The mockup seats the pair 17px right of the frame's centre (0.019 of 874). Now 5px left
+ *  of that — the figure read right of where it belongs against the headline, which keeps its
+ *  own seat. The measures pinned to the figure carry the same 5px (TonnesFrame's
+ *  FIGURE_SHIFT_X): 0.019 − 5/874 = 0.0133. */
+const BEAT_X = 0.0133;
+/** The mockup's own seat is 10px ABOVE the frame's centre (0.012 of 874). It now carries the
+ *  drop that centres the composition (TonnesFrame's CENTRE_DROP), as the green measures do —
+ *  they are pinned to the figure, so the two move together or the arrows come off the bull.
+ *  The drop reaches both through the 0.95 trim: 0.012 − 0.95 × 8.02 / 874 = 0.0033. */
+const BEAT_Y = 0.0033;
 /* РАЗЛЁТ (0.75 → 0.90) — a fourth seat, for the stretch where the figure is blown apart.
    The approach seat leaves it 8% of a frame height right of centre, which is right for a
    whole bull but not for one whose horns are thrown outward: on the phone they collide with
@@ -163,6 +185,21 @@ const BLOWUP_OUT1 = 0.90;
  *  head. PartsFrame's phone seats carry the same 10px, and its second horn dot is gone with
  *  the horn it named. Still one absolute number in frame heights, for the reason below. */
 const BLOWUP_X = 0.0022;
+/* REAR (0.86 → 1) — the closing beat, where the camera has swung behind the figure (track
+   key az 143.9) and the rump fills the frame. It was still riding the APPROACH seat: that
+   0.08 is the pan that carries the bull+cab pair, and under a close rear crop it pushed the
+   hindquarters off the right edge. Its own seat, crossfading out of whatever the earlier
+   ones resolved to, exactly the way BLOWUP and BEAT hand over.
+
+   Asked for as 100px left of where it sat, then a quarter of that back to the right once it
+   was seen on a real phone — so 75px. Written the way BLOWUP_X is, as an absolute seat in
+   frame heights against the 402×874 mockup rather than off the live window: 75 / 874 = 0.086,
+   so 0.08 − 0.086 = −0.006. Because phonePxLock divides the live height back out, that lands
+   as the same 75px on any phone — which is the point, and why it is not derived from
+   innerWidth. No overlay rides this stretch, so nothing else has to move with it. */
+const REAR_IN0 = 0.86;
+const REAR_IN1 = 0.92;
+const REAR_X = -0.006;
 
 /** Frame nudge for the phone, as [right, up] in frame heights. Desktop always [0, 0]. */
 export function mobileFrameNudge(t: number): [number, number] {
@@ -173,12 +210,14 @@ export function mobileFrameNudge(t: number): [number, number] {
   const blow =
     smoothstep(clamp01((t - BLOWUP_IN0) / (BLOWUP_IN1 - BLOWUP_IN0))) *
     (1 - smoothstep(clamp01((t - BLOWUP_OUT0) / (BLOWUP_OUT1 - BLOWUP_OUT0))));
+  const rear = smoothstep(clamp01((t - REAR_IN0) / (REAR_IN1 - REAR_IN0)));
   // Every seat below is authored at the mockup's height and lands as `nx · H` pixels, so it
   // carries the same pixel lock the overlays do — otherwise the bull, whose SIZE does not
   // follow the window height, would still slide against them as the height changes.
   const k = phonePxLock();
+  const seated = (APPROACH_X * approach * (1 - blow) + BLOWUP_X * blow) * (1 - fit) + BEAT_X * fit;
   return [
-    ((APPROACH_X * approach * (1 - blow) + BLOWUP_X * blow) * (1 - fit) + BEAT_X * fit) * k,
+    (seated * (1 - rear) + REAR_X * rear) * k,
     (HERO_RAISE * hero + BEAT_Y * fit) * k,
   ];
 }

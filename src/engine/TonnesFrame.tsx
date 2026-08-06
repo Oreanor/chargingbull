@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useChapterProgress } from './chapterScroll';
 import { tuneStore } from './tuneEditor';
-import { tonnesOverlayScale } from './overlayFit';
+import { TONNES_TRIM, tonnesOverlayScale } from './overlayFit';
 // Inlined (not <img>) so the SVG <text> can use the page's @font-face fonts (Space Mono
 // for the m-labels). As <img> these would render in an isolated context with no access
 // to our webfonts. The headline is outlines, so it needs no font at all.
@@ -87,22 +87,42 @@ const DESKTOP: Frame = {
 // together, so pulling them in shrinks «4.9 m» by 10% and «3.4 m» by 9%. That is the trade
 // this layout is built on (a piece is a rect, never a rect times a correction); the
 // alternative is re-cutting both SVGs so the label keeps its size while the arrow moves.
+// CENTRED, which the export is not: read off «iPhone 17 - 15», the composition runs from
+// the headline's top (143.64) to the caption's last line (699.95), so its centre sits at
+// 421.8 — 15.2px above the frame's own 437. Faithful to the export and visibly high on the
+// screen, which is what was asked to fix.
+//
+// 8.02, not the full 15.2, because the green group is also trimmed to 0.95 (overlayFit's
+// TONNES_TRIM) about the screen centre while the caption is not: the drop reaches the
+// headline as 0.95×, the caption as 1×, so the two ends of the composition do not move by
+// the same amount. Solved, not guessed — headline top + caption bottom = 874 puts the
+// midpoint on the frame's centre, measured back at 437 exactly. The FIGURE carries the
+// matching seat through overlayFit's BEAT_Y: the measures end where the bull does, so
+// moving the overlay alone would slide the arrows off it.
+const CENTRE_DROP = 8.02;
+
+// The figure and the measures pinned to it sit 5px LEFT of where the export puts them; the
+// headline and the caption keep their own seats. Written as the SCREEN shift, then divided
+// by the trim, because a rect inside the scaled green group reaches the screen as 0.95 of
+// its own move — the figure gets the untouched 5px through overlayFit's BEAT_X, and the two
+// have to land on the same pixel or the arrows come off the bull they measure.
+const FIGURE_SHIFT_X = -5 / TONNES_TRIM;
 const MOBILE: Frame = {
   px: { w: 402, h: 874 },
-  headline:  { x: 14.69, y: 143.64, w: 371.90 },
-  measureW:  { x: 42.7, y: 345.76, w: 340.4 },
+  headline:  { x: 14.69, y: 143.64 + CENTRE_DROP, w: 371.90 },
+  measureW:  { x: 42.7 + FIGURE_SHIFT_X, y: 345.76 + CENTRE_DROP, w: 340.4 },
   // x carries the 2.3 the narrower asset moves its own arrow by (the rule sits 30.2% in
   // from its left edge), so the vertical line stays exactly where the mockup put it. y is
   // solved from the TIPS, not typed: the top one CLEARS the tail (288.7 — the leader is a
   // rule across the figure, so sitting on the tail's own top edge cuts through it), and the
   // hoof one lands on the ground the cab's wheels stand on (507): the ground is shared, so
   // that end is read off the wheels, a few px above the tyre's own bottom.
-  measureH:  { x: 318.3, y: 263.4, w: 62.85 },
+  measureH:  { x: 318.3 + FIGURE_SHIFT_X, y: 263.4 + CENTRE_DROP, w: 62.85 },
   arrow:     { aspect: 234.1 / 60.3, tips: [0.103771, 0.998321] },
-  leaderTop: { x: 240, w: 141 },
-  baseline:  { x: 240, w: 141, gap: [0.291, 0.624] },
+  leaderTop: { x: 240 + FIGURE_SHIFT_X, w: 141 },
+  baseline:  { x: 240 + FIGURE_SHIFT_X, w: 141, gap: [0.291, 0.624] },
   leaderInk: 0.4,
-  caption:   { cx: 201, y: 555.95, w: 340, font: 18, line: 24 },
+  caption:   { cx: 201, y: 555.95 + CENTRE_DROP, w: 340, font: 18, line: 24 },
 };
 
 const GREEN = '#61E26B';
