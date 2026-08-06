@@ -818,6 +818,15 @@ export interface ChartsEngine {
   setBottomReserve(px: number): void;
   /** px reserved ABOVE the plot for the HTML heading, so the plot never climbs into it. */
   setTopReserve(px: number): void;
+  /**
+   * The frame the CHART is drawn to: `w`×`h` in DESIGN px (the phone export's 402×874),
+   * seated at `x,y` on the canvas and scaled by `k` — the contain fit from engine/fitFrame.
+   * The scale rides the canvas transform, so everything this engine draws is stated in
+   * design px and lands at the mockup's proportions whatever shape the screen is. The
+   * ground still fills the whole canvas, so the letterbox around the frame never shows.
+   * `null` = draw to the canvas itself, 1:1 (the desktop, unchanged).
+   */
+  setFrame(frame: { x: number; y: number; k: number; w: number; h: number } | null): void;
   resize(): void;
   ready(): boolean;
 }
@@ -895,6 +904,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
   let numPath: Path2D | null = null;   // cached «1989» outline
   let platePaths: Path2D[] | null = null;
   // px the page reserves under the plot (the HTML credits block). Set from ChartsChapter.
+  let frame: { x: number; y: number; k: number; w: number; h: number } | null = null;
   let bottomReserve = 0;                // which breakpoint platePaths was built for // cached Black Monday plate outlines
   // px the page reserves ABOVE the plot (the HTML heading block). Same source, same reason.
   let topReserve = 0;
@@ -1068,27 +1078,37 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     }
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // The GROUND covers the whole canvas whatever the frame is — the composition is
+    // contain-fitted, the background is not, so the letterbox never shows as a seam.
     ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
-    const padL = Math.round(W * SIDE_PAD_F()), padR = padL;
+    // From here on the canvas is in DESIGN px: the fit's seat and scale ride the transform,
+    // so every fixed number this engine draws with — type sizes, label bands, the right
+    // inset, the reserves the page measures — is a design px and needs no conversion of its
+    // own. Without the frame (desktop) this is exactly the old 1:1 canvas.
+    const F = frame ?? { x: 0, y: 0, k: 1, w: W, h: H };
+    if (F.k !== 1 || F.x !== 0 || F.y !== 0) {
+      ctx.setTransform(dpr * F.k, 0, 0, dpr * F.k, dpr * F.x, dpr * F.y);
+    }
+    const padL = Math.round(F.w * SIDE_PAD_F()), padR = padL;
     // Extra bottom band so lowered X-axis labels stay above the HTML footer.
     // The bottom band holds the X labels AND the HTML credits that sit under the chart.
     // 20% of the height is the mockup's proportion, but the credits are fixed 16/24 text:
     // on a narrow phone they wrap past that band, so the year labels ended up printed
     // across them. Take whichever is larger — the design band, or what the page says it
     // actually needs (measured, not a magic breakpoint fraction).
-    // Same shape as padB, and for the same reason. The design band is a FRACTION of the
-    // frame, but the header above it is fixed px (30px seat + 18/30px type on the phone,
-    // ~116px whatever the frame does). So on a short frame the fraction lands ABOVE the
-    // heading's last line and the plot climbs into it: measured, the two touch at 667 tall
-    // and sit 10px apart on a real iPhone, where svh is the screen LESS the browser bars
-    // (~750, not 852). Take whichever is larger — the design band, or what the page says
-    // the header actually occupies.
-    const padT = Math.max(Math.round(H * TOP_PAD_F()), topReserve);
-    const padB = Math.max(Math.round(H * 0.20), bottomReserve + X_LABEL_BAND);
-    const x1 = W - padR;
+    // Same shape as padB, and for the same reason: the design band is a FRACTION of the
+    // frame while the header above it is fixed px. That used to be measured against the
+    // live screen, so on a short one the fraction landed above the heading's last line and
+    // the plot climbed into it — measured, they touched at 667 tall and sat 10px apart on a
+    // real iPhone. With the phone frame contain-fitted, F.h is the mockup's own 874 and the
+    // header is scaled by the same k, so the design band wins on every screen and this max
+    // is back to being the safety net it reads as, not the thing setting the layout.
+    const padT = Math.max(Math.round(F.h * TOP_PAD_F()), topReserve);
+    const padB = Math.max(Math.round(F.h * 0.20), bottomReserve + X_LABEL_BAND);
+    const x1 = F.w - padR;
     // Series + hatch stop here; Y labels / grid continue to x1.
     const xData1 = x1 - plotRightInset();
-    return { ctx, W, H, x0: padL, y0: padT, x1, y1: H - padB, xData1 };
+    return { ctx, W, H, x0: padL, y0: padT, x1, y1: F.h - padB, xData1 };
   }
 
   function drawNow() {
@@ -2133,6 +2153,7 @@ export function createChartsEngine(canvas: HTMLCanvasElement): ChartsEngine {
     // or flash −20% before scroll owns the frame.
     setBottomReserve(px: number) { bottomReserve = Math.max(0, Math.round(px)); },
     setTopReserve(px: number) { topReserve = Math.max(0, Math.round(px)); },
+    setFrame(rect) { frame = rect; },
     resize() {
       if (!scrubReady) return;
       applyProgress(lastLinear);

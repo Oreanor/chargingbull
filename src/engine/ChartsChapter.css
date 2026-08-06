@@ -13,6 +13,18 @@
 
 .cc-canvas { width: 100%; height: 100%; display: block; }
 
+/* The COMPOSITION's frame — heading, credits, cards. On the desktop it is simply the
+   stage, so nothing changes there. On the phone JS sizes it to the export's own 402×874
+   and scales it by one number to fit the screen (see engine/fitFrame), so every fixed px
+   inside is a DESIGN px and lands where the mockup puts it. The canvas is deliberately NOT
+   in here: the chart's ground keeps covering the whole screen, so the letterbox around
+   this frame is never a visible seam. Positioned in both cases, so the reserves can be
+   measured against it in layout px, which the fit transform cannot skew. */
+.cc-frame {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  transform-origin: 0 0;
+}
+
 /* Old left-third dim overlay — removed: it muddied the pink (bear) phase, and the
    cards now carry their own solid panel so they read without it. */
 .cc-gradient { display: none; }
@@ -109,8 +121,10 @@
    the chart and the HTML chrome around it must never disagree about which frame they are
    drawing. */
 @media (max-width: 800px) {
-  /* 20px on the 402-wide export — the canvas's own SIDE_PAD_F, stated once. */
-  .cc-stage { --cc-side: 4.98vw; }
+  /* 20px on the 402-wide export — the canvas's own SIDE_PAD_F, stated once. A design px,
+     not 4.98vw: inside .cc-frame the layout IS the 402 frame, and vw would still measure
+     the window, so the two would disagree by the fit scale. */
+  .cc-stage { --cc-side: 20px; }
   /* Phone card spec — one place, see the --card-* block in fonts.css. */
   .cc-card {
     left: var(--card-gap);

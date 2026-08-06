@@ -5,6 +5,7 @@ import { createChartsEngine, CHART_STEPS, DWELL_HOLD_FRAC, type ChartsEngine } f
 import { isMobileViewport } from './deviceBudget';
 import { viewportH } from './viewport';
 import { onScroll as onPageScroll } from './scroller';
+import { containFrame, PHONE_FRAME } from './fitFrame';
 import { tuneStore } from './tuneEditor';
 import copy from '../content/copy.json';
 import './ChartsChapter.css';
@@ -54,6 +55,19 @@ const HEADER_CLEARANCE = 26;
 
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
+/** Bottom edge of `el` inside `root`, in root's own LAYOUT px. Walks offsetParents rather
+ *  than reading rects, because the fit frame is scaled and rects would come back in screen
+ *  px while everything the engine lays out is in frame px. */
+function offsetBottomWithin(el: HTMLElement, root: HTMLElement): number {
+  let y = el.offsetHeight;
+  let n: HTMLElement | null = el;
+  while (n && n !== root) {
+    y += n.offsetTop;
+    n = n.offsetParent as HTMLElement | null;
+  }
+  return y;
+}
+
 /** Views that show no card. Empty: every frame now carries one — the candle close-up gets
  *  «From points to percent» (Note 2) and each drawdown its own crisis note (Notes 3–6),
  *  with the Dotcom bust following them. Kept as a named set rather than deleted, because
@@ -100,6 +114,7 @@ export default function ChartsChapter() {
   const titleRef = useRef<HTMLSpanElement>(null);
   const legendRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const progress = useSmoothProgress(ref);
   const [engine, setEngine] = useState<ChartsEngine | null>(null);
@@ -144,27 +159,57 @@ export default function ChartsChapter() {
     };
   }, [mounted]);
 
+  // CONTAIN-FIT — the phone composition is laid out at the export's own 402×874 and scaled
+  // by ONE number to fit the screen; the canvas underneath keeps covering it. See
+  // engine/fitFrame for why, and .cc-frame for what rides it. The engine is handed the same
+  // rectangle, so the plot and the HTML chrome around it are finally laid out against one
+  // frame instead of two — which is what «the heading sticks to the chart» was: a fixed-px
+  // header over a band that is a FRACTION of the live screen. Desktop passes null and is
+  // untouched: there the frame IS the stage.
+  useEffect(() => {
+    const stage = stageRef.current, frameEl = frameRef.current;
+    if (!stage || !frameEl) return;
+    const fit = () => {
+      const vw = stage.clientWidth, vh = stage.clientHeight;
+      if (vw <= 0 || vh <= 0) return;
+      if (isMobileViewport()) {
+        const f = containFrame(vw, vh, PHONE_FRAME);
+        frameEl.style.width = `${PHONE_FRAME.w}px`;
+        frameEl.style.height = `${PHONE_FRAME.h}px`;
+        frameEl.style.transform = `translate(${f.x.toFixed(2)}px, ${f.y.toFixed(2)}px) scale(${f.k.toFixed(4)})`;
+        // Same seat and scale for the canvas — the HTML chrome and the plot ride ONE fit,
+        // or the heading and the chart it sits over would drift apart again.
+        engine?.setFrame({ x: f.x, y: f.y, k: f.k, w: PHONE_FRAME.w, h: PHONE_FRAME.h });
+      } else {
+        frameEl.style.width = '';
+        frameEl.style.height = '';
+        frameEl.style.transform = '';
+        engine?.setFrame(null);
+      }
+      engine?.resize();
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [engine]);
+
   // Tell the engine how much room the HTML chrome needs above and below the plot, so the
   // chart is laid out around it instead of across it. MEASURED, not a breakpoint guess —
   // which is also why the phone's shorter wording needs nothing else: the blocks are
-  // observed, so the plot's floor and ceiling follow them the moment they re-wrap.
-  //
-  // The heading is the one that bites. It is fixed px (a 30px seat plus 18/30px type on
-  // the phone) while the plot's top band is a FRACTION of the frame, so the shorter the
-  // frame the closer the chart creeps to «Bear Markets» — measured, they touch at 667 tall,
-  // and a real iPhone lays out at ~750 (svh is the screen LESS the browser bars, not the
-  // screen). That is the designer's «heading sticking to the chart», and it is not a units
-  // question: no svh/dvh choice fixes a proportional band under a fixed-px header.
+  // observed, so the plot's floor and ceiling follow them the moment they re-wrap. With the
+  // frame fitted these are a safety net rather than the thing setting the layout, but they
+  // still have to be in FRAME px — hence offset measurements, which the fit scale cannot
+  // skew, where a getBoundingClientRect would come back multiplied by it.
   useEffect(() => {
-    const eng = engine, el = legendRef.current, head = brandRef.current, stage = stageRef.current;
-    if (!eng || !el || !head || !stage) return;
+    const eng = engine, el = legendRef.current, head = brandRef.current, frameEl = frameRef.current;
+    if (!eng || !el || !head || !frameEl) return;
     const push = () => {
       eng.setBottomReserve(el.offsetHeight + LEGEND_CLEARANCE);
-      // Ink bottom measured against the stage, not the topbar's own box — that box carries
+      // Ink bottom measured against the frame, not the topbar's own box — that box carries
       // symmetric padding, and billing the chart for the seat ABOVE the heading would push
       // the plot down on the desktop frames, where nothing is wrong.
-      const ink = head.getBoundingClientRect().bottom - stage.getBoundingClientRect().top;
-      eng.setTopReserve(ink + HEADER_CLEARANCE);
+      eng.setTopReserve(offsetBottomWithin(head, frameEl) + HEADER_CLEARANCE);
     };
     push();
     const ro = new ResizeObserver(push);
@@ -284,7 +329,10 @@ export default function ChartsChapter() {
       // catching on something. Now `tt` is straight-line in `d`: full screen up over the
       // window, constant velocity, and dead centre is a moment it passes through rather
       // than a place it sits.
-      const fh = vh;
+      // The sweep is one FRAME height, not one screen: the cards live inside the fit frame
+      // (see .cc-frame), so their px are design px and a screen-sized ride would come out
+      // short by the fit scale — the card would fade before it had cleared the top.
+      const fh = isMobileViewport() ? PHONE_FRAME.h : vh;
       const vhPx = fh / 100;
       const MARGIN = 0.02;      // never touch the morph on either side
       /** Dead centre → fully off the top. Also what the outer cards' lead-in / tail cover. */
@@ -363,6 +411,9 @@ export default function ChartsChapter() {
       <div ref={stageRef} className="cc-stage fixed inset-0 z-20 h-[100svh] w-full overflow-hidden" style={{ opacity: 0, visibility: 'hidden', pointerEvents: 'none' }}>
         <canvas ref={canvasRef} className="cc-canvas" />
         <div className="cc-gradient" aria-hidden />
+        {/* Everything below is the COMPOSITION and rides the fit frame; the canvas above
+            stays full-bleed. See .cc-frame in the CSS and engine/fitFrame. */}
+        <div ref={frameRef} className="cc-frame">
         <div className="cc-topbar">
           <div
             ref={brandRef}
@@ -405,6 +456,7 @@ export default function ChartsChapter() {
               <p className="cc-comment" dangerouslySetInnerHTML={{ __html: s.comment }} />
             </div>
           ))}
+        </div>
         </div>
       </div>
     </section>
