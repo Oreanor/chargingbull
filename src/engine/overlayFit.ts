@@ -60,31 +60,34 @@ const smoothstep = (t: number) => {
 const PHONE_DESIGN_H = 874;
 
 /**
- * PHONE PIXEL LOCK — the factor that stops everything svh-based from sliding off the bull
- * when the window's HEIGHT changes. 1 on the desktop, where it does not apply. (The height
- * it reads is viewport.viewportH — the stable svh one, never the live innerHeight, or the
- * URL bar sliding would move every overlay it scales.)
+ * PHONE CONTAIN FIT — how much of the mockup's height this screen actually has.
  *
- * Below MOBILE_MAX the GL host is frozen at 800px wide (ModelChapter.css) and effectiveFov
- * holds the HORIZONTAL fov fixed, so pixels-per-world-unit comes out as
+ * 1 at the mockup's own 874, less on anything shorter: on an iPhone laying out at 711 it is
+ * 0.813, and the whole opener — bull, green measures, plaques — is drawn at 81% so it fits.
+ * Same contain idea as engine/FitFrame, arrived at from the other side: the overlays are
+ * authored in svh, so they ALREADY scale with the screen's height, and this is simply the
+ * factor they scale by. There is nothing to wrap.
  *
- *     800 / (2·dist·REF·tan(fov/2))
+ * Only the height. Below MOBILE_MAX the GL host is frozen at 800px wide (ModelChapter.css)
+ * and effectiveFov holds the HORIZONTAL fov fixed, so a narrower screen shows LESS of the
+ * bull rather than a smaller one — a width term here would shrink the composition against a
+ * bull that did not move.
  *
- * with no window height in it at all: the bull is the same number of CSS pixels tall on a
- * short phone as on a tall one. Everything authored against it is in vh and therefore grows
- * with the height — at 993px tall a vh overlay is 13% bigger than at the mockup's 874 while
- * the bull has not moved a pixel. Dividing the height back out pins those to pixels too, and
- * is exactly 1 at the mockup's own height, so the authored layout is untouched where it was
- * drawn.
+ * This REPLACES a pixel lock that used to divide the height back out (874/H), pinning every
+ * overlay to the mockup's pixel size. That was right while the bull was a fixed pixel size
+ * too — it is framed by width, so it does not care how tall the window is — but it is what
+ * made the composition unable to fit a short screen: at 711 the mockup's 874 of content had
+ * nowhere to go and the top of the stack went off the top of the screen. The fit is the same
+ * fact read the other way, and it is now paid for at the OTHER end, by pulling the camera
+ * back by 1/k (see mobileProfileDistScale) so the bull shrinks with everything else.
  *
- * It has to go on BOTH ends of that conversion — the overlays' scale AND the frame nudge
- * that seats the bull (see mobileFrameNudge). The nudge lands as `nx · H` pixels, so pinning
- * only the overlay would fix the sizes and leave the two sliding apart in position instead.
+ * (The height it reads is viewport.viewportH — the stable svh one, never the live
+ * innerHeight, or a browser bar sliding would resize the whole composition mid-scroll.)
  */
-function phonePxLock(): number {
+function phoneFitScale(): number {
   if (typeof window === 'undefined') return 1;
   if (window.innerWidth > MOBILE_MAX) return 1;
-  return PHONE_DESIGN_H / (viewportH() || PHONE_DESIGN_H);
+  return (viewportH() || PHONE_DESIGN_H) / PHONE_DESIGN_H;
 }
 
 /**
@@ -93,13 +96,14 @@ function phonePxLock(): number {
  * DESKTOP — the aspect match: 1 at/above the design aspect, shrinking with the window below
  * it, because there the bull is framed by width once effectiveFov starts widening.
  *
- * PHONE — the pixel lock above.
+ * PHONE — nothing. An svh-authored overlay already scales by phoneFitScale, which IS the
+ * contain fit, and the camera is pulled back by the same factor so the bull comes with it.
  */
 export function bullMatchScale(): number {
   if (typeof window === 'undefined') return 1;
   const W = window.innerWidth;
   const H = viewportH() || 1;
-  if (W <= MOBILE_MAX) return phonePxLock();
+  if (W <= MOBILE_MAX) return 1;
   const aspect = W / H;
   return aspect >= REF_ASPECT ? 1 : aspect / REF_ASPECT;
 }
@@ -112,9 +116,30 @@ function mobileProfileFitAmount(t: number): number {
   return rise * fall;
 }
 
-/** Multiply authored camera distance by this on mobile during the fit window. Peaks past the
- *  authored pull by 1/TONNES_TRIM — that extra distance IS the trim (size goes as 1/dist). */
+/**
+ * Multiply authored camera distance by this on mobile.
+ *
+ * Two things, and they multiply because both are distances. The BEAT pull peaks past the
+ * authored pull by 1/TONNES_TRIM — that extra distance IS the trim (size goes as 1/dist).
+ * The CONTAIN fit divides by phoneFitScale: on a screen shorter than the mockup the camera
+ * steps back by exactly the factor the svh-authored overlays have already shrunk by, so the
+ * bull shrinks with them and the whole composition fits. At the mockup's own height that is
+ * 1 and this is the beat pull alone, unchanged.
+ */
 export function mobileProfileDistScale(t: number): number {
+  return beatDistScale(t) / phoneFitScale();
+}
+
+/**
+ * The BEAT pull alone, without the contain fit.
+ *
+ * The two are kept apart because only one of them belongs to the overlays. An svh-authored
+ * overlay already carries the fit — that is what the fit IS — so billing it again through
+ * the camera distance shrinks it by k², and at 711 the green measures came out two thirds
+ * of the size of the bull they measure instead of matching it. The camera takes both; the
+ * overlays take the beat only.
+ */
+function beatDistScale(t: number): number {
   const a = mobileProfileFitAmount(t);
   return 1 + (MOBILE_PROFILE_DIST_MUL / TONNES_TRIM - 1) * a;
 }
@@ -211,14 +236,15 @@ export function mobileFrameNudge(t: number): [number, number] {
     smoothstep(clamp01((t - BLOWUP_IN0) / (BLOWUP_IN1 - BLOWUP_IN0))) *
     (1 - smoothstep(clamp01((t - BLOWUP_OUT0) / (BLOWUP_OUT1 - BLOWUP_OUT0))));
   const rear = smoothstep(clamp01((t - REAR_IN0) / (REAR_IN1 - REAR_IN0)));
-  // Every seat below is authored at the mockup's height and lands as `nx · H` pixels, so it
-  // carries the same pixel lock the overlays do — otherwise the bull, whose SIZE does not
-  // follow the window height, would still slide against them as the height changes.
-  const k = phonePxLock();
+  // Seats are in frame heights and land as `nx · H` pixels, so they scale with the screen on
+  // their own — which is the contain fit, the same one the svh overlays and (via the camera
+  // pull-back) the bull now take. Nothing multiplies them: the pixel lock that used to
+  // cancel that scaling is gone, and putting it back here would leave the seating fixed
+  // while the thing it seats got smaller.
   const seated = (APPROACH_X * approach * (1 - blow) + BLOWUP_X * blow) * (1 - fit) + BEAT_X * fit;
   return [
-    (seated * (1 - rear) + REAR_X * rear) * k,
-    (HERO_RAISE * hero + BEAT_Y * fit) * k,
+    seated * (1 - rear) + REAR_X * rear,
+    HERO_RAISE * hero + BEAT_Y * fit,
   ];
 }
 
@@ -240,6 +266,6 @@ export function mobileFrameNudge(t: number): [number, number] {
  */
 export function tonnesOverlayScale(t: number): number {
   const mobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_MAX;
-  const pull = mobile ? MOBILE_PROFILE_DIST_MUL / mobileProfileDistScale(t) : 1;
+  const pull = mobile ? MOBILE_PROFILE_DIST_MUL / beatDistScale(t) : 1;
   return bullMatchScale() * pull;
 }
